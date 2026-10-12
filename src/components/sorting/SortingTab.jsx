@@ -69,7 +69,7 @@ export default function SortingTab({ sorting, catalog, locations, onSortItems })
             <span style={{ fontFamily: "'Inter',sans-serif", textTransform: 'none', letterSpacing: 'normal' }}>Select all</span>
           </label>
           {selectedItems.length > 0 && (
-            <div className="batch-bar show sticky">
+            <div className="batch-bar show">
               <span>{selectedItems.length} selected</span>
               <div className="spacer"></div>
               <button className="btn small" onClick={() => setSortingItems(selectedItems)}>
