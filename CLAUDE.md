@@ -4825,6 +4825,83 @@ in the accept/convert pipeline.
   file exists for either `SortItemModal` or `ImportPanel` (same accepted
   gap already noted for `ScannerPanel` under Testing above).
 
+## Mark Sold: restored partial-quantity selling, and EditModal's own "Mark as sold" checkbox now reports like the batch flow
+
+Two real Discord reports (Noah/Rafa) about the same underlying gap —
+selling fewer than a card's full quantity had no path that both actually
+left the remainder in stock *and* reported the sale — diagnosed by reading
+the code, then confirmed with the user before fixing since both are real
+behavior changes, not one-line bugs:
+
+- **Partial-quantity selling was a real, confirmed gap, not a bug in
+  existing code.** `CatalogTable`'s per-row Sell button was removed
+  entirely in an earlier PR (see "Catalog: click-to-select rows, per-row
+  Sell removed" above) in favor of the batch-select-then-"Mark sold" flow
+  — but `App.jsx`'s `handleBatchSell` only ever sells a selected item's
+  *entire* remaining qty, with no UI path to sell e.g. 2 of 7 copies while
+  keeping the other 5 listed under the same SKU. That removal's own PR
+  description flagged this exact trade-off explicitly ("revisit if
+  partial-quantity selling... turns out to still be needed in practice")
+  — now confirmed needed. **Fix**: a new `handleSellPartial(sku, qtySold)`
+  in `App.jsx`, deliberately kept separate from `handleBatchSell` rather
+  than folded into it — the two have genuinely different end states (qty
+  decremented, item stays unsold vs. qty zeroed, item flips `sold: true`)
+  and `handleSellPartial` only ever runs for exactly one card, so
+  branching the existing, already-tested batch path on this edge case
+  would have been the wrong shape. It writes the same `sync_queue` ticket
+  and `sales` record `handleBatchSell` already writes for a full sale,
+  just for the entered quantity instead of the row's whole `qty`. A new
+  **`SellQuantityModal.jsx`** (same `.overlay`/`.modal` system, explicit
+  Cancel/Confirm, no backdrop-close) opens — in place of the existing
+  plain yes/no `showConfirm` — only when `CatalogPanel.jsx`'s
+  `handleBatchSell` sees exactly one selected item with `qty > 1`; a
+  qty-1 item or a multi-item batch still go straight to the unchanged
+  plain confirm, since there's nothing to pick a quantity for in either
+  case. The modal's own Confirm routes to `onBatchSell` (unchanged, full
+  amount) when the entered quantity equals the card's full qty, or the
+  new `onSellPartial` otherwise — same `saving`-state-guards-the-button
+  pattern this file has already fixed into `SortItemModal`/`ImportPanel`
+  above, applied to a brand-new async confirm button from the start
+  rather than needing a second round to add it.
+- **EditModal's own standalone "Mark as sold" checkbox** (`id="f_sold"`,
+  in the Notes & status section) used to flip `record.sold` with no
+  reporting at all — confirmed by reading `handleSaveCard`, which only
+  ever reset the platform-status chips on any save, never wrote a
+  `sync_queue` ticket or a `sales` row regardless of what changed. This is
+  exactly what both real reports described: an item entered and
+  immediately marked sold through Edit "disappeared" (no Catalog row,
+  since qty wasn't being zeroed either) and never showed up in Reports,
+  because nothing downstream of that checkbox ever ran the same write
+  `handleBatchSell` does. **Fix, confirmed with the user as "fire the same
+  sales-record + ticket writes `handleBatchSell` does, so both controls
+  behave identically"**: `handleSaveCard` now detects a real `false` →
+  `true` transition on `record.sold` (or a brand-new item saved as already
+  sold, since `existing` is `null` in that case) with `qty > 0`, and when
+  it fires, zeroes `qty`, builds the same `sync_queue` ticket and `sales`
+  row shape `handleBatchSell` builds (same field set, same single
+  `soldAt` timestamp sourced from `record.lastUpdated` so a sale corrected
+  after the fact still timestamps consistently), and writes both via the
+  same `dbInsertTickets`/`dbInsertSales` calls. A save where `sold` was
+  already `true` (no transition) or `qty` is already `0` is a no-op here,
+  matching `handleBatchSell`'s own identical qty<=0 skip-guard — editing
+  an already-sold item doesn't re-fire a second ticket/sale.
+- Both fixes share the same real root class this file has now hit twice
+  (see the Sorting/Import duplication-bug section above) — a feature
+  quietly bypassing the one, already-correct reference implementation
+  (`handleBatchSell`) instead of reusing or matching it — but are
+  otherwise unrelated bugs with unrelated fixes, not two symptoms of one
+  root cause.
+- Verified with the full unit suite (344 passing, same pre-existing
+  `xlsx`/`cdn.sheetjs.com` sandbox gap as every other change in this file)
+  and a direct `esbuild` bundle of `App.jsx` (which transitively pulls in
+  `CatalogPanel.jsx`/`SellQuantityModal.jsx`), confirming all three edited/
+  new files parse and resolve correctly. No component test file exists for
+  `CatalogPanel`/`SellQuantityModal` (same accepted gap already noted for
+  `ScannerPanel`/`SortItemModal`/`ImportPanel` elsewhere in this file) —
+  the quantity-picker branch logic (1 item + qty>1 → modal; everything
+  else → unchanged plain confirm) was additionally traced by hand against
+  `CatalogPanel.jsx`'s own `handleBatchSell` before shipping.
+
 ## Workflow conventions
 
 - Feature/bugfix work goes through a PR; trivial single-line fixes may go

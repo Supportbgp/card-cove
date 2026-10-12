@@ -4,9 +4,10 @@ import CatalogToolbar from './CatalogToolbar.jsx';
 import BatchBar from './BatchBar.jsx';
 import CatalogTable from './CatalogTable.jsx';
 import EditModal from './EditModal.jsx';
+import SellQuantityModal from './SellQuantityModal.jsx';
 import { useUI } from '../../context/UIContext.jsx';
 
-export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onTogglePlatformStatus, multipliers }) {
+export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onSellPartial, onTogglePlatformStatus, multipliers }) {
   const { showConfirm } = useUI();
   const [search, setSearch] = useState("");
   const [gameFilter, setGameFilter] = useState("");
@@ -25,6 +26,11 @@ export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatc
   const [sortState, setSortState] = useState({ col: 'name', dir: 1 });
   const [selectedSkus, setSelectedSkus] = useState(new Set());
   const [editingSku, setEditingSku] = useState(undefined); // undefined = closed, null = adding, sku = editing
+  // Set only when "Mark sold" is clicked with exactly one multi-copy item
+  // selected — lets staff sell fewer than the full qty (see
+  // SellQuantityModal.jsx). A single qty-1 item or a multi-item batch skip
+  // this and go straight to the plain yes/no confirm below, same as before.
+  const [sellPromptCard, setSellPromptCard] = useState(null);
 
   const games = useMemo(() => Array.from(new Set(catalog.map(c => c.game).filter(Boolean))).sort(), [catalog]);
   const locations = useMemo(() => Array.from(new Set(catalog.map(c => c.location).filter(Boolean))).sort(), [catalog]);
@@ -110,6 +116,14 @@ export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatc
   async function handleBatchSell() {
     const count = selectedSkus.size;
     if (!count) return;
+    if (count === 1) {
+      const sku = selectedSkus.values().next().value;
+      const card = catalog.find(c => c.sku === sku);
+      if (card && card.qty > 1) {
+        setSellPromptCard(card);
+        return;
+      }
+    }
     if (!(await showConfirm(`Mark ${count} selected item(s) as sold? This creates sync tickets for each.`))) return;
     await onBatchSell(selectedSkus);
     setSelectedSkus(new Set());
@@ -162,6 +176,22 @@ export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatc
           onClose={() => setEditingSku(undefined)}
           onSave={async (record, prevSku) => { await onSaveCard(record, prevSku); setEditingSku(undefined); }}
           onDelete={async (sku) => { await onDeleteCard(sku); setEditingSku(undefined); }}
+        />
+      )}
+      {sellPromptCard && (
+        <SellQuantityModal
+          card={sellPromptCard}
+          onConfirmFull={async () => {
+            await onBatchSell(selectedSkus);
+            setSelectedSkus(new Set());
+            setSellPromptCard(null);
+          }}
+          onConfirmPartial={async (qtySold) => {
+            await onSellPartial(sellPromptCard.sku, qtySold);
+            setSelectedSkus(new Set());
+            setSellPromptCard(null);
+          }}
+          onCancel={() => setSellPromptCard(null)}
         />
       )}
     </div>
