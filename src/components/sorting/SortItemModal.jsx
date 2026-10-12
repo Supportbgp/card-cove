@@ -137,7 +137,7 @@ export default function SortItemModal({ items, catalog, locations, onConfirm, on
           )}
         </div>
         <div className="modal-foot">
-          <button className="btn secondary" disabled={saving} onClick={onCancel}>Cancel</button>
+          <button className="btn secondary" disabled={saving} onClick={() => { if (!saving) onCancel(); }}>Cancel</button>
           <button className="btn" disabled={!canSave || saving} onClick={handleConfirm}>{saving ? 'Saving…' : 'Confirm'}</button>
         </div>
       </div>
