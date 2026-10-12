@@ -47,6 +47,14 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
   // Defaults unchecked so today's behavior is unchanged for a normal
   // import; keep or drop based on whether staff actually reach for it.
   const [skipImageSearch, setSkipImageSearch] = useState(false);
+  // Guards against the same duplication bug found (and fixed) on
+  // SortItemModal's Confirm button: with no disabled-while-importing state,
+  // a click while handleConfirmImport's own image-search loop was still
+  // running (which can take real seconds per row, worst case for Pokemon —
+  // see cardSearch.js's own documented pokemontcg.io retry behavior) fired
+  // a second full onImport(newRows) call for the same rows, duplicating
+  // every row once per extra click.
+  const [importing, setImporting] = useState(false);
 
   // Same reasoning as the Edit modal and Scanner — one import is one batch
   // for one binder/case, so follow whatever channels that location already
@@ -132,6 +140,15 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
       setStatus({ text: "Card Name must be mapped to import.", kind: "err" });
       return;
     }
+    setImporting(true);
+    try {
+      await runConfirmImport();
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function runConfirmImport() {
     const autoGrade = !(mapping.itemType || mapping.grader || mapping.grade);
     const batchLocation = importLocation.trim();
     // Not part of the catalog schema (see importParse.js) — kept in a
@@ -309,7 +326,7 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button className="btn" onClick={handleConfirmImport}>Import rows</button>
+            <button className="btn" disabled={importing} onClick={handleConfirmImport}>{importing ? 'Importing…' : 'Import rows'}</button>
             {!embedded && (
               <select value={importMode} onChange={(e) => setImportMode(e.target.value)}>
                 <option value="merge">Merge (update matching SKUs, add new)</option>

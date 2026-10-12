@@ -4773,6 +4773,58 @@ pointer events" at the click point.
   locators depends on the table's exact DOM ancestry — real confirmation is
   CI's own next run.
 
+## Quote/Sorting: fixed a real catalog-duplication bug — unguarded confirm buttons let a repeated click fire the write twice
+
+Real staff report via Discord: an accepted quote's cards showed up multiple
+times in the catalog ("Ephemerate" had 4 entries from one MTG quote where
+only 1 copy was bought; a separate Pokemon quote's cards doubled). Diagnosed
+and replicated before fixing, per this project's own "never guess, confirm
+first" discipline — tracing the actual code rather than assuming a math bug
+in the accept/convert pipeline.
+
+- **Root cause, confirmed by reading the code, not inferred from the
+  symptom**: `SortItemModal`'s Confirm button (`App.jsx`'s Sorting tab —
+  where an accepted quote's items land to be placed into a real
+  binder/case or Bulk, see "Sorting stage + Bulk item type" above) called
+  `onConfirm(...)` with no `await` and no disabled-while-saving state —
+  unlike `ScannerPanel`'s own Confirm button, which correctly sets a
+  `saving` flag synchronously before its own async write. A second click
+  while the first click's `App.jsx` `handleSortItems` → `dbUpsertCards`
+  write was still in flight fired `buildCatalogItemsFromQuoteItems` again
+  for the same items — and that function stamps a fresh
+  `quote-${Date.now()}-${i}` sku on every call (`quoteUtils.js`), so a
+  second (or third, or fourth) concurrent call creates a genuinely
+  separate duplicate catalog row each time, not a harmless overwrite of
+  the same row. This explains the variable multiplier across the two real
+  reports (4x vs 2x) — a code-level math bug would produce the same
+  multiple every time, but a double-click race produces however many
+  times the impatient staff member actually clicked, which naturally
+  varies by batch size/network latency. Pokemon imports/sorts are the
+  likeliest to trigger it given this app's own documented pokemontcg.io
+  retry latency elsewhere in this file.
+- **`ImportPanel`'s "Import rows" button had the identical gap**,
+  confirmed during the same investigation — no `importing`/`saving` state
+  at all, and `handleConfirmImport` can run a real multi-second
+  per-row image-search loop (`runWithConcurrency`) before ever calling
+  `onImport`. Used by both the real Import tab and the Quote tab's
+  embedded "+ Add cards by import" — real-usage testing confirmed this
+  path is reachable but secondary to the Sorting one for this specific
+  bug (duplicates added to a quote this way can still be caught and
+  removed before the quote is accepted; a duplicate created at Sorting
+  time lands directly in the catalog with no review step in between).
+- **Fix**: both buttons now follow the exact pattern `ScannerPanel`'s
+  Confirm button already used correctly — a local `saving`/`importing`
+  state set synchronously before the async call, the button `disabled`
+  and its label flipped ("Saving…"/"Importing…") for the duration.
+  `SortItemModal`'s Cancel button is also disabled while saving, closing
+  off the one other escape hatch that could re-open the same still-listed
+  Sorting row and submit it a second time concurrently.
+- Verified with the full unit suite (344 passing, same pre-existing
+  `xlsx`/`cdn.sheetjs.com` sandbox gap as every other change in this file)
+  and a direct `esbuild` parse of both edited files — no component test
+  file exists for either `SortItemModal` or `ImportPanel` (same accepted
+  gap already noted for `ScannerPanel` under Testing above).
+
 ## Workflow conventions
 
 - Feature/bugfix work goes through a PR; trivial single-line fixes may go
