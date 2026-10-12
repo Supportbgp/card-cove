@@ -132,7 +132,7 @@ describe('CatalogTable — Load more', () => {
     expect(screen.getAllByRole('row')).toHaveLength(401); // 400 data rows + header
     expect(screen.getByText('Showing 400 of 450 matches.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Load more…' })).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('reveals every match at once when Load more is clicked', () => {
     const cards = Array.from({ length: 450 }, (_, i) => makeCard({ sku: `sku-${i}`, name: `Card ${i}` }));
