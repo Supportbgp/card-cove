@@ -146,6 +146,30 @@ export default function App() {
       record.tcgplayerSynced = false;
       record.collectrSynced = false;
     }
+    // Edit's own "Mark as sold" checkbox used to silently diverge from the
+    // batch Mark Sold flow — it flipped `sold` here but never wrote a sales
+    // record or a Sync Queue ticket, so an item sold this way never showed
+    // up in Reports or the queue. Only fires on a genuine false->true
+    // transition (a brand-new item saved as already sold counts, since
+    // `existing` is null) with real qty to report — same qty<=0 guard
+    // handleBatchSell itself uses to skip a row with nothing left to sell.
+    const wasSold = existing ? existing.sold : false;
+    let newTicket = null, newSale = null;
+    if (!wasSold && record.sold && record.qty > 0) {
+      const qtySold = record.qty;
+      const soldAt = record.lastUpdated || Date.now();
+      record = { ...record, qty: 0 };
+      newTicket = {
+        id: 't' + Date.now() + Math.random().toString(36).slice(2, 7),
+        sku: record.sku, name: record.name, set: record.set, condition: record.condition, printing: record.printing, price: record.price,
+        qtySold, timestamp: soldAt, posDone: false, tcgplayerDone: false, collectrDone: false,
+        posChannel: record.posChannel, tcgplayerChannel: record.tcgplayerChannel, collectrChannel: record.collectrChannel,
+      };
+      newSale = {
+        sku: record.sku, name: record.name, game: record.game, condition: record.condition,
+        qtySold, salePrice: record.price, cost: record.cost, soldAt,
+      };
+    }
     let nextCatalog;
     if (existing) {
       if (record.sku !== prevSku) {
@@ -160,6 +184,11 @@ export default function App() {
     }
     setCatalog(nextCatalog);
     await dbUpsertCard(record, toast);
+    if (newTicket) {
+      setQueue(prev => [...prev, newTicket]);
+      await dbInsertTickets([newTicket], toast);
+      await dbInsertSales([newSale], toast);
+    }
     // Toasts are single-slot, not a queue — combine into one call so a
     // warning doesn't just silently overwrite an unseen "Saved" message.
     const warnings = [priceOrderingWarning(nextCatalog, record), priceVsMarketValueWarning(record, multipliers)].filter(Boolean);
@@ -216,6 +245,45 @@ export default function App() {
     await dbInsertTickets(newTickets, toast);
     await dbInsertSales(newSales, toast);
     toast(`Marked ${affected} item(s) sold`);
+  }
+
+  // Restores the one-item partial-quantity sell this app's older per-row
+  // Sell flow supported (sell 2 of 5, keep 3 as a still-active row) before
+  // Sell was folded into the batch-select flow above — real staff need,
+  // confirmed after handleBatchSell's own all-or-nothing qty turned out to
+  // be a real gap, not just an accepted trade-off. Deliberately a separate
+  // function from handleBatchSell rather than a shared one: this only ever
+  // runs for exactly one card (CatalogPanel only opens the quantity picker
+  // when a single multi-copy item is selected), and the two have genuinely
+  // different end states (qty decremented, still unsold vs. qty zeroed,
+  // sold) — folding them in would mean branching the one existing,
+  // already-tested batch path on an edge case it never needs to handle.
+  async function handleSellPartial(sku, qtySold) {
+    const idx = catalog.findIndex(c => c.sku === sku);
+    if (idx === -1) return;
+    const c = catalog[idx];
+    if (!(qtySold > 0) || qtySold > c.qty) return;
+    const soldAt = Date.now();
+    const updated = {
+      ...c, qty: c.qty - qtySold, lastUpdated: soldAt,
+      posSynced: false, tcgplayerSynced: false, collectrSynced: false,
+    };
+    const newTicket = {
+      id: 't' + Date.now() + Math.random().toString(36).slice(2, 7),
+      sku: c.sku, name: c.name, set: c.set, condition: c.condition, printing: c.printing, price: c.price,
+      qtySold, timestamp: soldAt, posDone: false, tcgplayerDone: false, collectrDone: false,
+      posChannel: c.posChannel, tcgplayerChannel: c.tcgplayerChannel, collectrChannel: c.collectrChannel,
+    };
+    const newSale = {
+      sku: c.sku, name: c.name, game: c.game, condition: c.condition,
+      qtySold, salePrice: c.price, cost: c.cost, soldAt,
+    };
+    setCatalog(prev => prev.map(x => (x.sku === sku ? updated : x)));
+    setQueue(prev => [...prev, newTicket]);
+    await dbUpsertCard(updated, toast);
+    await dbInsertTickets([newTicket], toast);
+    await dbInsertSales([newSale], toast);
+    toast(`Marked ${qtySold} of ${c.name} sold`);
   }
 
   // Thin passthrough to dbLoadSales — ReportsTab owns the date-range UI and
@@ -419,6 +487,7 @@ export default function App() {
           onDeleteCard={handleDeleteCard}
           onBatchDelete={handleBatchDelete}
           onBatchSell={handleBatchSell}
+          onSellPartial={handleSellPartial}
           onTogglePlatformStatus={handleTogglePlatformStatus}
           multipliers={multipliers}
         />
