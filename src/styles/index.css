@@ -1208,6 +1208,19 @@
       flex: 1;
     }
 
+    /* Sorting tab's own batch bar only (see SortingTab.jsx) — keeps "N
+       selected / Sort selected" reachable while scrolling a long queue,
+       instead of staff needing to scroll back up every time. Scoped to
+       this modifier rather than every .batch-bar (Catalog's own doesn't
+       need it, and wasn't asked for) — position: sticky with no fixed
+       header above it in .app's normal flow, so top/z-index alone are
+       enough, same minimal approach as .docs-nav's existing sticky use. */
+    .batch-bar.sticky {
+      position: sticky;
+      top: 8px;
+      z-index: 2;
+    }
+
     .sheet-picker {
       display: flex;
       align-items: center;
