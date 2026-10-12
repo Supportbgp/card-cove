@@ -26,6 +26,14 @@ export default function SortItemModal({ items, catalog, locations, onConfirm, on
   const [location, setLocation] = useState('');
   const [channels, setChannels] = useState({ posChannel: false, tcgplayerChannel: false, collectrChannel: false });
   const [channelsTouched, setChannelsTouched] = useState(false);
+  // Guards against the real duplication bug this was found to cause: with
+  // no disabled-while-saving state, a click here while onConfirm's upsert
+  // was still in flight fired a second buildCatalogItemsFromQuoteItems call
+  // for the same items — which stamps a fresh `quote-${Date.now()}-${i}`
+  // sku every call, so a second click created genuinely separate duplicate
+  // catalog rows, not a harmless overwrite of the first. Same pattern
+  // ScannerPanel.jsx's own Confirm button already uses correctly.
+  const [saving, setSaving] = useState(false);
 
   // Same "follow the majority of this binder/case's existing items until
   // staff manually touch a checkbox" pattern EditModal already uses —
@@ -49,14 +57,19 @@ export default function SortItemModal({ items, catalog, locations, onConfirm, on
   const hasChannel = channels.posChannel || channels.tcgplayerChannel || channels.collectrChannel;
   const canSave = mode === 'bulk' ? hasLocation : (hasLocation && hasChannel);
 
-  function handleConfirm() {
-    onConfirm({
-      mode,
-      location: location.trim(),
-      posChannel: channels.posChannel,
-      tcgplayerChannel: channels.tcgplayerChannel,
-      collectrChannel: channels.collectrChannel,
-    });
+  async function handleConfirm() {
+    setSaving(true);
+    try {
+      await onConfirm({
+        mode,
+        location: location.trim(),
+        posChannel: channels.posChannel,
+        tcgplayerChannel: channels.tcgplayerChannel,
+        collectrChannel: channels.collectrChannel,
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   const single = items.length === 1 ? items[0] : null;
@@ -124,8 +137,8 @@ export default function SortItemModal({ items, catalog, locations, onConfirm, on
           )}
         </div>
         <div className="modal-foot">
-          <button className="btn secondary" onClick={onCancel}>Cancel</button>
-          <button className="btn" disabled={!canSave} onClick={handleConfirm}>Confirm</button>
+          <button className="btn secondary" disabled={saving} onClick={onCancel}>Cancel</button>
+          <button className="btn" disabled={!canSave || saving} onClick={handleConfirm}>{saving ? 'Saving…' : 'Confirm'}</button>
         </div>
       </div>
     </div>
