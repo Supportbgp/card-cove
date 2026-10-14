@@ -4902,10 +4902,80 @@ behavior changes, not one-line bugs:
   else → unchanged plain confirm) was additionally traced by hand against
   `CatalogPanel.jsx`'s own `handleBatchSell` before shipping.
 
+## Backlog
+
+Open items not yet scheduled into a sprint, consolidated here so a new
+session — a different conversation, a different model — doesn't have to
+re-derive them by grepping this whole file for "parked"/"revisit"/
+"provisional" every time. This section is an index: where a fuller
+writeup already exists elsewhere in this file, it's linked by name rather
+than repeated.
+
+- **Ready to build, just needs a kickoff**: the TCG Player draft-catalog
+  export's actual upload-ready export format (see "Next sprints" above).
+  Blocked only on getting TCG Player's real required column layout first —
+  never guess it.
+- **Paused by explicit user decision, not abandoned**: the
+  pokemontcg.io → TCGdex migration, triggered by pokemontcg.io folding
+  into the paid Scrydex service. Real research was done first (TCGdex's
+  own FAQ/card-object/filtering/assets/SDK docs), then the user
+  explicitly put it on hold mid-investigation to prioritize the Mark Sold
+  bug fixes above — "let's hold the migration for now as we need to
+  attend some bug fixes first." No code changes were made toward it yet;
+  ready to resume whenever asked.
+- **Needs the user's decision before any code gets written**:
+  - Cumulus POS SKU import (Phase 4) — needs a go/no-go plus a real
+    Cumulus export/import file sample (see "Known constraints" above).
+  - Collectr bulk-upload export — no bulk-upload/bulk-create API has been
+    found for Collectr; stays manual-entry-aid only unless one surfaces.
+  - TCGPlayer's own Pricing API — frozen to new applicants since late
+    2024; parked unless a real seller API key for this shop turns up.
+- **Confirmed real bug, not yet investigated**: some Quote-tab-converted
+  items land in `"Other"` as their game in Catalog — flagged as a side
+  effect of the price-tracking failure-rate investigation (see "Price
+  tracking: reduced the failed-lookup count" above) but never chased down
+  on its own, since it was outside that fix's scope.
+- **Parked pending more real-world data — revisit if new evidence shows
+  up, don't guess in the meantime**:
+  - Mobile multi-sheet `.xlsx` import silently loads the first sheet
+    instead of showing the sheet picker (desktop shows it correctly) — no
+    repro yet with synthetic files; needs a real device repro or the
+    actual file involved.
+  - The Pokemon `-EX`/`-GX` hyphen-before-suffix question in
+    `price-check`'s search queries — plausible, but no confirmed sample.
+  - SWU's `"Cad Bane - He Who Needs No Introduction"` still fails price
+    lookup for an unexplained reason, after every other cleanup in that
+    debugging arc.
+  - Pokemon set-symbol scan accuracy — near-always blank in real testing;
+    a real fix means deterministic icon-matching against a reference
+    library, a much bigger investment than the field's current yield
+    justifies.
+  - Japanese-print price coverage on pokemontcg.io — no verified
+    alternate data source found yet.
+- **Provisional feature, keep-or-drop pending actual usage**: Import's
+  "Skip automatic image search" checkbox (see "Known constraints" above)
+  — shipped for one specific bulk/test-data import, never decided as a
+  permanent feature either way.
+- **Explicitly scoped out of Cost tracking for a future version**: a
+  Cost ($) column on CSV/XLSX import — Cost today only supports manual
+  entry (EditModal) and auto-fill from an accepted Quote trade-in; bulk
+  import was deliberately left out of v1 (see "Cost tracking" above).
+
+Keep this section current: when an item here gets built, or a parked
+question gets a real answer, move/remove it in the same change that
+resolves it — the same "amend/supersede, don't let a doc go stale"
+discipline this file already follows everywhere else.
+
 ## Workflow conventions
 
 - Feature/bugfix work goes through a PR; trivial single-line fixes may go
   straight to `main`.
+- A pure documentation update (e.g. this Backlog section, a reference
+  index) that the user explicitly asks to ship as a short, direct commit
+  also goes straight to `main`, same as a trivial single-line code fix —
+  the user's explicit request for a short commit is what licenses
+  skipping a PR here, not a blanket assumption that every doc change
+  qualifies.
 - After every merge: sync the feature branch with `main`
   (`git fetch origin main && git merge origin/main`), rebuild to confirm,
   then continue — skipping this once caused a squash-merge to silently
