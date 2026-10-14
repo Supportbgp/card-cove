@@ -190,7 +190,7 @@ export default function EditModal({ card, catalog, locations, multipliers, onClo
 
   function selectCandidate({ url, price, listingUrl, set: candidateSet, number: candidateNumber, rarity: candidateRarity }) {
     // Once staff visually confirm a candidate, that print's own Set/Number/
-    // Rarity from pokemontcg.io is more trustworthy than the scan's guess —
+    // Rarity from the card database is more trustworthy than the scan's guess —
     // back-fill whichever of these the candidate actually carries (only
     // Pokemon populates them today; every other game's candidates simply
     // don't have these fields, so this is a no-op there). Applies in both

@@ -33,34 +33,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Light 1-retry-on-5xx safety net, same reasoning already used throughout
 // cardSearch.js/card-lookup-proxy — none of these providers have a
-// confirmed flakiness report severe enough to warrant pokemontcg.io's own
-// aggressive 4-attempt backoff.
-async function fetchWithRetry(url, delayMs = 500) {
-  let res = await fetch(url);
+// confirmed flakiness report severe enough to need more. (pokemontcg.io did
+// — it needed a 4-attempt backoff here — until Pokemon moved to TCGdex.)
+async function fetchWithRetry(url, delayMs = 500, init = undefined) {
+  let res = await fetch(url, init);
   if (!res.ok && res.status >= 500) {
     await new Promise((r) => setTimeout(r, delayMs));
-    res = await fetch(url);
-  }
-  return res;
-}
-
-// pokemontcg.io's own key-less public tier is documented elsewhere in this
-// app (cardSearch.js's pokemonQueryUncached) as needing anywhere from 3 to
-// 12 *consecutive* 5xx retries in real live testing before succeeding — a
-// single retry (fetchWithRetry above) is nowhere near enough. A real run of
-// this checker against a catalog that's ~80% Pokemon by count confirmed
-// this isn't theoretical: most of a 156/200 failure count traced back to
-// this exact gap. Same 4-attempt backoff (400ms/1.0s/2.2s) already proven
-// out for the interactive search, ported here since Edge Functions can't
-// import from the client bundle.
-const POKEMON_RETRY_DELAYS_MS = [400, 1000, 2200];
-async function fetchWithPokemonRetry(url) {
-  let res = await fetch(url);
-  let attempt = 0;
-  while (!res.ok && res.status >= 500 && attempt < POKEMON_RETRY_DELAYS_MS.length) {
-    await new Promise((r) => setTimeout(r, POKEMON_RETRY_DELAYS_MS[attempt]));
-    res = await fetch(url);
-    attempt++;
+    res = await fetch(url, init);
   }
   return res;
 }
@@ -167,35 +146,6 @@ async function withNameFallback(item, queryOnce) {
   return result;
 }
 
-// pokemontcg.io's `q=` is a Lucene-like query string, not plain text —
-// cardSearch.js's own interactive search has already confirmed, via
-// extensive real live testing, that an unescaped apostrophe/bracket/etc. in
-// a `name:"..."` field can break the query outright. That same history
-// found that neither "strip the possessive 's outright" nor "keep the
-// apostrophe literally" is correct on its own — cardSearch.js's own
-// `searchPokemon` hedges by trying BOTH representations at every precision
-// tier rather than committing to one theory. A real batch run of this file
-// (233 real catalog items) surfaced the same possessive-name cluster
-// cardSearch.js already solved — "Cynthia's Garchomp ex", "Ethan's Ho-Oh
-// ex", "Lillie's Clefairy ex", "Rocket's Wobbuffet", "N's Zoroark ex",
-// "Iono's Kilowattrel" — all `no_match`, because this file only ever ported
-// the stripping half of that fix. Ported the full hedge now, not re-guessed
-// — ported directly, matching this file's own header: every provider's
-// shapes mirror cardSearch.js's already-confirmed ones.
-function sanitizeStrippingPossessive(s) {
-  return String(s || "")
-    .replace(/['’]s\b/gi, "")
-    .replace(/[+\-!(){}[\]^"~*?:\\/'’]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-function sanitizeKeepingApostrophe(s) {
-  return String(s || "")
-    .replace(/[+\-!(){}[\]^"~*?:\\/]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 // --- Per-game price lookups -------------------------------------------
 // Each takes the catalog row (name/set/rarity/number already on it) and
 // returns { price, reason } — price is null when nothing usable was found,
@@ -230,60 +180,80 @@ async function magicPrice(item) {
   });
 }
 
-// Same fallback priority as cardSearch.js's pokemonTcgplayerPrice: a card
-// commonly has no recent *sale* (market/mid) while still having real
-// *listings* (low/high) — see CLAUDE.md's "no image candidate was ever
-// showing a Market Value price" section for the full reasoning.
-const POKEMON_PRICE_VARIANTS = ["normal", "holofoil", "reverseHolofoil", "1stEditionHolofoil", "1stEditionNormal"];
-function pokemonTcgplayerPrice(c) {
-  const prices = c.tcgplayer && c.tcgplayer.prices;
-  if (!prices) return null;
-  for (const variant of POKEMON_PRICE_VARIANTS) {
-    const p = prices[variant];
-    if (!p) continue;
-    if (p.market != null) return p.market;
-    if (p.mid != null) return p.mid;
-    if (p.low != null && p.high != null) return (p.low + p.high) / 2;
-    if (p.low != null) return p.low;
-    if (p.high != null) return p.high;
+// Pokemon — TCGdex (api.tcgdex.net), replacing pokemontcg.io, which folded
+// into the paid Scrydex service. Same API and response shapes as
+// cardSearch.js's searchPokemon (confirmed live, 2026-10-14 — see CLAUDE.md's
+// TCGdex migration section): a GraphQL name search returns every match with
+// its set in one request (a GraphQL variable carries the name verbatim, so a
+// possessive name like "Lillie's Clefairy ex" needs no sanitizing — the old
+// two-representation apostrophe hedge is gone), and the price lives only on
+// the REST single-card object, so this is two requests per item instead of
+// one. TCG Pocket (mobile-game, digital-only) cards share the same database
+// and are skipped.
+const TCGDEX_BASE = "https://api.tcgdex.net/v2";
+const TCGDEX_CARDS_QUERY = "query($name:String!){ cards(filters:{name:$name}) { id name image set { name } } }";
+
+function tcgdexSerie(image) {
+  const m = /^https?:\/\/[^/]+\/[^/]+\/([^/]+)\//.exec(image || "");
+  return m ? m[1] : "";
+}
+
+// Same variant order and most-reliable-first fallback as cardSearch.js's
+// pokemonTcgplayerPrice: a card commonly has no recent *sale* (marketPrice/
+// midPrice) while still having real *listings* (low/high). Both the live
+// API's key names ("holofoil", "reverse-holofoil") and TCGdex's docs-example
+// names ("holo", "reverse") are accepted.
+const POKEMON_PRICE_VARIANTS = [
+  "normal", "holofoil", "holo", "reverse-holofoil", "reverse",
+  "unlimited-holofoil", "unlimited", "1st-edition-holofoil", "1st-edition-normal", "1st-edition",
+];
+function pokemonTcgplayerPrice(card) {
+  const t = card && card.pricing && card.pricing.tcgplayer;
+  if (!t) return null;
+  const keys = [
+    ...POKEMON_PRICE_VARIANTS.filter((k) => t[k]),
+    ...Object.keys(t).filter((k) => t[k] && typeof t[k] === "object" && !POKEMON_PRICE_VARIANTS.includes(k)),
+  ];
+  for (const k of keys) {
+    const p = t[k];
+    if (p.marketPrice != null) return p.marketPrice;
+    if (p.midPrice != null) return p.midPrice;
+    if (p.lowPrice != null && p.highPrice != null) return (p.lowPrice + p.highPrice) / 2;
+    if (p.lowPrice != null) return p.lowPrice;
+    if (p.highPrice != null) return p.highPrice;
   }
   return null;
 }
 
 async function pokemonPrice(item) {
-  // No numberHint here — unlike cardSearch.js's interactive search, this
-  // only has what catalog itself persists, and the collector number was
-  // never one of those columns (it's a transient, never-saved search hint
-  // everywhere else in this app too — see CLAUDE.md). Name-only, same as
-  // every other provider below.
-  return withNameFallback(item, async (name) => {
-    // Two representations of the name, tried in order — identical for the
-    // overwhelming majority of names with no apostrophe at all (same single
-    // request as before this fix), only doubling the request for the
-    // minority that has one, and only until one representation succeeds.
-    const stripped = sanitizeStrippingPossessive(name);
-    const kept = sanitizeKeepingApostrophe(name);
-    const variants = stripped === kept ? [stripped] : [stripped, kept];
+  // No numberHint — the collector number is never saved on a catalog row
+  // (see CLAUDE.md's catalog.number crash fix). The item's own Set IS saved,
+  // though, so among several prints sharing a name, one from that set is
+  // preferred — TCGdex returns matches oldest-first, so without this a
+  // reprinted name would always be priced off its oldest print.
+  return withNameFallback(item, async (rawName) => {
+    const name = rawName.replace(/[’‘]/g, "'");
+    const res = await fetchWithRetry(`${TCGDEX_BASE}/graphql`, 500, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: TCGDEX_CARDS_QUERY, variables: { name } }),
+    });
+    if (!res.ok) return { price: null, reason: "fetch_failed" };
+    const data = await res.json();
+    if (data.errors && data.errors.length) return { price: null, reason: "fetch_failed" };
+    const matches = ((data.data && data.data.cards) || []).filter((c) => tcgdexSerie(c.image) !== "tcgp");
+    if (!matches.length) return { price: null, reason: "no_match" };
 
-    let result = { price: null, reason: "no_match" };
-    for (const variant of variants) {
-      const q = `name:"${variant}"`;
-      const res = await fetchWithPokemonRetry(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=1`);
-      if (!res.ok) {
-        result = { price: null, reason: "fetch_failed" };
-        continue;
-      }
-      const data = await res.json();
-      const card = (data.data || [])[0];
-      if (!card) {
-        result = { price: null, reason: "no_match" };
-        continue;
-      }
-      const price = pokemonTcgplayerPrice(card);
-      result = { price, reason: price == null ? "no_price" : null };
-      if (result.price != null || result.reason === "no_price") return result;
-    }
-    return result;
+    const lower = name.toLowerCase();
+    const exact = matches.filter((c) => (c.name || "").toLowerCase() === lower);
+    const pool = exact.length ? exact : matches;
+    const wantSet = String(item.set_name || "").trim().toLowerCase();
+    const card = (wantSet && pool.find((c) => ((c.set && c.set.name) || "").toLowerCase() === wantSet)) || pool[0];
+
+    const cardRes = await fetchWithRetry(`${TCGDEX_BASE}/en/cards/${encodeURIComponent(card.id)}`);
+    if (!cardRes.ok) return { price: null, reason: "fetch_failed" };
+    const price = pokemonTcgplayerPrice(await cardRes.json());
+    return { price, reason: price == null ? "no_price" : null };
   });
 }
 
@@ -496,7 +466,7 @@ Deno.serve(async (req) => {
   // this app) without needing its own special case.
   const { data: items, error } = await admin
     .from("catalog")
-    .select("sku, name, game, price")
+    .select("sku, name, set_name, game, price")
     .neq("item_type", "bulk")
     .not("price", "is", null)
     .gte("price", floor)

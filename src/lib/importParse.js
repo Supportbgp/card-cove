@@ -47,7 +47,7 @@ export function isLikelyImageUrl(url) {
 // Runs `worker` over every item with at most `limit` in flight at once —
 // used for the import flow's per-row image search, since firing one request
 // per row unbounded (fine for a ~9-card scanner batch) could mean hundreds
-// of simultaneous calls against Scryfall/pokemontcg.io/the card-lookup-proxy
+// of simultaneous calls against Scryfall/TCGdex/the card-lookup-proxy
 // Edge Function for a large spreadsheet import.
 export async function runWithConcurrency(items, limit, worker) {
   let next = 0;

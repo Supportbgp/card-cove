@@ -179,10 +179,11 @@ export default function ScannerPanel({ catalog, locations, onImport, multipliers
       // explicitly reveals it, since that's money-relevant and shouldn't
       // come from an unconfirmed top search result.
       // Capped concurrency, not one request burst per card — a full 9-card
-      // page firing unbounded parallel searches (each up to 4 fallback
-      // queries for Pokemon) can hit 30+ simultaneous requests against
-      // pokemontcg.io's key-less tier, which is prone to rate-limiting/5xx
-      // under exactly that kind of burst (same reasoning as CSV import's
+      // page firing unbounded parallel searches (each one also pricing up to
+      // 20 Pokemon candidates) can hit dozens of simultaneous requests
+      // against a free, key-less public API — originally pokemontcg.io,
+      // which was prone to rate-limiting/5xx under exactly that kind of
+      // burst; still a sensible courtesy for TCGdex (same reasoning as CSV import's
       // runWithConcurrency cap, reused here). A small staggered start on top
       // of that cap spreads the very first wave out further still, rather
       // than firing several requests in the same instant — a self-imposed
@@ -712,7 +713,7 @@ function ScanRow({ row, entranceDelay = 0, multipliers, onChange, onRemove, onFi
                   // silently stay invisible behind an existing photo crop.
                   activeImage: 'stock',
                   // Once staff visually confirm a candidate, that print's own
-                  // Set/Number/Rarity from pokemontcg.io is more trustworthy
+                  // Set/Number/Rarity from the card database is more trustworthy
                   // than the scan's guess — back-fill whichever of these the
                   // candidate actually carries (falls back to the scan's own
                   // value when a candidate doesn't have one, e.g. every
