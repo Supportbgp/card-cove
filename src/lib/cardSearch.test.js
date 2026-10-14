@@ -9,7 +9,7 @@ const {
   searchScryfall, searchPokemon, searchYugioh, searchLorcana,
   searchOnePiece, searchRiftbound, searchGundam, searchSwu, searchCardImage,
   tcgplayerSearchUrl, ebaySoldSearchUrl, priceChartingSearchUrl,
-  __resetPokemonQueryCacheForTests, pokemonRarityFromTcgdex,
+  __resetPokemonQueryCacheForTests, pokemonRarityFromTcgdex, pokemonSpellingVariant,
 } = await import('./cardSearch.js');
 
 function jsonResponse(body, ok = true) {
@@ -295,7 +295,7 @@ describe('searchPokemon (TCGdex)', () => {
       ],
     } });
     const results = await searchPokemon('Charizard EX XY121');
-    expect(searchCalls().map(([, init]) => JSON.parse(init.body).variables.name)).toEqual(['Charizard EX XY121', 'Charizard*']);
+    expect(searchCalls().map(([, init]) => JSON.parse(init.body).variables.name)).toEqual(['Charizard EX XY121', 'Charizard-EX XY121', 'Charizard*']);
     expect(results.map(r => r.number)).toEqual(['XY121']);
   });
 
@@ -383,6 +383,40 @@ describe('searchPokemon (TCGdex)', () => {
       const r = await priceOf(undefined);
       expect(r).toMatchObject({ price: null, listingUrl: null });
     });
+  });
+
+  it('retries with TCGdex\'s spelling when the name as typed finds nothing ("Pokemon Trader" → "Pokémon Trader"), before the first-word fallback', async () => {
+    mockTcgdex({ search: { 'Pokémon Trader': [brief('base1-77', 'Pokémon Trader', '77', 'Base Set', 'Rare', 'base')] } });
+    const results = await searchPokemon('Pokemon Trader');
+    expect(searchCalls().map(([, init]) => JSON.parse(init.body).variables.name)).toEqual(['Pokemon Trader', 'Pokémon Trader']);
+    expect(results[0].number).toBe('77');
+  });
+
+  it('does not treat a spelling-variant match as the first-word fallback (no dropped-code number hint)', async () => {
+    mockTcgdex({ search: { 'Virizion-EX': [
+      brief('bw10-9', 'Virizion-EX', '9', 'Plasma Blast', 'Ultra Rare', 'bw'),
+      brief('bw10-96', 'Virizion-EX', '96', 'Plasma Blast', 'Ultra Rare', 'bw'),
+    ] } });
+    const results = await searchPokemon('Virizion EX');
+    expect(results).toHaveLength(2);
+  });
+});
+
+describe('pokemonSpellingVariant', () => {
+  it('rewrites the spellings TCGdex stores differently — confirmed from real failing price-check names', () => {
+    expect(pokemonSpellingVariant('Pokemon Trader')).toBe('Pokémon Trader');
+    expect(pokemonSpellingVariant('Virizion EX')).toBe('Virizion-EX');
+    expect(pokemonSpellingVariant('Virizion-EX')).toBe('Virizion EX');
+    expect(pokemonSpellingVariant('Sylveon GX')).toBe('Sylveon-GX');
+    expect(pokemonSpellingVariant('Nidoran F')).toBe('Nidoran♀');
+    expect(pokemonSpellingVariant('Nidoran M')).toBe('Nidoran♂');
+    expect(pokemonSpellingVariant('Umbreon Star')).toBe('Umbreon ★');
+  });
+
+  it('leaves the modern lowercase "ex" and names with nothing to change alone', () => {
+    expect(pokemonSpellingVariant('Mew ex')).toBeNull();
+    expect(pokemonSpellingVariant('Charizard')).toBeNull();
+    expect(pokemonSpellingVariant('Nidoking')).toBeNull();
   });
 });
 

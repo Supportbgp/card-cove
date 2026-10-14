@@ -4945,9 +4945,11 @@ guessed:
   Garchomp ex") just work with a plain straight apostrophe — the entire
   apostrophe-hedging history above is moot for TCGdex. A **curly `’`
   returns zero results**, so it's normalized to `'` first.
-- **The parked `-EX`/`-GX` hyphen question is moot** — TCGdex names use a
-  space ("Dialga GX", "Giratina EX"), same as this shop's catalog does.
-  Removed from the Backlog.
+- ~~**The parked `-EX`/`-GX` hyphen question is moot** — TCGdex names use
+  a space ("Dialga GX", "Giratina EX").~~ **Wrong, corrected in the
+  follow-up below**: XY/Sun & Moon-era names use a space, but Black &
+  White-era EX cards are hyphenated ("Virizion-EX") — found by the first
+  real price-check run on TCGdex. Now handled by a spelling-variant retry.
 - **TCG Pocket (the mobile game) cards share the same database** (serie
   `tcgp`, set ids like `A2b`, image path `/en/tcgp/...`) — digital-only,
   never in a binder, so they're filtered out by image path. Cards with no
@@ -5033,6 +5035,91 @@ price-check`) for the daily price check to switch to TCGdex — the app-side
 search switches as soon as GitHub Pages redeploys. No migration, no new
 secret, no `scan-binder-page` redeploy.
 
+## TCGdex follow-up: first real price-check run, and fixes for what it surfaced
+
+The first real daily run after the migration deployed confirmed it: 262
+tracked items, **221 checked / 41 failed, zero `fetch_failed`** (the last
+pokemontcg.io run: 179 of 233 checked, 54 failed, with a steady stream of
+`fetch_failed`), and the entire possessive-name cluster gone. Its own
+`sampleFailures` were then each checked against the live API (not guessed)
+and fell into three fixable patterns plus a few genuine gaps — confirmed
+with the user before building:
+
+1. **`price-check` was pricing unpriced prints.** It took TCGdex's first
+   match, which is oldest-first and very often an imageless, unpriced
+   collection reprint — plain "Charizard" landed on "McDonald's Collection
+   2024", "Pikachu & Zekrom GX"/"Arceus VSTAR" on "30th Classic
+   Collection". Fixed: imageless cards are skipped (same as the in-app
+   search already did), and if the best guess has no TCGPlayer price, up
+   to 3 prints are tried (`POKEMON_MAX_PRICE_TRIES`) before reporting
+   `no_price`.
+2. **The collector number typed into a name was being thrown away.**
+   `cleanCardName` strips "Charizard 4/102", "Miraidon ex - 102/078",
+   "Mewtwo - 052", "Cyndaquil (105)" down to the bare name so the search
+   can match — `numberFromRawName` now reads the number off the RAW name
+   first, and prints are ranked number-match (2) + exact-set-match (1),
+   ties kept in TCGdex's order. A trailing number wins over a digits-only
+   parenthetical; any other parenthetical ("(122 Secret Rare)", "(1st
+   Ed.)") is ignored. Better accuracy, not just fewer failures.
+3. **Spelling differences**, handled by `pokemonSpellingVariant` — in
+   both `price-check` and the in-app `searchPokemon` (same rule set,
+   duplicated per this repo's no-shared-code-between-client-and-Edge-
+   Function convention). One alternative spelling, tried only after the
+   name as typed finds nothing (in `searchPokemon`, before the first-word
+   fallback; the dropped-code number hint still only applies to that
+   first-word tier):
+   - **Accents**: TCGdex's name match is accent-sensitive — "Pokemon
+     Trader"/"Pokemon Breeder" find nothing, "Pokémon Trader" does.
+   - **EX/GX hyphenation** (corrects the migration section above): Black &
+     White-era EX cards are hyphenated ("Virizion-EX"), XY/Sun & Moon ones
+     use a space. The variant swaps whichever form was typed. Only
+     uppercase EX/GX — the modern lowercase "ex" is never hyphenated.
+   - **Symbols**: "Nidoran F/M" → "Nidoran♀/♂", "... Star" → "... ★".
+- **Result, re-run live against the 27 Pokemon names that failed**: 20 now
+  price (was 0). The other 7 are genuine gaps, not bugs: "Red Cheek
+  Pikachu" (a collector nickname — the real card is Base Set Pikachu #58;
+  renaming the catalog row fixes it), Palkia LV.X / Gardevoir LV.X (TCGdex
+  has other LV.X cards, not these two), "Legendary Birds Promo Pack" (a
+  multi-card bundle), and Umbreon ★ / Virizion-EX (found now, but TCGdex
+  carries no TCGPlayer price for those prints). The remaining Magic
+  `no_price` items (Strip Mine/Watery Grave/Brain Freeze borderless) come
+  from Scryfall's own data, unrelated to TCGdex.
+- **Japanese Pokemon items are now skipped by `price-check` entirely** —
+  decided with the user, "until we have a price checker for JP cards."
+  Fixes 1–3 above briefly made "Mew ex (JP)" price off the *English* print
+  (the "(JP)" annotation is stripped like any other parenthetical), which
+  could produce false spike alerts. `isSkippedJapaneseItem` — game is
+  Pokemon AND the raw name matches `JAPANESE_ITEM_RE` (`\bJPN?\b` or
+  `Japanese`, case-insensitive) — skips the item before any lookup.
+  **Pokemon only, by explicit user decision**: a first cut applied it to
+  every game, and the user narrowed it, since how Scryfall (or any other
+  provider) handles a Japanese print was never investigated — so Magic's
+  "Brain Freeze (JP Alternate Art)" etc. are still looked up as before,
+  not skipped on an untested assumption. Skipped items are counted in a
+  new `skippedJapanese` response field (also summed in the workflow's
+  combined totals), not as failures, and they count toward `attempted` so
+  the workflow's batch offset still advances past them.
+- **LV.X — checked, deliberately not "fixed"**: the user found a real
+  TCGPlayer listing for Palkia LV.X (DP18, product 87920) and suggested
+  normalizing "LV.X" → "LVX". Checked live first: TCGdex spells LV.X with
+  the dot when it keeps it at all ("Palkia G LV.X", "Arceus LV.X" — no
+  "LVX" anywhere), but stores the DP18 promo as plain **"Palkia"** (DP
+  Black Star Promos), and that entry — like DP27, the other Palkia promo —
+  has **no TCGPlayer pricing on TCGdex at all**. No name rewrite can
+  surface a price that doesn't exist, and stripping "LV.X" to match plain
+  "Palkia" would silently price an LV.X off one of ~40 unrelated ordinary
+  Palkia prints — a wrong number feeding spike alerts, worse than an
+  honest `no_match`. Left as a known data gap.
+- Covered by new `cardSearch.test.js` cases (`pokemonSpellingVariant`
+  directly, the spelling-variant tier in `searchPokemon`, and that a
+  variant match doesn't trigger the dropped-code number hint). The
+  `price-check` changes were verified live against the real failing names
+  above (Edge Function code has no unit tests, same accepted gap as
+  before).
+
+**Requires redeploying `price-check`** (`supabase functions deploy
+price-check`); the in-app search side ships with the GitHub Pages deploy.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -5075,7 +5162,10 @@ than repeated.
     (now the Pokemon source) serves other languages under its own
     language-prefixed endpoints (`/v2/ja/...`), but whether those carry
     TCGPlayer pricing is unconfirmed; check a real sample before relying
-    on it.
+    on it. Until one exists, `price-check` skips Japanese items entirely
+    (see "TCGdex follow-up" above) — removing that skip is the first step
+    once a JP price source is in place (Pokemon only — other games' JP items
+    are still looked up as before).
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a

@@ -191,12 +191,51 @@ async function magicPrice(item) {
 // one. TCG Pocket (mobile-game, digital-only) cards share the same database
 // and are skipped.
 const TCGDEX_BASE = "https://api.tcgdex.net/v2";
-const TCGDEX_CARDS_QUERY = "query($name:String!){ cards(filters:{name:$name}) { id name image set { name } } }";
+const TCGDEX_CARDS_QUERY = "query($name:String!){ cards(filters:{name:$name}) { id localId name image set { name } } }";
 
 function tcgdexSerie(image) {
   const m = /^https?:\/\/[^/]+\/[^/]+\/([^/]+)\//.exec(image || "");
   return m ? m[1] : "";
 }
+
+// Same as cardSearch.js's pokemonSpellingVariant — see its comment for the
+// real failing names behind each rule ("Pokemon Trader" vs. TCGdex's
+// "Pokémon Trader", BW-era "Virizion-EX" vs. XY-era "Giratina EX",
+// "Nidoran♀", "Umbreon ★"). One alternative spelling, tried only after the
+// name as typed finds nothing.
+function pokemonSpellingVariant(name) {
+  let v = String(name || "");
+  v = v.replace(/\bPokemon\b/gi, "Pokémon");
+  v = /-(EX|GX)\b/.test(v) ? v.replace(/-(EX|GX)\b/g, " $1") : v.replace(/ (EX|GX)\b/g, "-$1");
+  v = v.replace(/\bNidoran F\b/i, "Nidoran♀").replace(/\bNidoran M\b/i, "Nidoran♂");
+  v = v.replace(/ Star$/i, " ★");
+  return v !== name ? v : null;
+}
+
+// Catalog rows never save a collector number, but staff very often type it
+// straight into the name — "Charizard 4/102", "Miraidon ex - 102/078",
+// "Mewtwo - 052", "Cyndaquil (105)" (all real names from a live run).
+// cleanCardName strips that text so the name search can match; this reads
+// it off the RAW name first so it can still pick the exact print. A
+// trailing number wins over a digits-only parenthetical; anything else in
+// parentheses ("(122 Secret Rare)", "(1st Ed.)") is ignored.
+function numberFromRawName(rawName) {
+  const raw = String(rawName || "");
+  const stripped = raw.replace(/\([^)]*\)/g, " ").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+  const trailing = /(?:^|\s)-?\s*(\d+)(?:\s*\/\s*\d+)?$/.exec(stripped);
+  if (trailing) return trailing[1];
+  const paren = /\((\d{1,4})\)/.exec(raw);
+  return paren ? paren[1] : "";
+}
+function normalizeLocalId(s) {
+  return String(s || "").trim().toUpperCase().replace(/^0+(?=.)/, "");
+}
+
+// How many prints to try (best guess first) before giving up on a price —
+// TCGdex lists many same-name prints with no TCGPlayer pricing at all (old
+// promos, McDonald's/30th-anniversary collection reprints), and the first
+// match is often one of those.
+const POKEMON_MAX_PRICE_TRIES = 3;
 
 // Same variant order and most-reliable-first fallback as cardSearch.js's
 // pokemonTcgplayerPrice: a card commonly has no recent *sale* (marketPrice/
@@ -225,35 +264,67 @@ function pokemonTcgplayerPrice(card) {
   return null;
 }
 
+async function tcgdexSearch(name) {
+  const res = await fetchWithRetry(`${TCGDEX_BASE}/graphql`, 500, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: TCGDEX_CARDS_QUERY, variables: { name } }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data.errors && data.errors.length) return null;
+  // Imageless cards are skipped (same as the in-app search) — they're
+  // mostly McDonald's/30th-anniversary collection reprints that also carry
+  // no pricing, and as TCGdex's oldest-first first match they used to win
+  // by default and report "no_price" for cards like plain "Charizard".
+  return ((data.data && data.data.cards) || []).filter((c) => c.image && tcgdexSerie(c.image) !== "tcgp");
+}
+
 async function pokemonPrice(item) {
-  // No numberHint — the collector number is never saved on a catalog row
-  // (see CLAUDE.md's catalog.number crash fix). The item's own Set IS saved,
-  // though, so among several prints sharing a name, one from that set is
-  // preferred — TCGdex returns matches oldest-first, so without this a
-  // reprinted name would always be priced off its oldest print.
+  // The collector number is never saved on a catalog row (see CLAUDE.md's
+  // catalog.number crash fix), but it's often typed into the name itself —
+  // read off the raw name before cleanCardName strips it.
+  const wantNumber = normalizeLocalId(numberFromRawName(item.name));
+  const wantSet = String(item.set_name || "").trim().toLowerCase();
+
   return withNameFallback(item, async (rawName) => {
     const name = rawName.replace(/[’‘]/g, "'");
-    const res = await fetchWithRetry(`${TCGDEX_BASE}/graphql`, 500, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: TCGDEX_CARDS_QUERY, variables: { name } }),
-    });
-    if (!res.ok) return { price: null, reason: "fetch_failed" };
-    const data = await res.json();
-    if (data.errors && data.errors.length) return { price: null, reason: "fetch_failed" };
-    const matches = ((data.data && data.data.cards) || []).filter((c) => tcgdexSerie(c.image) !== "tcgp");
+    let matches = await tcgdexSearch(name);
+    const variant = pokemonSpellingVariant(name);
+    let usedName = name;
+    if (variant && (matches === null || !matches.length)) {
+      const alt = await tcgdexSearch(variant);
+      if (alt && alt.length) { matches = alt; usedName = variant; }
+      else if (matches === null) matches = alt;
+    }
+    if (matches === null) return { price: null, reason: "fetch_failed" };
     if (!matches.length) return { price: null, reason: "no_match" };
 
-    const lower = name.toLowerCase();
+    // Best guess first: an exact name match over one that merely contains
+    // it, then a print matching the number typed into the name, then one
+    // from the item's own Set — TCGdex returns matches oldest-first, so
+    // without this a reprinted name is priced off its oldest print.
+    const lower = usedName.toLowerCase();
     const exact = matches.filter((c) => (c.name || "").toLowerCase() === lower);
     const pool = exact.length ? exact : matches;
-    const wantSet = String(item.set_name || "").trim().toLowerCase();
-    const card = (wantSet && pool.find((c) => ((c.set && c.set.name) || "").toLowerCase() === wantSet)) || pool[0];
+    const setOf = (c) => ((c.set && c.set.name) || "").toLowerCase();
+    const score = (c) =>
+      (wantNumber && normalizeLocalId(c.localId) === wantNumber ? 2 : 0) +
+      (wantSet && setOf(c) === wantSet ? 1 : 0);
+    const ranked = pool.map((c, i) => ({ c, i, s: score(c) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.c);
 
-    const cardRes = await fetchWithRetry(`${TCGDEX_BASE}/en/cards/${encodeURIComponent(card.id)}`);
-    if (!cardRes.ok) return { price: null, reason: "fetch_failed" };
-    const price = pokemonTcgplayerPrice(await cardRes.json());
-    return { price, reason: price == null ? "no_price" : null };
+    // Try a few prints until one has a TCGPlayer price, rather than
+    // reporting "no_price" just because the best guess is an unpriced
+    // promo/collection reprint.
+    let anyFetched = false;
+    for (const card of ranked.slice(0, POKEMON_MAX_PRICE_TRIES)) {
+      const cardRes = await fetchWithRetry(`${TCGDEX_BASE}/en/cards/${encodeURIComponent(card.id)}`);
+      if (!cardRes.ok) continue;
+      anyFetched = true;
+      const price = pokemonTcgplayerPrice(await cardRes.json());
+      if (price != null) return { price, reason: null };
+    }
+    return { price: null, reason: anyFetched ? "no_price" : "fetch_failed" };
   });
 }
 
@@ -344,6 +415,19 @@ const PRICE_LOOKUPS = {
   Gundam: (item) => egmanPrice("gundam", item),
   SWU: swuPrice,
 };
+
+// Japanese-print Pokemon items are skipped entirely until there's a JP
+// price source (decided with the user). TCGdex's pricing is English-print
+// TCGPlayer data, and cleanCardName strips "(JP)" like any other
+// annotation — so "Mew ex (JP)" was being priced off the ENGLISH print,
+// which could raise false spike alerts. Pokemon only, by explicit decision:
+// how Scryfall (or any other provider) handles a Japanese print hasn't been
+// investigated, so other games' "(JP ...)" items are left alone rather than
+// skipped on an untested assumption.
+const JAPANESE_ITEM_RE = /\bJPN?\b|\bJapanese\b/i;
+function isSkippedJapaneseItem(item) {
+  return item.game === "Pokemon" && JAPANESE_ITEM_RE.test(item.name || "");
+}
 
 async function lookupPrice(item) {
   const fn = PRICE_LOOKUPS[item.game];
@@ -478,7 +562,7 @@ Deno.serve(async (req) => {
     return json({ error: error.message }, 500);
   }
 
-  let checked = 0, spikes = 0, failed = 0, skippedForTime = 0;
+  let checked = 0, spikes = 0, failed = 0, skippedForTime = 0, skippedJapanese = 0;
   const failedByGame = {};
   const failedByReason = {};
   // Finer-grained than either tally alone — this round's diagnosis needed to
@@ -504,6 +588,10 @@ Deno.serve(async (req) => {
     // batch in the same run.
     if (Date.now() - startedAt > RUN_DEADLINE_MS) {
       skippedForTime++;
+      return;
+    }
+    if (isSkippedJapaneseItem(item)) {
+      skippedJapanese++;
       return;
     }
     const { price, reason } = await lookupPrice(item);
@@ -566,10 +654,12 @@ Deno.serve(async (req) => {
   // a second permanent skip: the next batch simply starts exactly where
   // this one's real work stopped, whether that's a full `limit` items in or
   // fewer.
-  const attempted = checked + failed;
+  // Japanese items count as attempted (they were deliberately handled, not
+  // left for a later batch) so the workflow's offset still advances past them.
+  const attempted = checked + failed + skippedJapanese;
   return json({
     offset, limit, attempted,
-    total: (items || []).length, checked, spikes, failed,
+    total: (items || []).length, checked, spikes, failed, skippedJapanese,
     truncated: skippedForTime > 0, skippedForTime,
     failedByGame, failedByReason, failedDetail, sampleFailures,
   }, 200);

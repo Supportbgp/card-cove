@@ -462,20 +462,42 @@ async function attachPokemonPrices(cards, candidates) {
   await Promise.all(Array.from({ length: Math.min(POKEMON_PRICE_CONCURRENCY, cards.length) }, worker));
 }
 
+// Spelling differences between how staff (and the scanner) type a name and
+// how TCGdex stores it — all confirmed against real failing names from a
+// live price-check run, not guessed: TCGdex's name match is accent-
+// sensitive ("Pokemon Trader" finds nothing, "Pokémon Trader" does); Black
+// & White-era EX cards are hyphenated ("Virizion-EX") while XY-era ones use
+// a space ("Giratina EX"), so neither form is always right; and a few names
+// use symbols ("Nidoran♀", "Umbreon ★"). Returns one alternative spelling to
+// retry with only after the name as typed finds nothing, or null if there's
+// nothing to change. Only uppercase EX/GX are touched — the modern lowercase
+// "ex" is never hyphenated.
+export function pokemonSpellingVariant(name) {
+  let v = String(name || '');
+  v = v.replace(/\bPokemon\b/gi, 'Pokémon');
+  v = /-(EX|GX)\b/.test(v) ? v.replace(/-(EX|GX)\b/g, ' $1') : v.replace(/ (EX|GX)\b/g, '-$1');
+  v = v.replace(/\bNidoran F\b/i, 'Nidoran♀').replace(/\bNidoran M\b/i, 'Nidoran♂');
+  v = v.replace(/ Star$/i, ' ★');
+  return v !== name ? v : null;
+}
+
 export async function searchPokemon(name, setHint, rarityHint, numberHint) {
   const cleanName = String(name || '').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim();
   if (!cleanName) return [];
 
   // Full name first (TCGdex's default contains-match already covers a lot
-  // of what pokemontcg.io needed several tiers for). If that finds nothing
-  // — e.g. a set/promo code like "XY83" typed after the name, which isn't
-  // part of the card's real name — fall back to just the first word, as a
-  // prefix match ("Charizard*", per TCGdex's filtering docs). Only the last
-  // tier's failure propagates, so a genuinely unreachable API still reports
-  // as an error rather than a misleading "no matches."
+  // of what pokemontcg.io needed several tiers for), then its alternative
+  // spelling if it has one (see pokemonSpellingVariant). If neither finds
+  // anything — e.g. a set/promo code like "XY83" typed after the name,
+  // which isn't part of the card's real name — fall back to just the first
+  // word, as a prefix match ("Charizard*", per TCGdex's filtering docs).
+  // Only the last tier's failure propagates, so a genuinely unreachable API
+  // still reports as an error rather than a misleading "no matches."
   const firstWord = cleanName.split(' ')[0];
   const tiers = [cleanName];
-  if (firstWord && firstWord !== cleanName) tiers.push(`${firstWord}*`);
+  const variant = pokemonSpellingVariant(cleanName);
+  if (variant) tiers.push(variant);
+  const firstWordTier = firstWord && firstWord !== cleanName ? tiers.push(`${firstWord}*`) - 1 : -1;
 
   let briefs = [];
   let usedFirstWord = false;
@@ -487,7 +509,7 @@ export async function searchPokemon(name, setHint, rarityHint, numberHint) {
       briefs = [];
     }
     briefs = briefs.filter(c => c.image && tcgdexSerie(c.image) !== 'tcgp');
-    usedFirstWord = i > 0;
+    usedFirstWord = i === firstWordTier;
     if (briefs.length) break;
   }
   if (!briefs.length) return [];
