@@ -314,7 +314,8 @@ Everything else found:
 - `src/lib/` — all non-React logic. `db.js` (Supabase reads/writes + row↔card
   mapping), `cardUtils.js` (`normalizeCard`, game-name canonicalization,
   platform-status-reset logic, the canonical `GAMES` list), `cardSearch.js`
-  (Scryfall/pokemontcg.io/YGOPRODeck card+image lookup), `csv.js`/
+  (Scryfall/TCGdex/YGOPRODeck/Lorcast card+image lookup — Pokemon moved
+  off pokemontcg.io, see "Pokemon: pokemontcg.io → TCGdex migration"), `csv.js`/
   `importParse.js`/`exportFormats.js` (import/export), `quoteUtils.js`
   (Quote tab totals/tiers/catalog-conversion logic), `image.js`
   (client-side photo resize), `scanner.js` (binder-scan Edge Function
@@ -4902,6 +4903,136 @@ behavior changes, not one-line bugs:
   else → unchanged plain confirm) was additionally traced by hand against
   `CatalogPanel.jsx`'s own `handleBatchSell` before shipping.
 
+## Pokemon: pokemontcg.io → TCGdex migration
+
+pokemontcg.io is folding into the paid Scrydex service, and its key-less
+public tier was failing outright by the time this was picked back up (a
+plain `name:charizard` query returned a 502 on the very first request,
+2026-10-14). Every Pokemon lookup in the app — `searchPokemon` in
+`cardSearch.js` (EditModal/Scanner/Import/Quote) and `pokemonPrice` in the
+`price-check` Edge Function — now uses **TCGdex** (`api.tcgdex.net`)
+instead. **A full switch, no pokemontcg.io fallback** — confirmed with the
+user, since pokemontcg.io is going away regardless. This supersedes the
+pokemontcg.io-specific mechanics described in earlier sections of this
+file (the 4-attempt retry backoff, the Lucene query sanitizing, the
+two-representation possessive-apostrophe hedge, `fetchWithPokemonRetry`) —
+those sections are left as written, as history.
+
+The investigation was paused once before, and no notes survived that
+pause — the research was redone from scratch. This time every fact below
+was confirmed against the live API and TCGdex's own docs (filtering/
+sorting/pagination, single card, searching, markets/pricing, assets), not
+guessed:
+
+- **CORS is `Access-Control-Allow-Origin: *`**, on both REST and GraphQL —
+  called directly from the browser, like Scryfall/Lorcast. No proxy.
+- **Search = one GraphQL request; price = one REST request per card.** The
+  GraphQL endpoint (`POST /v2/graphql`, `cards(filters:{name})`) returns
+  every matching card (unpaginated by default) with `localId`/`rarity`/
+  `set{name}`/`image` in a single request — but its `Card` type has no
+  `pricing` field. Pricing only exists on the REST single-card object
+  (`GET /v2/en/cards/{id}`), so `searchPokemon` narrows/orders first, caps
+  at **20 candidates**, then prices only those (concurrency 4, cached per
+  card id for the session). A pricing failure leaves that one candidate
+  unpriced rather than failing the search. The REST list endpoint
+  (`/v2/en/cards?name=`) was considered and rejected — it only returns
+  `{id, localId, name, image}`, no set/rarity to narrow on.
+- **Name filtering is a case-insensitive "contains" match by default**
+  (`eq:` for strict, `name*` for prefix — per the filtering docs, and
+  confirmed live: `localId=4` matched 21 cards, `set.name=Base Set` also
+  matched "Expedition Base Set"). A GraphQL *variable* carries the name
+  verbatim, so possessive names ("Lillie's Clefairy ex", "Cynthia's
+  Garchomp ex") just work with a plain straight apostrophe — the entire
+  apostrophe-hedging history above is moot for TCGdex. A **curly `’`
+  returns zero results**, so it's normalized to `'` first.
+- **The parked `-EX`/`-GX` hyphen question is moot** — TCGdex names use a
+  space ("Dialga GX", "Giratina EX"), same as this shop's catalog does.
+  Removed from the Backlog.
+- **TCG Pocket (the mobile game) cards share the same database** (serie
+  `tcgp`, set ids like `A2b`, image path `/en/tcgp/...`) — digital-only,
+  never in a binder, so they're filtered out by image path. Cards with no
+  image are dropped too, same as before.
+- **Pricing** lives at `pricing.tcgplayer.<variant>` with `{productId,
+  lowPrice, midPrice, highPrice, marketPrice, directLowPrice}`. **The docs
+  and the live API disagree on variant key names** — the docs' example
+  shows `holo`/`reverse`, live responses use `holofoil`/`reverse-holofoil`/
+  `1st-edition-holofoil`/`unlimited-holofoil` — so both spellings are
+  accepted, and any unknown variant key is still tried after the known
+  ones. Same most-reliable-first fallback within a variant as before
+  (market → mid → avg(low, high) → low → high). `pricing.cardmarket` (EUR)
+  is ignored. The `productId` gives a real direct listing link,
+  `https://www.tcgplayer.com/product/{productId}` (confirmed live).
+- **Images**: TCGdex image URLs are extension-less by design; `/high.webp`
+  (600×825, the docs' recommended web format) is appended.
+- **Better price coverage, concretely**: Mega Gengar ex's Mega Attack Rare
+  print (`me02.5-269`) — documented above as a permanent "no `prices` key
+  at all" gap on pokemontcg.io — has a real $33.46 market price on TCGdex,
+  and Lillie's Clefairy ex #280 (also documented above as having no
+  pricing) shows $119.77.
+- **Search narrowing**, all soft (a hint that matches nothing is ignored,
+  never zeroes the search): an exact name match ranks above names that
+  merely contain it ("Charizard" before "Blaine's Charizard"); then
+  number+exact set, number+loose set, number alone, exact set, loose set —
+  an exact set name beats a loose one so "Base Set" doesn't pick "Base
+  Set 2" (a real live-test finding). Number comparison strips a `/total`
+  denominator and leading zeros (TCGdex pads some sets: `"076"`). If the
+  full name matches nothing, a first-word prefix search (`Charizard*`)
+  runs, and the last dropped word is tried as a number hint if staff gave
+  none — "Charizard EX XY121" finds the XY121 promo.
+- **Rarity is translated into the app's existing (pokemontcg.io-era)
+  vocabulary**, confirmed with the user over adopting TCGdex's names — the
+  Rarity dropdown, the scanner prompt, and every already-saved catalog
+  value use the old names, and switching would leave them mixed in the
+  Catalog's Rarity filter. `pokemonRarityFromTcgdex` in `cardSearch.js`:
+  capitalization-only differences are Title Cased ("Double rare" → "Double
+  Rare", "Special illustration rare" → "Special Illustration Rare"), plus
+  explicit renames ("Holo Rare" → "Rare Holo", "Holo Rare V/VMAX/VSTAR" →
+  "Rare Holo V/VMAX/VSTAR", "Secret Rare" → "Rare Secret" — only used
+  pre-Scarlet & Violet). **TCGdex's "Ultra Rare" is genuinely ambiguous**
+  and handled per era (from a per-serie breakdown of every real "Ultra
+  Rare" card, not a guess): Scarlet & Violet → "Ultra Rare"; Sword &
+  Shield → "Rare Ultra"; but XY/Sun & Moon/Black & White use it for BOTH a
+  regular-art EX/GX and its full-art version (confirmed live — `xy7-57`
+  and `xy7-93`, regular and full-art Giratina EX, both report "Ultra
+  Rare"), and the Mega era uses it for Mega Attack Rare too (`me02.5-269`).
+  For those, the candidate's `rarity` is left **blank**, so picking it
+  never overwrites the item's own Rarity with a guess (EditModal/Scanner/
+  Quote's pick handlers all only back-fill a non-empty value — checked),
+  and the plausible values go in a new `rarityAliases` array that
+  `preferRarity` matches a hint against (ordering only, never saved).
+  `RARITY_OPTIONS_BY_GAME.Pokemon` and `scan-binder-page`'s prompt are
+  unchanged.
+- **Reliability**: TCGdex answered every live test request, so it gets the
+  same light 1-retry-on-5xx as Scryfall/YGOPRODeck/Lorcast — not
+  pokemontcg.io's 4-attempt backoff (`fetchWithPokemonRetry` was deleted
+  from `price-check`). A persistent failure still throws, so an outage
+  reports honestly instead of as "no matches."
+- **`price-check`'s `pokemonPrice`**: same GraphQL search + REST price
+  shape, two requests per item instead of one (the batched workflow
+  absorbs this). The catalog select now also reads `set_name`, and a print
+  from the item's own set is preferred among same-name matches — TCGdex
+  returns matches oldest-first, so without this a reprinted name would
+  always be priced off its oldest print. Still no collector number (never
+  saved on a catalog row), so among several prints in the *same* set it
+  takes the first — e.g. "Lillie's Clefairy ex" in Ascended Heroes prices
+  off #076 (Double Rare, $1.45), not #280 (SIR). Same accepted limitation
+  the pokemontcg.io version had. Verified live against seven real catalog
+  names that failed under pokemontcg.io (the possessive-name cluster,
+  "Misty's Psyduck [W Stamped]", "Dialga EX (122 Secret Rare)", "Charizard
+  4/102", plain "Gengar") — all seven now return a price.
+- **Verification**: unlike most Pokemon work in this file, this sandbox
+  *can* reach TCGdex, so `searchPokemon` and `pokemonPrice` were both run
+  against the live API (a scratch copy with the Supabase import stubbed
+  out), not just traced by hand. Unit tests were rewritten for TCGdex's
+  response shapes (`cardSearch.test.js`, including
+  `pokemonRarityFromTcgdex` directly). No e2e spec exercises card search,
+  so no e2e changes.
+
+**Requires redeploying `price-check`** (`supabase functions deploy
+price-check`) for the daily price check to switch to TCGdex — the app-side
+search switches as soon as GitHub Pages redeploys. No migration, no new
+secret, no `scan-binder-page` redeploy.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -4915,14 +5046,6 @@ than repeated.
   export's actual upload-ready export format (see "Next sprints" above).
   Blocked only on getting TCG Player's real required column layout first —
   never guess it.
-- **Paused by explicit user decision, not abandoned**: the
-  pokemontcg.io → TCGdex migration, triggered by pokemontcg.io folding
-  into the paid Scrydex service. Real research was done first (TCGdex's
-  own FAQ/card-object/filtering/assets/SDK docs), then the user
-  explicitly put it on hold mid-investigation to prioritize the Mark Sold
-  bug fixes above — "let's hold the migration for now as we need to
-  attend some bug fixes first." No code changes were made toward it yet;
-  ready to resume whenever asked.
 - **Needs the user's decision before any code gets written**:
   - Cumulus POS SKU import (Phase 4) — needs a go/no-go plus a real
     Cumulus export/import file sample (see "Known constraints" above).
@@ -4941,8 +5064,6 @@ than repeated.
     instead of showing the sheet picker (desktop shows it correctly) — no
     repro yet with synthetic files; needs a real device repro or the
     actual file involved.
-  - The Pokemon `-EX`/`-GX` hyphen-before-suffix question in
-    `price-check`'s search queries — plausible, but no confirmed sample.
   - SWU's `"Cad Bane - He Who Needs No Introduction"` still fails price
     lookup for an unexplained reason, after every other cleanup in that
     debugging arc.
@@ -4950,8 +5071,11 @@ than repeated.
     a real fix means deterministic icon-matching against a reference
     library, a much bigger investment than the field's current yield
     justifies.
-  - Japanese-print price coverage on pokemontcg.io — no verified
-    alternate data source found yet.
+  - Japanese-print price coverage — no verified data source yet. TCGdex
+    (now the Pokemon source) serves other languages under its own
+    language-prefixed endpoints (`/v2/ja/...`), but whether those carry
+    TCGPlayer pricing is unconfirmed; check a real sample before relying
+    on it.
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a

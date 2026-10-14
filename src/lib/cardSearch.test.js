@@ -9,7 +9,7 @@ const {
   searchScryfall, searchPokemon, searchYugioh, searchLorcana,
   searchOnePiece, searchRiftbound, searchGundam, searchSwu, searchCardImage,
   tcgplayerSearchUrl, ebaySoldSearchUrl, priceChartingSearchUrl,
-  __resetPokemonQueryCacheForTests,
+  __resetPokemonQueryCacheForTests, pokemonRarityFromTcgdex,
 } = await import('./cardSearch.js');
 
 function jsonResponse(body, ok = true) {
@@ -190,230 +190,239 @@ describe('searchScryfall', () => {
   });
 });
 
-describe('searchPokemon', () => {
-  it('narrows by set first when a setHint is given, and stops there if it finds something', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({
-      data: [{ name: 'Charizard', set: { name: 'Base Set' }, number: '4', images: { large: 'https://x/char.jpg' }, tcgplayer: { url: 'https://tcg/char', prices: { holofoil: { market: 300 } } } }],
-    }));
-    const results = await searchPokemon('Charizard', 'Base Set');
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(decodeURIComponent(global.fetch.mock.calls[0][0])).toContain('set.name:"Base Set"');
-    expect(results[0]).toMatchObject({ url: 'https://x/char.jpg', price: 300, listingUrl: 'https://tcg/char' });
+describe('searchPokemon (TCGdex)', () => {
+  // Real response shapes, trimmed from live TCGdex responses (2026-10-14).
+  const IMG = (serie, set, n) => `https://assets.tcgdex.net/en/${serie}/${set}/${n}`;
+  const brief = (id, name, localId, setName, rarity, serie = 'sv', image) => ({
+    id, localId, name, rarity, set: { id: id.split('-')[0], name: setName },
+    image: image === undefined ? IMG(serie, id.split('-')[0], localId) : image,
+  });
+  const fullCard = (tcgplayer) => ({ pricing: { tcgplayer } });
+
+  // Routes the GraphQL search (POST) and single-card lookups (GET) the way
+  // the real API does, so each test only describes the data it cares about.
+  function mockTcgdex({ search = {}, cards = {} }) {
+    global.fetch.mockImplementation(async (url, init) => {
+      if (url.endsWith('/graphql')) {
+        const name = JSON.parse(init.body).variables.name;
+        const hit = search[name];
+        if (hit instanceof Error) return { ok: false, status: 503, json: async () => ({}) };
+        return jsonResponse({ data: { cards: hit || [] } });
+      }
+      const id = decodeURIComponent(url.split('/cards/')[1]);
+      if (cards[id] === undefined) return { ok: false, status: 404, json: async () => ({ error: 'Endpoint or id not found' }) };
+      return jsonResponse(cards[id]);
+    });
+  }
+  const searchCalls = () => global.fetch.mock.calls.filter(([u]) => u.endsWith('/graphql'));
+
+  it('searches TCGdex\'s GraphQL endpoint by name, then prices each candidate from its full card object', async () => {
+    mockTcgdex({
+      search: { Charizard: [brief('base1-4', 'Charizard', '4', 'Base Set', 'Rare', 'base')] },
+      cards: { 'base1-4': fullCard({ unit: 'USD', holofoil: { productId: 42382, lowPrice: 489.99, midPrice: 587.98, highPrice: 3499.1, marketPrice: 990.98 } }) },
+    });
+    const results = await searchPokemon('Charizard');
+    expect(searchCalls()).toHaveLength(1);
+    expect(global.fetch.mock.calls[0][0]).toBe('https://api.tcgdex.net/v2/graphql');
+    expect(results).toEqual([{
+      url: 'https://assets.tcgdex.net/en/base/base1/4/high.webp',
+      label: 'Charizard (Base Set) #4',
+      price: 990.98,
+      listingUrl: 'https://www.tcgplayer.com/product/42382',
+      rarity: 'Rare', set: 'Base Set', number: '4',
+    }]);
   });
 
-  it('reuses an identical in-flight query instead of firing a duplicate request — same card, multiple copies on a page', async () => {
-    let resolveFetch;
-    global.fetch.mockImplementationOnce(() => new Promise((r) => { resolveFetch = r; }));
-    const first = searchPokemon('Charizard', 'Base Set');
-    const second = searchPokemon('Charizard', 'Base Set'); // e.g. two copies scanned off the same page
-    resolveFetch(jsonResponse({
-      data: [{ name: 'Charizard', set: { name: 'Base Set' }, number: '4', images: { large: 'https://x/char.jpg' } }],
-    }));
-    const [r1, r2] = await Promise.all([first, second]);
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(r1[0].url).toBe('https://x/char.jpg');
-    expect(r2[0].url).toBe('https://x/char.jpg');
+  it('sends a possessive name verbatim (no Lucene sanitizing needed anymore), normalizing a curly apostrophe — TCGdex returns nothing for "’"', async () => {
+    mockTcgdex({ search: { "Lillie's Clefairy ex": [brief('me02.5-280', "Lillie's Clefairy ex", '280', 'Ascended Heroes', 'Special illustration rare', 'me')] } });
+    const results = await searchPokemon('Lillie’s Clefairy ex');
+    expect(JSON.parse(searchCalls()[0][1].body).variables.name).toBe("Lillie's Clefairy ex");
+    expect(results[0].number).toBe('280');
   });
 
-  it('reuses an already-resolved query on a later call too, not just ones still in flight', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({
-      data: [{ name: 'Charizard', set: { name: 'Base Set' }, number: '4', images: { large: 'https://x/char.jpg' } }],
-    }));
-    await searchPokemon('Charizard', 'Base Set');
-    global.fetch.mockClear();
-    const results = await searchPokemon('Charizard', 'Base Set');
-    expect(global.fetch).not.toHaveBeenCalled();
-    expect(results[0].url).toBe('https://x/char.jpg');
+  it('drops TCG Pocket (digital-only) cards and cards with no image', async () => {
+    mockTcgdex({
+      search: { 'Giratina ex': [
+        brief('A2b-035', 'Giratina ex', '035', 'Shining Revelry', 'Four Diamond', 'tcgp'),
+        brief('svp-1', 'Giratina ex', '1', 'SVP Black Star Promos', 'Promo', 'sv', null),
+        brief('sv01-1', 'Giratina ex', '1', 'Scarlet & Violet', 'Double rare'),
+      ] },
+    });
+    const results = await searchPokemon('Giratina ex');
+    expect(results.map(r => r.set)).toEqual(['Scarlet & Violet']);
   });
 
-  it('falls through exact phrase -> unquoted -> first-word prefix when nothing narrower matches', async () => {
-    global.fetch
-      .mockResolvedValueOnce(jsonResponse({ data: [] })) // exact phrase
-      .mockResolvedValueOnce(jsonResponse({ data: [] })) // unquoted
-      .mockResolvedValueOnce(jsonResponse({ data: [{ name: 'Pikachu VMAX', set: { name: 'Vivid Voltage' }, number: '44', images: { large: 'https://x/pika.jpg' } }] }));
-    const results = await searchPokemon('Pikachu VMAX');
-    expect(global.fetch).toHaveBeenCalledTimes(3);
-    expect(results[0].url).toBe('https://x/pika.jpg');
+  it('ranks an exact name match above cards that merely contain the name', async () => {
+    mockTcgdex({ search: { Charizard: [
+      brief('gym2-2', "Blaine's Charizard", '2', 'Gym Challenge', 'Rare', 'gym'),
+      brief('base1-4', 'Charizard', '4', 'Base Set', 'Rare', 'base'),
+    ] } });
+    const results = await searchPokemon('Charizard');
+    expect(results.map(r => r.label)).toEqual(['Charizard (Base Set) #4', "Blaine's Charizard (Gym Challenge) #2"]);
   });
 
-  it('sanitizes Lucene special characters out of the query instead of escaping them', async () => {
-    // No setHint and every query comes back empty here — searchPokemon will
-    // fall through all of its fallback queries, so every call needs a
-    // response, not just the first.
-    global.fetch.mockResolvedValue(jsonResponse({ data: [] }));
-    await searchPokemon('V - SWSH204');
-    expect(decodeURIComponent(global.fetch.mock.calls[0][0])).not.toContain('\\-');
+  it('narrows by number + exact set name, stripping a "/total" denominator and leading zeros — and an exact set beats a loose one ("Base Set" vs "Base Set 2")', async () => {
+    mockTcgdex({ search: { Charizard: [
+      brief('base4-4', 'Charizard', '4', 'Base Set 2', 'Rare', 'base'),
+      brief('base1-4', 'Charizard', '4', 'Base Set', 'Rare', 'base'),
+      brief('base1-40', 'Charizard', '40', 'Base Set', 'Rare', 'base'),
+    ] } });
+    const results = await searchPokemon('Charizard', 'Base Set', '', '004/102');
+    expect(results.map(r => r.label)).toEqual(['Charizard (Base Set) #4']);
   });
 
-  it('strips apostrophes out of the query — real-world testing found every search for "Lillie\'s Clefairy ex" failing regardless of which hints were passed', async () => {
-    global.fetch.mockResolvedValue(jsonResponse({ data: [] }));
-    await searchPokemon("Lillie's Clefairy ex");
-    const q = decodeURIComponent(global.fetch.mock.calls[0][0]);
-    expect(q).not.toContain("'");
-    expect(q).not.toContain('’');
-  });
-
-  it('strips a possessive "\'s" outright rather than replacing it with a space — a spurious "s" token broke the exact-phrase tier\'s match against the real (possessive-stripped) index, and fell through to the broad prefix tier where it picked up unrelated cards like the "Lillie" Trainer/Supporter card', async () => {
-    global.fetch.mockResolvedValue(jsonResponse({ data: [] }));
-    await searchPokemon("Lillie's Clefairy ex");
-    const q = decodeURIComponent(global.fetch.mock.calls[0][0]);
-    expect(q).toContain('name:"Lillie Clefairy ex"');
-    expect(q).not.toContain('Lillie s');
-
-    global.fetch.mockClear();
-    await searchPokemon("Cynthia's Garchomp ex");
-    const q2 = decodeURIComponent(global.fetch.mock.calls[0][0]);
-    expect(q2).toContain('name:"Cynthia Garchomp ex"');
-    expect(q2).not.toContain('Cynthia s');
-  });
-
-  it('falls back to keeping the apostrophe literally when the possessive-stripped variant finds nothing — we can\'t inspect pokemontcg.io\'s live index to know which representation it actually indexes on, so both are tried before giving up', async () => {
-    global.fetch
-      .mockResolvedValueOnce(jsonResponse({ data: [] })) // stripped exact phrase: name:"Lillie Clefairy ex" — empty
-      .mockResolvedValueOnce(jsonResponse({ data: [] })) // stripped unquoted — empty
-      .mockResolvedValueOnce(jsonResponse({
-        data: [{ name: "Lillie's Clefairy ex", set: { name: 'Ascended Heroes' }, number: '280', images: { large: 'https://x/clefairy.jpg' } }],
-      })); // apostrophe-kept exact phrase: name:"Lillie's Clefairy ex" — matches
-    const results = await searchPokemon("Lillie's Clefairy ex");
-    expect(global.fetch).toHaveBeenCalledTimes(3);
-    const thirdQuery = decodeURIComponent(global.fetch.mock.calls[2][0]);
-    expect(thirdQuery).toContain(`name:"Lillie's Clefairy ex"`);
-    expect(results[0].url).toBe('https://x/clefairy.jpg');
-  });
-
-  it('tries set+number together first when both hints are given, stripping a "/total" denominator', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({
-      data: [{ name: "Lillie's Clefairy ex", set: { name: 'Ascended Heroes' }, number: '280', images: { large: 'https://x/clefairy.jpg' } }],
-    }));
-    const results = await searchPokemon("Lillie's Clefairy ex", 'Ascended Heroes', '', '280/217');
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    const q = decodeURIComponent(global.fetch.mock.calls[0][0]);
-    expect(q).toContain('set.name:"Ascended Heroes"');
-    expect(q).toContain('number:"280"');
-    expect(q).not.toContain('217');
-    expect(results[0].url).toBe('https://x/clefairy.jpg');
-  });
-
-  it('falls back to number alone (no set) before trying set alone, since the scan\'s set guess is the less reliable signal', async () => {
-    global.fetch
-      .mockResolvedValueOnce(jsonResponse({ data: [] })) // set+number, empty (wrong set guess)
-      .mockResolvedValueOnce(jsonResponse({
-        data: [{ name: "Lillie's Clefairy ex", set: { name: 'Ascended Heroes' }, number: '280', images: { large: 'https://x/clefairy.jpg' } }],
-      })); // number alone finds it
+  it('prefers number over set when only one of them matches — the scan\'s set guess is the less reliable signal', async () => {
+    mockTcgdex({ search: { "Lillie's Clefairy ex": [
+      brief('sv09-056', "Lillie's Clefairy ex", '056', 'Journey Together', 'Double rare'),
+      brief('me02.5-280', "Lillie's Clefairy ex", '280', 'Ascended Heroes', 'Special illustration rare', 'me'),
+    ] } });
     const results = await searchPokemon("Lillie's Clefairy ex", 'Scarlet & Violet', '', '280');
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-    const secondQuery = decodeURIComponent(global.fetch.mock.calls[1][0]);
-    expect(secondQuery).toContain('number:"280"');
-    expect(secondQuery).not.toContain('set.name');
-    expect(results[0].url).toBe('https://x/clefairy.jpg');
+    expect(results.map(r => r.number)).toEqual(['280']);
   });
 
-  it('retries once after a transient 5xx, then succeeds', async () => {
-    vi.useFakeTimers();
-    try {
-      global.fetch
-        .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) }) // transient 5xx, first attempt
-        .mockResolvedValueOnce(jsonResponse({ data: [{ name: 'Charizard', set: { name: 'Base Set' }, images: { large: 'https://x/char.jpg' } }] }));
-
-      const promise = searchPokemon('Charizard');
-      await vi.runAllTimersAsync();
-      const results = await promise;
-
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-      expect(results[0].url).toBe('https://x/char.jpg');
-    } finally {
-      vi.useRealTimers();
-    }
+  it('ignores hints that match nothing instead of zeroing out the search', async () => {
+    mockTcgdex({ search: { Pikachu: [brief('base1-58', 'Pikachu', '58', 'Base Set', 'Common', 'base')] } });
+    const results = await searchPokemon('Pikachu', 'Some Wrong Set', '', '999');
+    expect(results).toHaveLength(1);
   });
 
-  it('gives up and throws once every retry attempt is exhausted, instead of reporting "no matches"', async () => {
+  it('falls back to a first-word prefix search, using the dropped trailing code as a number hint ("Charizard EX XY121")', async () => {
+    mockTcgdex({ search: {
+      'Charizard EX XY121': [],
+      'Charizard*': [
+        brief('xy2-12', 'Charizard EX', '12', 'Flashfire', 'Ultra Rare', 'xy'),
+        brief('xyp-XY121', 'Charizard EX', 'XY121', 'XY Black Star Promos', 'Promo', 'xy'),
+      ],
+    } });
+    const results = await searchPokemon('Charizard EX XY121');
+    expect(searchCalls().map(([, init]) => JSON.parse(init.body).variables.name)).toEqual(['Charizard EX XY121', 'Charizard*']);
+    expect(results.map(r => r.number)).toEqual(['XY121']);
+  });
+
+  it('reuses an identical in-flight search instead of firing a duplicate request — same card, multiple copies on a page', async () => {
+    mockTcgdex({ search: { Charizard: [brief('base1-4', 'Charizard', '4', 'Base Set', 'Rare', 'base')] } });
+    const [r1, r2] = await Promise.all([searchPokemon('Charizard'), searchPokemon('Charizard')]);
+    expect(searchCalls()).toHaveLength(1);
+    expect(global.fetch.mock.calls.filter(([u]) => u.includes('/cards/'))).toHaveLength(1);
+    expect(r1[0].url).toBe(r2[0].url);
+  });
+
+  it('caps candidates at 20, so a broad name costs at most 20 pricing requests', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => brief(`sv01-${i + 1}`, 'Pikachu', String(i + 1), 'Scarlet & Violet', 'Common'));
+    mockTcgdex({ search: { Pikachu: many } });
+    const results = await searchPokemon('Pikachu');
+    expect(results).toHaveLength(20);
+    expect(global.fetch.mock.calls.filter(([u]) => u.includes('/cards/'))).toHaveLength(20);
+  });
+
+  it('still returns a candidate (unpriced) when its single-card pricing lookup fails', async () => {
+    mockTcgdex({ search: { Pikachu: [brief('base1-58', 'Pikachu', '58', 'Base Set', 'Common', 'base')] } });
+    const results = await searchPokemon('Pikachu');
+    expect(results[0]).toMatchObject({ price: null, listingUrl: null, number: '58' });
+  });
+
+  it('retries a search once after a transient 5xx, then throws instead of reporting "no matches"', async () => {
     vi.useFakeTimers();
     try {
-      global.fetch.mockResolvedValue({ ok: false, status: 502, json: async () => ({}) });
+      mockTcgdex({ search: { Charizard: new Error('down') } });
       const promise = searchPokemon('Charizard');
-      // Attach a rejection handler immediately so the unresolved promise
-      // doesn't trip an unhandled-rejection warning while timers advance.
-      const assertion = expect(promise).rejects.toThrow('502');
+      const assertion = expect(promise).rejects.toThrow('503');
       await vi.runAllTimersAsync();
       await assertion;
+      expect(searchCalls()).toHaveLength(2);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('falls through to a broader tier only once an earlier, narrower tier has exhausted its full retry budget (4 attempts), instead of aborting the whole search', async () => {
+  it('treats a failing first tier as empty and still tries the first-word fallback', async () => {
     vi.useFakeTimers();
     try {
-      global.fetch
-        .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) }) // number-alone tier, 1st attempt
-        .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) }) // retry 1 — still fails
-        .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) }) // retry 2 — still fails
-        .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) }) // retry 3 — budget exhausted
-        .mockResolvedValueOnce(jsonResponse({
-          data: [{ name: 'Charizard', set: { name: 'Base Set' }, images: { large: 'https://x/char.jpg' } }],
-        })); // next (broader) tier succeeds on its first attempt
-
-      const promise = searchPokemon('Charizard', '', '', '999'); // numberHint, no setHint
+      mockTcgdex({ search: {
+        'Pikachu VMAX': new Error('down'),
+        'Pikachu*': [brief('swsh4-44', 'Pikachu VMAX', '44', 'Vivid Voltage', 'Holo Rare VMAX', 'swsh')],
+      } });
+      const promise = searchPokemon('Pikachu VMAX');
       await vi.runAllTimersAsync();
       const results = await promise;
-
-      expect(global.fetch).toHaveBeenCalledTimes(5);
-      expect(results[0].url).toBe('https://x/char.jpg');
+      expect(results[0]).toMatchObject({ number: '44', rarity: 'Rare Holo VMAX' });
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('retries through more than one consecutive 5xx on the same tier — live testing found failure streaks longer than the original single-retry budget could survive', async () => {
-    vi.useFakeTimers();
-    try {
-      global.fetch
-        .mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) })
-        .mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) })
-        .mockResolvedValueOnce(jsonResponse({ data: [{ name: 'Charizard', set: { name: 'Base Set' }, images: { large: 'https://x/char.jpg' } }] }));
-
-      const promise = searchPokemon('Charizard');
-      await vi.runAllTimersAsync();
-      const results = await promise;
-
-      expect(global.fetch).toHaveBeenCalledTimes(3);
-      expect(results[0].url).toBe('https://x/char.jpg');
-    } finally {
-      vi.useRealTimers();
+  describe('pricing', () => {
+    async function priceOf(tcgplayer) {
+      mockTcgdex({
+        search: { 'Mega Gengar ex': [brief('me02.5-269', 'Mega Gengar ex', '269', 'Ascended Heroes', 'Ultra Rare', 'me')] },
+        cards: { 'me02.5-269': fullCard(tcgplayer) },
+      });
+      return (await searchPokemon('Mega Gengar ex'))[0];
     }
+
+    it('falls back to a listing-based (low/high) price when a low-volume card has no sold-listing (market/mid) data', async () => {
+      const r = await priceOf({ holofoil: { productId: 1, marketPrice: null, midPrice: null, lowPrice: 40, highPrice: 120 } });
+      expect(r.price).toBe(80);
+    });
+
+    it('prefers mid over a low/high average, and market over mid', async () => {
+      expect((await priceOf({ holofoil: { productId: 1, midPrice: 95, lowPrice: 40, highPrice: 120 } })).price).toBe(95);
+      __resetPokemonQueryCacheForTests();
+      expect((await priceOf({ holofoil: { productId: 1, marketPrice: 33.46, midPrice: 95 } })).price).toBe(33.46);
+    });
+
+    it('prefers the normal variant over reverse holo, and accepts the docs\' "reverse"/"holo" spellings as well as the live API\'s "reverse-holofoil"/"holofoil"', async () => {
+      expect((await priceOf({ 'reverse-holofoil': { productId: 2, marketPrice: 0.2 }, normal: { productId: 1, marketPrice: 0.12 } })).price).toBe(0.12);
+      __resetPokemonQueryCacheForTests();
+      expect((await priceOf({ reverse: { productId: 2, marketPrice: 0.23 } })).price).toBe(0.23);
+      __resetPokemonQueryCacheForTests();
+      expect((await priceOf({ holo: { productId: 3, marketPrice: 5 } })).listingUrl).toBe('https://www.tcgplayer.com/product/3');
+    });
+
+    it('returns no price for a card TCGdex has no TCGPlayer data for, without failing the search', async () => {
+      const r = await priceOf(undefined);
+      expect(r).toMatchObject({ price: null, listingUrl: null });
+    });
+  });
+});
+
+describe('pokemonRarityFromTcgdex', () => {
+  it('translates TCGdex\'s rarity names into the app\'s existing vocabulary', () => {
+    expect(pokemonRarityFromTcgdex('Double rare', 'sv').rarity).toBe('Double Rare');
+    expect(pokemonRarityFromTcgdex('Special illustration rare', 'sv').rarity).toBe('Special Illustration Rare');
+    expect(pokemonRarityFromTcgdex('Hyper rare', 'sv').rarity).toBe('Hyper Rare');
+    expect(pokemonRarityFromTcgdex('Holo Rare', 'ex').rarity).toBe('Rare Holo');
+    expect(pokemonRarityFromTcgdex('Holo Rare V', 'swsh').rarity).toBe('Rare Holo V');
+    expect(pokemonRarityFromTcgdex('Secret Rare', 'sm').rarity).toBe('Rare Secret');
+    expect(pokemonRarityFromTcgdex('Rare Holo LV.X', 'dp').rarity).toBe('Rare Holo LV.X');
+    expect(pokemonRarityFromTcgdex('Promo', 'xy').rarity).toBe('Promo');
+    expect(pokemonRarityFromTcgdex('None', 'base').rarity).toBe('');
   });
 
-  it('matches a rarity hint against pokemontcg.io\'s real (inconsistently-formatted) value — "MEGA_ATTACK_RARE" for a Mega Evolution-era card', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({
-      data: [
-        { name: 'Mega Froslass ex', number: '1', rarity: 'Common', images: { large: 'https://x/common.jpg' } },
-        { name: 'Mega Froslass ex', number: '265', rarity: 'MEGA_ATTACK_RARE', images: { large: 'https://x/mar.jpg' } },
-      ],
-    }));
-    const results = await searchPokemon('Mega Froslass ex', '', 'Mega Attack Rare');
-    expect(results[0].url).toBe('https://x/mar.jpg');
+  it('maps "Ultra Rare" only where it\'s unambiguous (Scarlet & Violet, Sword & Shield)', () => {
+    expect(pokemonRarityFromTcgdex('Ultra Rare', 'sv')).toEqual({ rarity: 'Ultra Rare', aliases: [] });
+    expect(pokemonRarityFromTcgdex('Ultra Rare', 'swsh')).toEqual({ rarity: 'Rare Ultra', aliases: [] });
   });
 
-  it('falls back to a listing-based (low/high) price when a low-volume card has no sold-listing (market/mid) data yet — real report: a Mega ex with real active listings still showing no price', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({
-      data: [{
-        name: 'Mega Gengar ex', number: '1', images: { large: 'https://x/gengar.jpg' },
-        tcgplayer: { url: 'https://tcg/gengar', prices: { holofoil: { market: null, mid: null, low: 40, high: 120 } } },
-      }],
-    }));
-    const results = await searchPokemon('Mega Gengar ex');
-    expect(results[0].price).toBe(80); // average of low/high
+  it('leaves an ambiguous "Ultra Rare" blank (so a pick never overwrites Rarity) but keeps the plausible values for hint matching', () => {
+    // Confirmed live: xy7-57 (regular-art) and xy7-93 (full-art) Giratina EX
+    // both report "Ultra Rare"; so does Mega Gengar ex's Mega Attack Rare print.
+    expect(pokemonRarityFromTcgdex('Ultra Rare', 'xy')).toEqual({ rarity: '', aliases: ['Rare Ultra', 'Rare Holo EX', 'Rare Holo GX'] });
+    expect(pokemonRarityFromTcgdex('Ultra Rare', 'me')).toEqual({ rarity: '', aliases: ['Ultra Rare', 'Mega Attack Rare'] });
   });
 
-  it('prefers mid over a low/high average, and market over mid, when more than one is present', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({
-      data: [{
-        name: 'Mega Gengar ex', number: '1', images: { large: 'https://x/gengar.jpg' },
-        tcgplayer: { url: 'https://tcg/gengar', prices: { holofoil: { market: null, mid: 95, low: 40, high: 120 } } },
-      }],
-    }));
-    const results = await searchPokemon('Mega Gengar ex');
-    expect(results[0].price).toBe(95);
+  it('lets a rarity hint still match an ambiguous print through its aliases', async () => {
+    global.fetch.mockImplementation(async (url) => {
+      if (url.endsWith('/graphql')) {
+        return jsonResponse({ data: { cards: [
+          { id: 'me02.5-125', localId: '125', name: 'Mega Gengar ex', rarity: 'Double rare', image: 'https://assets.tcgdex.net/en/me/me02.5/125', set: { id: 'me02.5', name: 'Ascended Heroes' } },
+          { id: 'me02.5-269', localId: '269', name: 'Mega Gengar ex', rarity: 'Ultra Rare', image: 'https://assets.tcgdex.net/en/me/me02.5/269', set: { id: 'me02.5', name: 'Ascended Heroes' } },
+        ] } });
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    const results = await searchPokemon('Mega Gengar ex', '', 'Mega Attack Rare');
+    expect(results[0]).toMatchObject({ number: '269', rarity: '' });
   });
 });
 

@@ -28,7 +28,7 @@ function resolveImgSrc(url, data) {
 // The catalog typeahead (CatalogItemPicker) is the fast path when a card's
 // already been handled before, but a genuinely new trade-in card has no
 // catalog history to reference — "Find image"/"Find market price" reuse
-// the same live external search (Scryfall/pokemontcg.io/etc.) EditModal/
+// the same live external search (Scryfall/TCGdex/etc.) EditModal/
 // Scanner already use, scoped locally to this one row (self-contained
 // search state, same pattern as EditModal's own candidates/candidateMode).
 export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers }) {

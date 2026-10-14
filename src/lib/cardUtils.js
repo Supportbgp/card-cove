@@ -258,7 +258,7 @@ export const RARITY_OPTIONS_BY_GAME = {
 
 // Printing/finish field's curated options (EditModal/ScannerPanel) — same
 // select-plus-escape-hatch pattern as Rarity/Condition. These five are real,
-// current TCGPlayer/pokemontcg.io price-variant categories (the same ones
+// current TCGPlayer price-variant categories (the same ones
 // POKEMON_PRICE_VARIANTS in cardSearch.js reads price data by — confirmed
 // directly against live API responses this session, not guessed).
 //
