@@ -416,6 +416,14 @@ const PRICE_LOOKUPS = {
   SWU: swuPrice,
 };
 
+// Japanese-print items are skipped entirely until there's a price source
+// for them (decided with the user). Every provider here is English-print
+// pricing, and cleanCardName strips "(JP)"/"(JP Alternate Art)" like any
+// other annotation — so "Mew ex (JP)" was being priced off the ENGLISH
+// print, which could raise false spike alerts. Applies to every game, since
+// Scryfall/YGOPRODeck/etc. are English-price sources too.
+const JAPANESE_ITEM_RE = /\bJPN?\b|\bJapanese\b/i;
+
 async function lookupPrice(item) {
   const fn = PRICE_LOOKUPS[item.game];
   if (!fn) return { price: null, reason: "no_lookup" };
@@ -549,7 +557,7 @@ Deno.serve(async (req) => {
     return json({ error: error.message }, 500);
   }
 
-  let checked = 0, spikes = 0, failed = 0, skippedForTime = 0;
+  let checked = 0, spikes = 0, failed = 0, skippedForTime = 0, skippedJapanese = 0;
   const failedByGame = {};
   const failedByReason = {};
   // Finer-grained than either tally alone — this round's diagnosis needed to
@@ -575,6 +583,10 @@ Deno.serve(async (req) => {
     // batch in the same run.
     if (Date.now() - startedAt > RUN_DEADLINE_MS) {
       skippedForTime++;
+      return;
+    }
+    if (JAPANESE_ITEM_RE.test(item.name || "")) {
+      skippedJapanese++;
       return;
     }
     const { price, reason } = await lookupPrice(item);
@@ -637,10 +649,12 @@ Deno.serve(async (req) => {
   // a second permanent skip: the next batch simply starts exactly where
   // this one's real work stopped, whether that's a full `limit` items in or
   // fewer.
-  const attempted = checked + failed;
+  // Japanese items count as attempted (they were deliberately handled, not
+  // left for a later batch) so the workflow's offset still advances past them.
+  const attempted = checked + failed + skippedJapanese;
   return json({
     offset, limit, attempted,
-    total: (items || []).length, checked, spikes, failed,
+    total: (items || []).length, checked, spikes, failed, skippedJapanese,
     truncated: skippedForTime > 0, skippedForTime,
     failedByGame, failedByReason, failedDetail, sampleFailures,
   }, 200);
