@@ -416,13 +416,18 @@ const PRICE_LOOKUPS = {
   SWU: swuPrice,
 };
 
-// Japanese-print items are skipped entirely until there's a price source
-// for them (decided with the user). Every provider here is English-print
-// pricing, and cleanCardName strips "(JP)"/"(JP Alternate Art)" like any
-// other annotation — so "Mew ex (JP)" was being priced off the ENGLISH
-// print, which could raise false spike alerts. Applies to every game, since
-// Scryfall/YGOPRODeck/etc. are English-price sources too.
+// Japanese-print Pokemon items are skipped entirely until there's a JP
+// price source (decided with the user). TCGdex's pricing is English-print
+// TCGPlayer data, and cleanCardName strips "(JP)" like any other
+// annotation — so "Mew ex (JP)" was being priced off the ENGLISH print,
+// which could raise false spike alerts. Pokemon only, by explicit decision:
+// how Scryfall (or any other provider) handles a Japanese print hasn't been
+// investigated, so other games' "(JP ...)" items are left alone rather than
+// skipped on an untested assumption.
 const JAPANESE_ITEM_RE = /\bJPN?\b|\bJapanese\b/i;
+function isSkippedJapaneseItem(item) {
+  return item.game === "Pokemon" && JAPANESE_ITEM_RE.test(item.name || "");
+}
 
 async function lookupPrice(item) {
   const fn = PRICE_LOOKUPS[item.game];
@@ -585,7 +590,7 @@ Deno.serve(async (req) => {
       skippedForTime++;
       return;
     }
-    if (JAPANESE_ITEM_RE.test(item.name || "")) {
+    if (isSkippedJapaneseItem(item)) {
       skippedJapanese++;
       return;
     }

@@ -5084,18 +5084,21 @@ with the user before building:
   carries no TCGPlayer price for those prints). The remaining Magic
   `no_price` items (Strip Mine/Watery Grave/Brain Freeze borderless) come
   from Scryfall's own data, unrelated to TCGdex.
-- **Japanese items are now skipped by `price-check` entirely** — decided
-  with the user, "until we have a price checker for JP cards." Fixes 1–3
-  above briefly made "Mew ex (JP)" price off the *English* print (the
-  "(JP)" annotation is stripped like any other parenthetical), which could
-  produce false spike alerts. `JAPANESE_ITEM_RE` (`\bJPN?\b` or
-  `Japanese`, case-insensitive, matched against the raw name) skips the
-  item before any lookup, for every game — Scryfall/YGOPRODeck/etc. are
-  English-price sources too ("Brain Freeze (JP Alternate Art)" is a
-  Japanese Magic card). Skipped items are counted in a new
-  `skippedJapanese` response field (also summed in the workflow's combined
-  totals), not as failures, and they count toward `attempted` so the
-  workflow's batch offset still advances past them.
+- **Japanese Pokemon items are now skipped by `price-check` entirely** —
+  decided with the user, "until we have a price checker for JP cards."
+  Fixes 1–3 above briefly made "Mew ex (JP)" price off the *English* print
+  (the "(JP)" annotation is stripped like any other parenthetical), which
+  could produce false spike alerts. `isSkippedJapaneseItem` — game is
+  Pokemon AND the raw name matches `JAPANESE_ITEM_RE` (`\bJPN?\b` or
+  `Japanese`, case-insensitive) — skips the item before any lookup.
+  **Pokemon only, by explicit user decision**: a first cut applied it to
+  every game, and the user narrowed it, since how Scryfall (or any other
+  provider) handles a Japanese print was never investigated — so Magic's
+  "Brain Freeze (JP Alternate Art)" etc. are still looked up as before,
+  not skipped on an untested assumption. Skipped items are counted in a
+  new `skippedJapanese` response field (also summed in the workflow's
+  combined totals), not as failures, and they count toward `attempted` so
+  the workflow's batch offset still advances past them.
 - **LV.X — checked, deliberately not "fixed"**: the user found a real
   TCGPlayer listing for Palkia LV.X (DP18, product 87920) and suggested
   normalizing "LV.X" → "LVX". Checked live first: TCGdex spells LV.X with
@@ -5161,7 +5164,8 @@ than repeated.
     TCGPlayer pricing is unconfirmed; check a real sample before relying
     on it. Until one exists, `price-check` skips Japanese items entirely
     (see "TCGdex follow-up" above) — removing that skip is the first step
-    once a JP price source is in place.
+    once a JP price source is in place (Pokemon only — other games' JP items
+    are still looked up as before).
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a
