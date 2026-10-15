@@ -58,6 +58,8 @@ jobs:
           TOTAL_FAILED=0
           TOTAL_SKIPPED=0
           TOTAL_JP=0
+          TOTAL_GUESSED=0
+          TOTAL_ALERT_ERRORS=0
           BATCH_NUM=0
 
           while [ "$BATCH_NUM" -lt "$MAX_BATCHES" ]; do
@@ -79,6 +81,8 @@ jobs:
             TOTAL_FAILED=$((TOTAL_FAILED + $(echo "$RESPONSE" | jq -r '.failed // 0')))
             TOTAL_SKIPPED=$((TOTAL_SKIPPED + $(echo "$RESPONSE" | jq -r '.skippedForTime // 0')))
             TOTAL_JP=$((TOTAL_JP + $(echo "$RESPONSE" | jq -r '.skippedJapanese // 0')))
+            TOTAL_GUESSED=$((TOTAL_GUESSED + $(echo "$RESPONSE" | jq -r '.guessedSpikes // 0')))
+            TOTAL_ALERT_ERRORS=$((TOTAL_ALERT_ERRORS + $(echo "$RESPONSE" | jq -r '.alertInsertErrors // 0')))
 
             # Fewer rows than requested means this batch reached the end of
             # the above-floor, governed-game catalog — nothing left to join.
@@ -96,4 +100,4 @@ jobs:
           done
 
           echo "=== Combined totals across $BATCH_NUM batch(es) ==="
-          echo "{\"checked\":$TOTAL_CHECKED,\"spikes\":$TOTAL_SPIKES,\"failed\":$TOTAL_FAILED,\"skippedForTime\":$TOTAL_SKIPPED,\"skippedJapanese\":$TOTAL_JP}"
+          echo "{\"checked\":$TOTAL_CHECKED,\"spikes\":$TOTAL_SPIKES,\"failed\":$TOTAL_FAILED,\"skippedForTime\":$TOTAL_SKIPPED,\"skippedJapanese\":$TOTAL_JP,\"guessedSpikes\":$TOTAL_GUESSED,\"alertInsertErrors\":$TOTAL_ALERT_ERRORS}"

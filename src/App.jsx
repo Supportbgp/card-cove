@@ -110,7 +110,7 @@ export default function App() {
   const [showPriceAlerts, setShowPriceAlerts] = useState(false);
   const [priceTracking, setPriceTracking] = useState(DEFAULT_PRICE_TRACKING);
   // A request for Catalog to open one item's Edit screen (from a price
-  // alert's "Update price"). A fresh object each time, so asking for the
+  // alert's "Find card"). A fresh object each time, so asking for the
   // same sku twice still opens it twice.
   const [editRequest, setEditRequest] = useState(null);
 
@@ -156,10 +156,11 @@ export default function App() {
     await dbAcknowledgePriceAlerts(ids, toast);
   }
 
-  // "Update price" never changes a price itself — it switches to Catalog and
-  // opens that item's normal Edit screen, which shows the alert for
-  // reference; saving there is what clears the alert (handleSaveCard).
-  function handleUpdatePriceFromAlert(sku) {
+  // "Find card" never changes a price itself — it switches to Catalog and
+  // opens that item's normal Edit screen, which shows the alert (and the
+  // card it was compared against) for reference; saving there is what
+  // clears the alert (handleSaveCard).
+  function handleFindCardFromAlert(sku) {
     setShowPriceAlerts(false);
     setTab('catalog');
     setEditRequest({ sku });
@@ -605,7 +606,7 @@ export default function App() {
           alerts={priceAlerts}
           catalog={catalog}
           onClose={() => setShowPriceAlerts(false)}
-          onUpdatePrice={handleUpdatePriceFromAlert}
+          onFindCard={handleFindCardFromAlert}
           onDismiss={handleDismissPriceAlerts}
         />
       )}

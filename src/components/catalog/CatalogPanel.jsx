@@ -132,7 +132,7 @@ export default function CatalogPanel({
     setSelectedSkus(new Set());
   }
 
-  // The topbar price-alerts modal's "Update price" asks for a specific
+  // The topbar price-alerts modal's "Find card" asks for a specific
   // item's Edit screen — App.jsx owns that request (it also switches to this
   // tab), this just opens it and reports back so the same request can't
   // re-open the modal after it's closed.

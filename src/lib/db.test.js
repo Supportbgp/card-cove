@@ -400,6 +400,18 @@ describe('price alerts', () => {
       id: 'a1', sku: 'sku-1', name: 'Charizard', game: 'Pokemon',
       previousPrice: 250, newPrice: 417.78, pctChange: 67.1,
       detectedAt: '2026-10-14T13:07:00.000Z', acknowledged: false,
+      match: null, // raised before matched-card recording existed
+    });
+  });
+
+  it('maps the matched card the price check compared against', () => {
+    const a = rowToPriceAlert({
+      ...alertRow, matched_name: 'Mew', matched_set: 'Southern Islands', matched_number: '1',
+      matched_image: 'https://img/mew', matched_url: 'https://www.tcgplayer.com/product/46466', match_basis: 'set',
+    });
+    expect(a.match).toEqual({
+      name: 'Mew', set: 'Southern Islands', number: '1',
+      image: 'https://img/mew', url: 'https://www.tcgplayer.com/product/46466', basis: 'set',
     });
   });
 

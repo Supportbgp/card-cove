@@ -46,11 +46,11 @@ test('an open alert shows a topbar badge and a marker on the item\'s price', asy
   await expect(row).toContainText('+67%');
 });
 
-test('"Update price" opens Edit with the alert for reference, never changes the price itself, and saving clears the alert', async ({ page }) => {
+test('"Find card" opens Edit with the alert for reference, never changes the price itself, and saving clears the alert', async ({ page }) => {
   await seedHarness(page, { seed: seedWithAlert() });
   await page.goto('./');
   await page.locator('.price-alerts-badge').click();
-  await page.locator('.price-alert-row').getByRole('button', { name: 'Update price' }).click();
+  await page.locator('.price-alert-row').getByRole('button', { name: 'Find card' }).click();
 
   await expect(page.getByText('Edit item')).toBeVisible();
   await expect(page.locator('.price-alert-ref')).toContainText('$417.78');
@@ -87,13 +87,13 @@ test('Dismiss acknowledges the alert and leaves the price alone', async ({ page 
   expect(catalog[0].price).toBe(250);
 });
 
-test('an alert for an item no longer in the catalog can be dismissed but not updated', async ({ page }) => {
+test('an alert for an item no longer in the catalog can be dismissed but not opened', async ({ page }) => {
   await seedHarness(page, { seed: seedWithAlert([makeAlertRow({ sku: 'gone-sku', name: 'Blastoise' })]) });
   await page.goto('./');
   await page.locator('.price-alerts-badge').click();
   const row = page.locator('.price-alert-row');
   await expect(row).toContainText('no longer in the catalog');
-  await expect(row.getByRole('button', { name: 'Update price' })).toBeDisabled();
+  await expect(row.getByRole('button', { name: 'Find card' })).toBeDisabled();
   await expect(row.getByRole('button', { name: 'Dismiss' })).toBeEnabled();
 });
 
@@ -107,4 +107,29 @@ test('Pricing settings edits the daily price check\'s floor and spike thresholds
 
   await expect.poll(async () => page.evaluate(() => window.__HARNESS_DB__.price_tracking_settings[0]))
     .toMatchObject({ floor_price: 40, spike_pct: 15 });
+});
+
+test('each alert shows which card the check compared against, in the list and in Edit', async ({ page }) => {
+  await seedHarness(page, {
+    seed: seedWithAlert([makeAlertRow({
+      matched_name: 'Charizard', matched_set: 'Base Set 2', matched_number: '4',
+      matched_image: '', matched_url: 'https://www.tcgplayer.com/product/42479', match_basis: 'set',
+    })]),
+  });
+  await page.goto('./');
+  await page.locator('.price-alerts-badge').click();
+  const match = page.locator('.price-alert-row .price-alert-match');
+  await expect(match).toContainText('Compared against: Charizard — Base Set 2 #4');
+  await expect(match).toContainText("matched by this item's Set");
+  await expect(match.getByRole('link', { name: /View listing/ })).toHaveAttribute('href', 'https://www.tcgplayer.com/product/42479');
+
+  await page.locator('.price-alert-row').getByRole('button', { name: 'Find card' }).click();
+  await expect(page.locator('.price-alert-ref .price-alert-match')).toContainText('Base Set 2 #4');
+});
+
+test('an alert raised before matched-card recording says so instead of showing nothing', async ({ page }) => {
+  await seedHarness(page, { seed: seedWithAlert() });
+  await page.goto('./');
+  await page.locator('.price-alerts-badge').click();
+  await expect(page.locator('.price-alert-match.none')).toContainText('not recorded');
 });

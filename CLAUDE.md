@@ -5201,9 +5201,99 @@ does, editable thresholds, and merging the TCGdex follow-up PR first:
   before committing), which caught the alert list's name running into its
   game tag.
 
-No migration, no Edge Function redeploy — both tables already exist from
-`phase13_price_tracking.sql`, and their RLS already grants `authenticated`
-full access.
+No migration, no Edge Function redeploy for the UI itself — both tables
+already exist from `phase13_price_tracking.sql`, and their RLS already
+grants `authenticated` full access. (The follow-up below, in the same PR,
+does need both.)
+
+## Price alerts: matched card, Find card, and no alerts on guessed matches
+
+Real report from reviewing the UI above against live data: **46 open
+alerts where ~5 were expected**, many on generic names like "Mew", with no
+way to tell whether an alert compared our card against the right print.
+Two causes, confirmed rather than guessed:
+
+- **Alerts never recorded which card the check matched** — only name and
+  old/new price — so a wrong-print comparison was invisible.
+- **A generic name priced off an arbitrary print.** Confirmed live: a bare
+  "Mew" with no Set was priced off the **Southern Islands Mew at $644.58**.
+  (Older alerts from the pokemontcg.io-era runs also accumulate — the check
+  only skips a sku that already has an *open* alert — which is why the
+  count was so far above a single run's spikes.)
+
+Decided with the user (three questions): record the matched card on every
+alert; don't alert on guessed matches; and a **"Find card"** button that
+"just jumps into the card detail view" — which is exactly what the earlier
+"Update price" already did, so that button was **renamed to Find card**
+rather than adding a second button with identical behavior.
+
+- **`phase15_price_alert_match.sql`** adds `matched_name`/`matched_set`/
+  `matched_number`/`matched_image`/`matched_url`/`match_basis` (all text,
+  default `''`) to `price_alerts`. **Must run before redeploying
+  `price-check`** — the new function writes these columns.
+- **Every provider's lookup now returns a `match`** alongside the price,
+  using only field paths already confirmed elsewhere in this codebase
+  (`cardSearch.js`/`card-lookup-proxy`): Pokemon (TCGdex `name`/`set.name`/
+  `localId`/`image` + `/low.webp`, TCGPlayer product link), Magic
+  (`name`/`set_name`/`collector_number`/`image_uris.normal` or first face/
+  `purchase_uris.tcgplayer`), Lorcana (`name`+`version`/`set.name`/
+  `collector_number`/`image_uris.digital`/`purchase_uris.tcgplayer`),
+  Yu-Gi-Oh (`name`/`card_images[0].image_url` only — one YGOPRODeck entry
+  covers every printing, so there's no set/number to report), Egman games
+  (`name`/`set_code`/`card_code`/`_defaultImagePath` image/`tcgplayer_url`),
+  SWU (`Name`/`Set`/`FrontArt`).
+- **`match.basis` — how solidly the print was identified — Pokemon only**:
+  `number` (the number typed into the name), `set` (the item's own Set),
+  `only_print` (the only print with that name), else `guess`. **A spike on
+  a `guess` match is logged to `price_history` but never raised as an
+  alert** — counted as `guessedSpikes` (with a capped `sampleGuessedSpikes`
+  list) in the response and the workflow's combined totals. Pokemon only,
+  same reasoning as the JP skip: it's the only provider whose lookup ranks
+  prints and therefore knows *why* it picked one; every other game takes
+  the first search result with `basis: null` and alerts as before.
+- **Two more wrong-print bugs found while verifying live, both fixed**:
+  - **"Charizard 4/102" matched Base Set 2 #4.** The "/102" is the set's
+    printed card count (Base Set has 102, Base Set 2 has 130), so
+    `numberFromRawName` now also returns that total and prints whose set
+    `cardCount.official` equals it score higher (TCGdex GraphQL exposes
+    `set { cardCount { official } }` — confirmed). Now matches Base Set #4.
+  - **Magic "Sol Ring" was priced as "Searing Soloist".** Scryfall's plain
+    search matches each word separately and returns results
+    alphabetically; the check took the first. `magicPrice` now prefers a
+    result whose name — or a double-faced card's front face — equals the
+    searched name, falling back to the first only if none does.
+  - Also: Scryfall requests from `price-check` now send an explicit
+    `User-Agent`/`Accept`, per Scryfall's API rules — confirmed it rejects
+    Node's default User-Agent with a 400 `generic_user_agent` (Deno's
+    default has been accepted so far, so this was defensive, not a fix for
+    an observed production failure).
+- **An alert insert that fails is no longer silent** — counted as
+  `alertInsertErrors` with `firstAlertInsertError`, and only successful
+  inserts count toward `spikes`.
+- **UI — `PriceAlertMatch.jsx`**, shown in both the alerts list and Edit's
+  `.price-alert-ref` box: "Compared against: **Mew** — Southern Islands #1",
+  a thumbnail (click to zoom; hidden if the image fails to load), how it
+  was matched ("matched by this item's Set", "matched by the number in the
+  name", "the only print with this name", else "first search result"), and
+  a "View listing ↗" link. Alerts raised before this migration say
+  "Compared against: not recorded" instead of showing nothing.
+- Staff docs (`PricingSettingsSection.jsx`): Find card, the Compared
+  against check, and a note that a Pokemon item with no Set won't raise
+  alerts — fill its Set in to have it tracked.
+- **Verified live** (TCGdex/Scryfall reachable from this sandbox) against
+  real catalog names: bare "Mew" → `guess` (no alert); "Mew ex" + Set
+  "151" → `set`, 151 #151; "Charizard 4/102" → `number`, Base Set #4;
+  "Miraidon ex - 102/078" → `guess` (TCGdex has no English #102 — 078 is a
+  Japanese set size); "Sol Ring" → Sol Ring. Plus `db.test.js` (match
+  mapping) and two new `e2e/price-alerts.spec.js` cases (the Compared
+  against block in the list and in Edit; the not-recorded fallback).
+- **The existing open alerts predate all of this** — they show "not
+  recorded" and include guessed matches. "Dismiss all" once after the
+  redeploy lets the next run repopulate with recorded, non-guessed matches
+  only.
+
+**Requires, in order:** running `phase15_price_alert_match.sql` in the
+Supabase SQL Editor, then `supabase functions deploy price-check`.
 
 ## Backlog
 

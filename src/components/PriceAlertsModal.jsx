@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { GAME_TAG_CLASS } from '../lib/cardUtils.js';
 import { formatMoney, formatPctChange } from '../lib/priceAlertUtils.js';
 import { useUI } from '../context/UIContext.jsx';
+import PriceAlertMatch from './PriceAlertMatch.jsx';
 
 // Opened from the topbar's "N price alerts" badge. Lists every open
 // (unacknowledged) alert from the daily price check, biggest jump first.
-// "Update price" hands off to the item's normal Edit screen (which shows the
-// alert's market price for reference and clears the alert on save) — this
-// never changes a price by itself. "Dismiss" just acknowledges the alert.
-export default function PriceAlertsModal({ alerts, catalog, onClose, onUpdatePrice, onDismiss }) {
-  const { showConfirm } = useUI();
+// Each alert shows which card the check actually compared against, so a
+// wrong-print match is visible before anyone acts on it. "Find card" jumps to
+// the item's own detail (Edit) screen — which repeats that comparison next to
+// Our Price, lets staff correct the item's details, and clears the alert on
+// save — and never changes a price by itself. "Dismiss" just acknowledges.
+export default function PriceAlertsModal({ alerts, catalog, onClose, onFindCard, onDismiss }) {
+  const { showConfirm, openLightbox } = useUI();
   const [busy, setBusy] = useState(false);
   const bySku = new Map(catalog.map(c => [c.sku, c]));
   const sorted = alerts.slice().sort((a, b) => (b.pctChange ?? 0) - (a.pctChange ?? 0));
@@ -32,7 +35,8 @@ export default function PriceAlertsModal({ alerts, catalog, onClose, onUpdatePri
           <div className="name">Price alerts ({alerts.length})</div>
           <div className="meta">
             Items whose market price has risen well above Our Price since the daily price check last looked.
-            Nothing changes until you update a price yourself.
+            Check the card each one was compared against — a different print means a false alarm. Nothing
+            changes until you update a price yourself.
           </div>
         </div>
         <div className="modal-body">
@@ -63,13 +67,14 @@ export default function PriceAlertsModal({ alerts, catalog, onClose, onUpdatePri
                         Detected {a.detectedAt ? new Date(a.detectedAt).toLocaleDateString() : '—'}
                         {!card && ' · no longer in the catalog'}
                       </div>
+                      <PriceAlertMatch alert={a} onZoom={openLightbox} />
                     </div>
                     <div className="row-actions price-alert-actions">
                       <button
                         type="button" className="btn secondary small"
                         disabled={!card || busy}
-                        onClick={() => onUpdatePrice(a.sku)}
-                      >Update price</button>
+                        onClick={() => onFindCard(a.sku)}
+                      >Find card</button>
                       <button
                         type="button" className="btn ghost small"
                         disabled={busy}

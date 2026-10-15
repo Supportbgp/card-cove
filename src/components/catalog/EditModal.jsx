@@ -6,6 +6,7 @@ import { resizeImageFile } from '../../lib/image.js';
 import LocationPicker from '../LocationPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
 import { formatMoney, formatPctChange } from '../../lib/priceAlertUtils.js';
+import PriceAlertMatch from '../PriceAlertMatch.jsx';
 
 // A flat condition percentage is a population average, not this specific
 // card's real going rate — the higher the NM price, the bigger the dollar
@@ -553,6 +554,7 @@ export default function EditModal({ card, catalog, locations, multipliers, price
                 ({formatPctChange(priceAlert.pctChange)} vs. <span className="mono">{formatMoney(priceAlert.previousPrice)}</span>)
                 {priceAlert.detectedAt ? ` on ${new Date(priceAlert.detectedAt).toLocaleDateString()}` : ''}.
                 Saving this item clears the alert.
+                <PriceAlertMatch alert={priceAlert} onZoom={openLightbox} />
               </div>
             )}
             <div className="field-group">

@@ -1,4 +1,5 @@
 import DocsSection from '../DocsSection.jsx';
+import DocsCallout from '../DocsCallout.jsx';
 
 export default function PricingSettingsSection() {
   return (
@@ -32,13 +33,26 @@ export default function PricingSettingsSection() {
       </p>
       <p>
         Click the badge to see every open alert: Our Price, the market price
-        the check found, and how far apart they are. For each one you can:
+        the check found, and how far apart they are. Each alert also shows{' '}
+        <strong>Compared against</strong>: the exact card (set and number,
+        with a picture and a link to its listing) whose price the check used.
+        Check that first. If it's a different print from the one you have,
+        the alert is a false alarm.
       </p>
+      <DocsCallout kind="note">
+        The check only raises an alert when it's confident it found the right
+        print: the number in the item's name, the item's own Set, or the only
+        card with that name. A Pokemon item with just a name and no Set (like
+        "Mew") won't raise alerts, because there are too many Mews to tell
+        apart. Fill in its Set to have it tracked properly.
+      </DocsCallout>
+      <p>For each alert you can:</p>
       <ul>
         <li>
-          <strong>Update price</strong>: opens the item's normal Edit screen,
-          with the market price shown next to Our Price for reference. Our
-          Price is never filled in for you. Set it to whatever you decide,
+          <strong>Find card</strong>: opens the item's normal Edit screen,
+          with the market price and the card it was compared against shown
+          next to Our Price. Fix any wrong details (Set, Rarity, etc.) there.
+          Our Price is never filled in for you. Set it to whatever you decide,
           then <strong>Save</strong>. Saving the item clears its alert.
         </li>
         <li>

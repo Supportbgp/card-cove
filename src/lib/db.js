@@ -261,6 +261,14 @@ export function rowToPriceAlert(r) {
     pctChange: r.pct_change != null ? Number(r.pct_change) : null,
     detectedAt: r.detected_at,
     acknowledged: !!r.acknowledged,
+    // Which card the check compared against (phase15_price_alert_match.sql)
+    // — null for an alert raised before those columns existed.
+    match: r.matched_name
+      ? {
+        name: r.matched_name, set: r.matched_set || '', number: r.matched_number || '',
+        image: r.matched_image || '', url: r.matched_url || '', basis: r.match_basis || '',
+      }
+      : null,
   };
 }
 

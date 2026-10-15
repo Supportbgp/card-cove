@@ -170,13 +170,38 @@ function scryfallPrice(c) {
 
 async function magicPrice(item) {
   return withNameFallback(item, async (name) => {
-    const res = await fetchWithRetry(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(name)}`);
+    // Scryfall's API rules ask every client to send a real User-Agent and
+    // Accept header, and it rejects some HTTP libraries' default User-Agent
+    // outright (confirmed: Node's gets a 400 "generic_user_agent"). Deno's
+    // default has been accepted so far, but this doesn't depend on that.
+    const res = await fetchWithRetry(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(name)}`, 500, {
+      headers: { "User-Agent": "CardCove-PriceCheck/1.0", Accept: "application/json" },
+    });
     if (!res.ok) return { price: null, reason: "fetch_failed" };
     const data = await res.json();
-    const card = (data.data || [])[0];
+    // Scryfall's plain search matches each word separately and returns
+    // results alphabetically, so the first result isn't necessarily the card
+    // searched for — confirmed live: "Sol Ring" came back as "Searing
+    // Soloist" first. Prefer a result whose name (or a double-faced card's
+    // front face) equals the searched name; fall back to the first only if
+    // none does.
+    const results = data.data || [];
+    const wanted = name.trim().toLowerCase();
+    const card = results.find((c) => {
+      const n = (c.name || "").toLowerCase();
+      return n === wanted || n.split(" // ")[0] === wanted;
+    }) || results[0];
     if (!card) return { price: null, reason: "no_match" };
     const price = scryfallPrice(card);
-    return { price, reason: price == null ? "no_price" : null };
+    const image = (card.image_uris && card.image_uris.normal) ||
+      (card.card_faces && card.card_faces[0] && card.card_faces[0].image_uris && card.card_faces[0].image_uris.normal) || "";
+    return {
+      price, reason: price == null ? "no_price" : null,
+      match: {
+        name: card.name || "", set: card.set_name || "", number: card.collector_number || "",
+        image, url: (card.purchase_uris && card.purchase_uris.tcgplayer) || "", basis: null,
+      },
+    };
   });
 }
 
@@ -191,7 +216,7 @@ async function magicPrice(item) {
 // one. TCG Pocket (mobile-game, digital-only) cards share the same database
 // and are skipped.
 const TCGDEX_BASE = "https://api.tcgdex.net/v2";
-const TCGDEX_CARDS_QUERY = "query($name:String!){ cards(filters:{name:$name}) { id localId name image set { name } } }";
+const TCGDEX_CARDS_QUERY = "query($name:String!){ cards(filters:{name:$name}) { id localId name image set { name cardCount { official } } } }";
 
 function tcgdexSerie(image) {
   const m = /^https?:\/\/[^/]+\/[^/]+\/([^/]+)\//.exec(image || "");
@@ -222,10 +247,10 @@ function pokemonSpellingVariant(name) {
 function numberFromRawName(rawName) {
   const raw = String(rawName || "");
   const stripped = raw.replace(/\([^)]*\)/g, " ").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
-  const trailing = /(?:^|\s)-?\s*(\d+)(?:\s*\/\s*\d+)?$/.exec(stripped);
-  if (trailing) return trailing[1];
+  const trailing = /(?:^|\s)-?\s*(\d+)(?:\s*\/\s*(\d+))?$/.exec(stripped);
+  if (trailing) return { number: trailing[1], total: trailing[2] || "" };
   const paren = /\((\d{1,4})\)/.exec(raw);
-  return paren ? paren[1] : "";
+  return { number: paren ? paren[1] : "", total: "" };
 }
 function normalizeLocalId(s) {
   return String(s || "").trim().toUpperCase().replace(/^0+(?=.)/, "");
@@ -264,6 +289,18 @@ function pokemonTcgplayerPrice(card) {
   return null;
 }
 
+// The TCGPlayer product id of the first variant that carries one — for a
+// direct "this is the listing we compared against" link on the alert, same
+// URL format the in-app search uses (confirmed live).
+function pokemonProductId(card) {
+  const t = card && card.pricing && card.pricing.tcgplayer;
+  if (!t) return null;
+  for (const v of Object.values(t)) {
+    if (v && typeof v === "object" && v.productId != null) return v.productId;
+  }
+  return null;
+}
+
 async function tcgdexSearch(name) {
   const res = await fetchWithRetry(`${TCGDEX_BASE}/graphql`, 500, {
     method: "POST",
@@ -284,7 +321,13 @@ async function pokemonPrice(item) {
   // The collector number is never saved on a catalog row (see CLAUDE.md's
   // catalog.number crash fix), but it's often typed into the name itself —
   // read off the raw name before cleanCardName strips it.
-  const wantNumber = normalizeLocalId(numberFromRawName(item.name));
+  const typed = numberFromRawName(item.name);
+  const wantNumber = normalizeLocalId(typed.number);
+  // "4/102": the total after the slash is that set's printed card count —
+  // Base Set has 102, Base Set 2 has 130 — so it singles out the right set
+  // among several that share the same number (confirmed live: without it,
+  // "Charizard 4/102" matched Base Set 2 #4).
+  const wantTotal = typed.total ? Number(typed.total) : null;
   const wantSet = String(item.set_name || "").trim().toLowerCase();
 
   return withNameFallback(item, async (rawName) => {
@@ -310,6 +353,7 @@ async function pokemonPrice(item) {
     const setOf = (c) => ((c.set && c.set.name) || "").toLowerCase();
     const score = (c) =>
       (wantNumber && normalizeLocalId(c.localId) === wantNumber ? 2 : 0) +
+      (wantTotal && c.set && c.set.cardCount && Number(c.set.cardCount.official) === wantTotal ? 2 : 0) +
       (wantSet && setOf(c) === wantSet ? 1 : 0);
     const ranked = pool.map((c, i) => ({ c, i, s: score(c) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.c);
 
@@ -321,8 +365,30 @@ async function pokemonPrice(item) {
       const cardRes = await fetchWithRetry(`${TCGDEX_BASE}/en/cards/${encodeURIComponent(card.id)}`);
       if (!cardRes.ok) continue;
       anyFetched = true;
-      const price = pokemonTcgplayerPrice(await cardRes.json());
-      if (price != null) return { price, reason: null };
+      const full = await cardRes.json();
+      const price = pokemonTcgplayerPrice(full);
+      if (price != null) {
+        // How solidly this print was identified — the number typed into the
+        // name, the item's own Set, or it being the only print of that name.
+        // Anything else is a guess among several same-name prints (a bare
+        // "Mew"), which the caller logs to price_history but never alerts on.
+        const basis = wantNumber && normalizeLocalId(card.localId) === wantNumber ? "number"
+          : wantSet && setOf(card) === wantSet ? "set"
+          : pool.length === 1 ? "only_print"
+          : "guess";
+        const productId = pokemonProductId(full);
+        return {
+          price, reason: null,
+          match: {
+            name: card.name || "",
+            set: (card.set && card.set.name) || "",
+            number: card.localId || "",
+            image: card.image ? `${card.image}/low.webp` : "",
+            url: productId != null ? `https://www.tcgplayer.com/product/${productId}` : "",
+            basis,
+          },
+        };
+      }
     }
     return { price: null, reason: anyFetched ? "no_price" : "fetch_failed" };
   });
@@ -336,7 +402,15 @@ async function yugiohPrice(item) {
     const card = (data.data || [])[0];
     if (!card) return { price: null, reason: "no_match" };
     const price = (card.card_prices && card.card_prices[0] && Number(card.card_prices[0].tcgplayer_price)) || null;
-    return { price, reason: price == null ? "no_price" : null };
+    // One YGOPRODeck entry covers every printing, and this price is that
+    // card's own aggregate — there's no single set/number to report.
+    return {
+      price, reason: price == null ? "no_price" : null,
+      match: {
+        name: card.name || "", set: "", number: "",
+        image: (card.card_images && card.card_images[0] && card.card_images[0].image_url) || "", url: "", basis: null,
+      },
+    };
   });
 }
 
@@ -356,7 +430,15 @@ async function lorcanaPrice(item) {
     const card = (data.results || [])[0];
     if (!card) return { price: null, reason: "no_match" };
     const price = lorcastPrice(card);
-    return { price, reason: price == null ? "no_price" : null };
+    return {
+      price, reason: price == null ? "no_price" : null,
+      match: {
+        name: `${card.name || ""}${card.version ? " - " + card.version : ""}`,
+        set: (card.set && card.set.name) || "", number: card.collector_number || "",
+        image: (card.image_uris && card.image_uris.digital && (card.image_uris.digital.small || card.image_uris.digital.normal)) || "",
+        url: (card.purchase_uris && card.purchase_uris.tcgplayer) || "", basis: null,
+      },
+    };
   });
 }
 
@@ -385,7 +467,14 @@ async function egmanPrice(gameSlug, item) {
     if (!match) return { price: null, reason: "no_match" };
     const priceEntry = priceByCode.get(match.card_code);
     const price = priceEntry ? priceEntry.market_price : null;
-    return { price, reason: price == null ? "no_price" : null };
+    return {
+      price, reason: price == null ? "no_price" : null,
+      match: {
+        name: match.name || "", set: match.set_code || "", number: match.card_code || "",
+        image: match._defaultImagePath ? `https://deckbuilder.egmanevents.com/api/images/${gameSlug}/${match._defaultImagePath}` : "",
+        url: (priceEntry && priceEntry.tcgplayer_url) || "", basis: null,
+      },
+    };
   });
 }
 
@@ -397,7 +486,10 @@ async function swuPrice(item) {
     const card = (Array.isArray(data.data) ? data.data : [])[0];
     if (!card) return { price: null, reason: "no_match" };
     const price = card.MarketPrice ? Number(card.MarketPrice) : null;
-    return { price, reason: price == null ? "no_price" : null };
+    return {
+      price, reason: price == null ? "no_price" : null,
+      match: { name: card.Name || "", set: card.Set || "", number: "", image: card.FrontArt || "", url: "", basis: null },
+    };
   });
 }
 
@@ -563,6 +655,18 @@ Deno.serve(async (req) => {
   }
 
   let checked = 0, spikes = 0, failed = 0, skippedForTime = 0, skippedJapanese = 0;
+  // A spike whose price came from a guessed print (see pokemonPrice's
+  // `basis`) is logged to price_history but never raised as an alert — a
+  // bare "Mew" priced off whichever Mew print came first is exactly where
+  // the first TCGdex runs' false spikes came from. Counted, with a capped
+  // sample, so the response still shows what was held back.
+  let guessedSpikes = 0;
+  const sampleGuessedSpikes = [];
+  // An alert insert that fails (e.g. the matched_* columns from
+  // phase15_price_alert_match.sql not added yet) used to fail silently —
+  // reported here instead.
+  let alertInsertErrors = 0;
+  let firstAlertInsertError = null;
   const failedByGame = {};
   const failedByReason = {};
   // Finer-grained than either tally alone — this round's diagnosis needed to
@@ -594,7 +698,7 @@ Deno.serve(async (req) => {
       skippedJapanese++;
       return;
     }
-    const { price, reason } = await lookupPrice(item);
+    const { price, reason, match } = await lookupPrice(item);
     if (price == null) {
       failed++;
       failedByGame[item.game] = (failedByGame[item.game] || 0) + 1;
@@ -618,7 +722,12 @@ Deno.serve(async (req) => {
     });
 
     const pctChange = item.price > 0 ? ((price - item.price) / item.price) * 100 : 0;
-    if (pctChange >= spikePct) {
+    if (pctChange >= spikePct && match && match.basis === "guess") {
+      guessedSpikes++;
+      if (sampleGuessedSpikes.length < MAX_SAMPLE_FAILURES) {
+        sampleGuessedSpikes.push({ sku: item.sku, name: item.name, matched: `${match.name} (${match.set} #${match.number})` });
+      }
+    } else if (pctChange >= spikePct) {
       // Don't pile up a fresh alert every single day a sustained spike
       // persists — one unacknowledged alert per sku is enough to drive the
       // in-app badge; staff dismiss it (or update the price) once, not once
@@ -630,11 +739,24 @@ Deno.serve(async (req) => {
         .eq("acknowledged", false)
         .limit(1);
       if (!existing || existing.length === 0) {
-        spikes++;
-        await admin.from("price_alerts").insert({
+        // Which card the check actually compared against, so staff can
+        // tell a real spike from a wrong-print match at a glance.
+        const { error: insertError } = await admin.from("price_alerts").insert({
           sku: item.sku, name: item.name, game: item.game,
           previous_price: item.price, new_price: price, pct_change: pctChange,
+          matched_name: (match && match.name) || "",
+          matched_set: (match && match.set) || "",
+          matched_number: (match && match.number) || "",
+          matched_image: (match && match.image) || "",
+          matched_url: (match && match.url) || "",
+          match_basis: (match && match.basis) || "",
         });
+        if (insertError) {
+          alertInsertErrors++;
+          if (!firstAlertInsertError) firstAlertInsertError = insertError.message;
+        } else {
+          spikes++;
+        }
       }
     }
   });
@@ -662,6 +784,8 @@ Deno.serve(async (req) => {
     total: (items || []).length, checked, spikes, failed, skippedJapanese,
     truncated: skippedForTime > 0, skippedForTime,
     failedByGame, failedByReason, failedDetail, sampleFailures,
+    guessedSpikes, sampleGuessedSpikes,
+    alertInsertErrors, firstAlertInsertError,
   }, 200);
 });
 
