@@ -1,6 +1,7 @@
 import { supabaseClient } from './supabase.js';
 import { normalizeCard, DEFAULT_CONDITION_MULTIPLIERS } from './cardUtils.js';
 import { DEFAULT_QUOTE_TIER_PCTS } from './quoteUtils.js';
+import { DEFAULT_PRICE_TRACKING } from './priceAlertUtils.js';
 
 // Supabase/PostgREST caps a bare `.select()` at the project's configured
 // Max Rows (1000 by default) — past that point a table's real total is
@@ -243,6 +244,63 @@ export async function dbSaveSettings(multipliers, toast) {
     updated_at: new Date().toISOString(),
   }).eq('id', 1);
   if (error) toast('Failed to save settings: ' + error.message, true);
+}
+
+// Price-spike alerts — written by the daily price-check Edge Function, read
+// and acknowledged here (see priceAlertUtils.js). Only unacknowledged alerts
+// are loaded: a dismissed alert is kept in the table as history (never
+// deleted), but nothing in the app shows it anymore.
+export function rowToPriceAlert(r) {
+  return {
+    id: r.id,
+    sku: r.sku,
+    name: r.name || '',
+    game: r.game || '',
+    previousPrice: r.previous_price != null ? Number(r.previous_price) : null,
+    newPrice: r.new_price != null ? Number(r.new_price) : null,
+    pctChange: r.pct_change != null ? Number(r.pct_change) : null,
+    detectedAt: r.detected_at,
+    acknowledged: !!r.acknowledged,
+  };
+}
+
+export async function dbLoadPriceAlerts(toast) {
+  const { data, error } = await fetchAllRows('price_alerts', 'detected_at', {
+    ascending: false,
+    filter: (q) => q.eq('acknowledged', false),
+  });
+  if (error) {
+    toast('Failed to load price alerts: ' + error.message, true);
+    return [];
+  }
+  return data.map(rowToPriceAlert);
+}
+
+export async function dbAcknowledgePriceAlerts(ids, toast) {
+  if (!ids || !ids.length) return;
+  const { error } = await supabaseClient.from('price_alerts').update({ acknowledged: true }).in('id', ids);
+  if (error) toast('Failed to dismiss price alert: ' + error.message, true);
+}
+
+// price_tracking_settings — a singleton row (id=1), same pattern as
+// store_settings/quote_settings. The daily price-check reads these same two
+// columns, so a change here applies from its next run onward.
+export async function dbLoadPriceTrackingSettings(toast) {
+  const { data, error } = await supabaseClient.from('price_tracking_settings').select('*').eq('id', 1).maybeSingle();
+  if (error) {
+    toast('Failed to load price-alert settings: ' + error.message, true);
+    return { ...DEFAULT_PRICE_TRACKING };
+  }
+  if (!data) return { ...DEFAULT_PRICE_TRACKING };
+  return { floorPrice: Number(data.floor_price), spikePct: Number(data.spike_pct) };
+}
+
+export async function dbSavePriceTrackingSettings(settings, toast) {
+  const { error } = await supabaseClient.from('price_tracking_settings').update({
+    floor_price: settings.floorPrice, spike_pct: settings.spikePct,
+    updated_at: new Date().toISOString(),
+  }).eq('id', 1);
+  if (error) toast('Failed to save price-alert settings: ' + error.message, true);
 }
 
 // Quote tab — one row is both a "collection" (in-progress) and, once

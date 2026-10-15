@@ -35,5 +35,7 @@ export function catalogSeed(rows) {
     quote_settings: [{ id: 1, tier1_pct: 50, tier2_pct: 60, tier3_pct: 70 }],
     sorting_queue: [],
     sales: [],
+    price_alerts: [],
+    price_tracking_settings: [{ id: 1, floor_price: 25, spike_pct: 20 }],
   };
 }

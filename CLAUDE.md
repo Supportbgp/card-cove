@@ -5119,6 +5119,91 @@ with the user before building:
 
 **Requires redeploying `price-check`** (`supabase functions deploy
 price-check`); the in-app search side ships with the GitHub Pages deploy.
+The follow-up run after it deployed: **244 checked / 14 failed** (was 41),
+every remaining failure one of the known gaps above, 4 JP items skipped.
+
+## Price tracking, PR 2: the in-app alerts UI
+
+The second half of Feature B (see "Price tracking & spike alerts" above,
+whose PR 1 wrote alerts but had no UI to read them). Four design calls
+confirmed with the user before building — placement, what "Update price"
+does, editable thresholds, and merging the TCGdex follow-up PR first:
+
+- **Topbar badge + Catalog row markers, not a new tab.** A blue
+  `.price-alerts-badge` ("▲ N price alerts") sits next to "N pending sync"
+  (the two are now grouped in `.topbar-badges` — `.topbar` is
+  `space-between`, so a second badge would otherwise float mid-bar), so
+  alerts are visible from every tab. It only renders when there's at least
+  one open alert — no "0 price alerts" noise. Clicking it opens
+  `PriceAlertsModal.jsx`: every open alert, biggest % jump first, showing
+  Our Price (the item's *current* catalog price, falling back to the
+  alert's `previous_price` snapshot) → the market price found → % change,
+  plus the detected date. Catalog rows with an open alert get a small blue
+  `▲` (`.price-alert-marker`, `CatalogTable.jsx`'s `PriceAlertMarker`) next
+  to the price on both the desktop table and the mobile cards, with the
+  market price/% in its tooltip. Blue because that's this app's
+  informational role — a market rise is something to review, not a
+  warning (amber, already "pending sync") or a danger/sold state (rust);
+  the border uses the same 65%-soft/35%-fg blend as the other badges.
+- **"Update price" opens the item's normal Edit screen, never prefilled.**
+  `App.jsx`'s `handleUpdatePriceFromAlert` closes the modal, switches to
+  the Catalog tab (required — every tab stays mounted but CSS-hidden, so
+  an Edit modal opened inside a hidden Catalog panel would be invisible),
+  and sets an `editRequest` that `CatalogPanel` turns into its own
+  `editingSku`. `EditModal` gets the alert as a `priceAlert` prop and shows
+  a `.price-alert-ref` box right under Our price: the market price found,
+  the % vs. the price at the time, the date, and "Saving this item clears
+  the alert." Our Price is left exactly as it was — the user's explicit
+  choice, consistent with this app's standing "never silently overwrite a
+  manual entry" rule.
+- **Saving an item clears its alert; Dismiss clears it without a save.**
+  `handleSaveCard` acknowledges any open alert for the saved sku (old or
+  new sku, in case it was renamed) after a successful save — any save
+  counts as "reviewed," even one that keeps the same price. "Dismiss" (and
+  "Dismiss all", behind a confirm) acknowledges without touching the
+  item. Either way the row is **acknowledged, never deleted**
+  (`dbAcknowledgePriceAlerts`), keeping `price_alerts` as the historical
+  record PR 1 designed it to be. An alert whose item has since been
+  deleted shows "no longer in the catalog" with Update price disabled and
+  Dismiss still available.
+- **The two thresholds are editable in Pricing settings** (previously SQL
+  Editor only): "Track items priced at or above ($)" and "Alert when
+  market is up at least (%)", saved to `price_tracking_settings` row id 1
+  (`dbLoadPriceTrackingSettings`/`dbSavePriceTrackingSettings`), same
+  singleton pattern as `store_settings`/`quote_settings`, defaulting to
+  $25/20% (`DEFAULT_PRICE_TRACKING` in the new `priceAlertUtils.js`) until
+  the real row loads. Real `htmlFor`/`id` labels from the start, per the
+  accessibility lesson recorded elsewhere in this file. Takes effect from
+  the next daily run.
+- **Loaded once at sign-in, no realtime.** `dbLoadPriceAlerts` loads only
+  unacknowledged rows (through `fetchAllRows`, newest first). Alerts only
+  change once a day, so `price_alerts` was deliberately not added to the
+  realtime channel (which would also need the manual Supabase publication
+  step). Accepted consequence: a dismissal on one device shows on another
+  only after a reload.
+- `priceAlertUtils.js` holds the shared shaping — `alertsBySku` (one alert
+  per sku, the most recent if there are ever two), `formatPctChange`,
+  `formatMoney` — so the badge, modal, row marker and Edit box can't
+  disagree. Writing its tests caught a real bug: `formatPctChange(null)`
+  rendered "+0%" because `Number(null)` is 0.
+- Staff docs: a "Price alerts" subsection in `PricingSettingsSection.jsx`.
+- Covered by `priceAlertUtils.test.js`, new `db.test.js` cases (row
+  mapping, unacknowledged-only load, acknowledge-not-delete, settings
+  load/default/save), and a new `e2e/price-alerts.spec.js` (Desktop +
+  Mobile): no badge without open alerts; badge + row marker + modal
+  contents; Update price → Edit shows the reference box with Our Price
+  untouched, and saving acknowledges the alert and removes the badge and
+  marker; Dismiss acknowledges without changing the price; a deleted
+  item's alert can be dismissed but not updated; Pricing settings writes
+  both thresholds. The mock harness and `catalogSeed` gained
+  `price_alerts`/`price_tracking_settings` tables. Visually checked at
+  desktop and mobile widths via throwaway Playwright screenshots (deleted
+  before committing), which caught the alert list's name running into its
+  game tag.
+
+No migration, no Edge Function redeploy — both tables already exist from
+`phase13_price_tracking.sql`, and their RLS already grants `authenticated`
+full access.
 
 ## Backlog
 

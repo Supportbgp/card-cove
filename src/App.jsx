@@ -4,6 +4,7 @@ import {
   dbLoadAll, dbUpsertCard, dbUpsertCards, dbDeleteCard, dbDeleteCards, dbClearCatalog,
   dbInsertTickets, dbUpdateTicketStamp, dbClearQueue, dbUpdatePlatformStatus, dbInsertSales, dbLoadSales, dbUpdateSale,
   dbLoadSettings, dbSaveSettings,
+  dbLoadPriceAlerts, dbAcknowledgePriceAlerts, dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadQuotes, dbUpsertQuote, dbDeleteQuote, dbLoadQuoteSettings, dbSaveQuoteSettings,
   dbLoadSortingQueue, dbInsertSortingItems, dbDeleteSortingItem,
 } from './lib/db.js';
@@ -21,6 +22,8 @@ import SyncQueueTab from './components/queue/SyncQueueTab.jsx';
 import ImportExportPanel from './components/importexport/ImportExportPanel.jsx';
 import ScannerPanel from './components/scanner/ScannerPanel.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
+import PriceAlertsModal from './components/PriceAlertsModal.jsx';
+import { DEFAULT_PRICE_TRACKING, alertsBySku } from './lib/priceAlertUtils.js';
 import QuotesTab from './components/quotes/QuotesTab.jsx';
 import SortingTab from './components/sorting/SortingTab.jsx';
 import ReportsTab from './components/reports/ReportsTab.jsx';
@@ -100,6 +103,16 @@ export default function App() {
   // decision (a real binder/case, or Bulk). See db.js/quoteUtils.js and
   // CLAUDE.md's "Sorting stage" section.
   const [sorting, setSorting] = useState([]);
+  // Open (unacknowledged) alerts from the daily price check — see
+  // priceAlertUtils.js. Loaded once at sign-in; the check only runs daily,
+  // so there's nothing to sync live.
+  const [priceAlerts, setPriceAlerts] = useState([]);
+  const [showPriceAlerts, setShowPriceAlerts] = useState(false);
+  const [priceTracking, setPriceTracking] = useState(DEFAULT_PRICE_TRACKING);
+  // A request for Catalog to open one item's Edit screen (from a price
+  // alert's "Update price"). A fresh object each time, so asking for the
+  // same sku twice still opens it twice.
+  const [editRequest, setEditRequest] = useState(null);
 
   useEffect(() => {
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -119,14 +132,37 @@ export default function App() {
     dbLoadQuotes(toast).then(setQuotes);
     dbLoadQuoteSettings(toast).then(setTierSettings).catch(() => setTierSettings(DEFAULT_QUOTE_TIER_PCTS));
     dbLoadSortingQueue(toast).then(setSorting);
+    dbLoadPriceAlerts(toast).then(setPriceAlerts);
+    dbLoadPriceTrackingSettings(toast).then(setPriceTracking).catch(() => setPriceTracking(DEFAULT_PRICE_TRACKING));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn]);
 
-  async function handleSaveSettings(next) {
+  async function handleSaveSettings(next, nextTracking) {
     setMultipliers(next);
     await dbSaveSettings(next, toast);
+    if (nextTracking) {
+      setPriceTracking(nextTracking);
+      await dbSavePriceTrackingSettings(nextTracking, toast);
+    }
     setShowSettings(false);
     toast("Pricing settings saved");
+  }
+
+  const priceAlertsBySku = useMemo(() => alertsBySku(priceAlerts), [priceAlerts]);
+
+  async function handleDismissPriceAlerts(ids) {
+    const idSet = new Set(ids);
+    setPriceAlerts(prev => prev.filter(a => !idSet.has(a.id)));
+    await dbAcknowledgePriceAlerts(ids, toast);
+  }
+
+  // "Update price" never changes a price itself — it switches to Catalog and
+  // opens that item's normal Edit screen, which shows the alert for
+  // reference; saving there is what clears the alert (handleSaveCard).
+  function handleUpdatePriceFromAlert(sku) {
+    setShowPriceAlerts(false);
+    setTab('catalog');
+    setEditRequest({ sku });
   }
 
   useRealtimeSync({ enabled: signedIn, setCatalog, setQueue, setQuotes, setSorting });
@@ -170,6 +206,10 @@ export default function App() {
         qtySold, salePrice: record.price, cost: record.cost, soldAt,
       };
     }
+    // Saving an item with an open price alert counts as having reviewed its
+    // price (decided with the user: Edit shows the alert's market price for
+    // reference, staff set Our Price themselves, and the save clears it).
+    const reviewedAlertIds = priceAlerts.filter(a => a.sku === prevSku || a.sku === record.sku).map(a => a.id);
     let nextCatalog;
     if (existing) {
       if (record.sku !== prevSku) {
@@ -189,6 +229,7 @@ export default function App() {
       await dbInsertTickets([newTicket], toast);
       await dbInsertSales([newSale], toast);
     }
+    if (reviewedAlertIds.length) await handleDismissPriceAlerts(reviewedAlertIds);
     // Toasts are single-slot, not a queue — combine into one call so a
     // warning doesn't just silently overwrite an unseen "Saved" message.
     const warnings = [priceOrderingWarning(nextCatalog, record), priceVsMarketValueWarning(record, multipliers)].filter(Boolean);
@@ -462,9 +503,21 @@ export default function App() {
           <span className="mark">Card Cove</span>
           <span className="sub brand-tagline">singles &amp; slabs · source of truth</span>
         </div>
+        <div className="topbar-badges">
         <div className={`pending-badge${pendingCount === 0 ? ' zero' : ''}`}>
           <span className="pending-dot"></span>
           <span>{pendingCount} pending sync</span>
+        </div>
+        {priceAlerts.length > 0 && (
+          <button
+            type="button" className="price-alerts-badge"
+            onClick={() => setShowPriceAlerts(true)}
+            title="Items whose market price has risen well above Our Price"
+          >
+            <span aria-hidden="true">▲</span>
+            <span>{priceAlerts.length} price alert{priceAlerts.length === 1 ? '' : 's'}</span>
+          </button>
+        )}
         </div>
       </div>
 
@@ -490,6 +543,9 @@ export default function App() {
           onSellPartial={handleSellPartial}
           onTogglePlatformStatus={handleTogglePlatformStatus}
           multipliers={multipliers}
+          priceAlertsBySku={priceAlertsBySku}
+          editRequest={editRequest}
+          onEditRequestHandled={() => setEditRequest(null)}
         />
       </div>
       <div className={`panel${tab === 'queue' ? ' active' : ''}`}>
@@ -539,8 +595,18 @@ export default function App() {
       {showSettings && (
         <SettingsModal
           multipliers={multipliers}
+          priceTracking={priceTracking}
           onClose={() => setShowSettings(false)}
           onSave={handleSaveSettings}
+        />
+      )}
+      {showPriceAlerts && (
+        <PriceAlertsModal
+          alerts={priceAlerts}
+          catalog={catalog}
+          onClose={() => setShowPriceAlerts(false)}
+          onUpdatePrice={handleUpdatePriceFromAlert}
+          onDismiss={handleDismissPriceAlerts}
         />
       )}
     </div>
