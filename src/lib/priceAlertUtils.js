@@ -1,3 +1,5 @@
+import { CONDITION_TIERS } from './cardUtils.js';
+
 // Price-spike alerts (Feature B, PR 2 — the in-app UI). The alerts
 // themselves are written by the daily `price-check` Edge Function; this is
 // only the client-side shaping the topbar badge, the alerts modal, the
@@ -32,4 +34,17 @@ export function formatPctChange(pct) {
 
 export function formatMoney(n) {
   return n == null || n === '' || !Number.isFinite(Number(n)) ? '—' : '$' + Number(n).toFixed(2);
+}
+
+// How an alert's market price relates to condition, as one short phrase:
+// "est. for Damaged · NM $40.00" when the check scaled an NM price down to
+// this copy's condition, "Near Mint" when it compared NM to NM, or a note
+// that an older alert (raised before condition-aware checking) compared
+// against NM regardless of the item's condition.
+export function alertConditionNote(alert) {
+  if (!alert || !alert.condition) return 'compared as Near Mint (older alert)';
+  const tier = CONDITION_TIERS.find(t => t.key === alert.condition);
+  const name = tier ? tier.name : alert.condition;
+  if (alert.condition === 'NM') return 'Near Mint';
+  return `est. for ${name}${alert.marketNmPrice != null ? ` · NM ${formatMoney(alert.marketNmPrice)}` : ''}`;
 }

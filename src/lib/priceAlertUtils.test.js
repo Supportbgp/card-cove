@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { alertsBySku, formatPctChange, formatMoney } from './priceAlertUtils.js';
+import { alertsBySku, formatPctChange, formatMoney, alertConditionNote } from './priceAlertUtils.js';
 
 describe('alertsBySku', () => {
   it('keys alerts by sku, keeping the most recent if a sku somehow has two', () => {
@@ -30,5 +30,20 @@ describe('formatting', () => {
     expect(formatMoney(417.78)).toBe('$417.78');
     expect(formatMoney(25)).toBe('$25.00');
     expect(formatMoney(null)).toBe('—');
+  });
+});
+
+describe('alertConditionNote', () => {
+  it('explains a condition-adjusted market price (real report: a Damaged Fossil Gengar compared against NM)', () => {
+    expect(alertConditionNote({ condition: 'DMG', marketNmPrice: 223.38 })).toBe('est. for Damaged · NM $223.38');
+    expect(alertConditionNote({ condition: 'LP', marketNmPrice: 10 })).toBe('est. for Lightly Played · NM $10.00');
+  });
+
+  it('says plainly when the comparison was NM to NM', () => {
+    expect(alertConditionNote({ condition: 'NM', marketNmPrice: 50 })).toBe('Near Mint');
+  });
+
+  it('flags an older alert that compared against NM regardless of condition', () => {
+    expect(alertConditionNote({ condition: null })).toBe('compared as Near Mint (older alert)');
   });
 });

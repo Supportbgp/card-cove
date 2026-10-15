@@ -133,3 +133,20 @@ test('an alert raised before matched-card recording says so instead of showing n
   await page.locator('.price-alerts-badge').click();
   await expect(page.locator('.price-alert-match.none')).toContainText('not recorded');
 });
+
+test('a condition-adjusted alert shows the condition estimate and the NM price it came from', async ({ page }) => {
+  await seedHarness(page, {
+    seed: {
+      ...catalogSeed([makeCardRow({ sku: 'sku-1', name: 'Gengar', set_name: 'Fossil', condition: 'Damaged', price: 40 })]),
+      price_alerts: [makeAlertRow({
+        name: 'Gengar', previous_price: 40, new_price: 55.85, pct_change: 39.6,
+        condition: 'DMG', market_nm_price: 223.38,
+      })],
+    },
+  });
+  await page.goto('./');
+  await page.locator('.price-alerts-badge').click();
+  const row = page.locator('.price-alert-row');
+  await expect(row).toContainText('$55.85');
+  await expect(row).toContainText('est. for Damaged · NM $223.38');
+});

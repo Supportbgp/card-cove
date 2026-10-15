@@ -400,8 +400,14 @@ describe('price alerts', () => {
       id: 'a1', sku: 'sku-1', name: 'Charizard', game: 'Pokemon',
       previousPrice: 250, newPrice: 417.78, pctChange: 67.1,
       detectedAt: '2026-10-14T13:07:00.000Z', acknowledged: false,
+      condition: null, marketNmPrice: null, // raised before condition-aware checking
       match: null, // raised before matched-card recording existed
     });
+  });
+
+  it('maps the condition tier and the raw NM price behind a condition-adjusted alert', () => {
+    const a = rowToPriceAlert({ ...alertRow, condition: 'DMG', market_nm_price: '223.38', new_price: '55.85' });
+    expect(a).toMatchObject({ condition: 'DMG', marketNmPrice: 223.38, newPrice: 55.85 });
   });
 
   it('maps the matched card the price check compared against', () => {

@@ -261,6 +261,11 @@ export function rowToPriceAlert(r) {
     pctChange: r.pct_change != null ? Number(r.pct_change) : null,
     detectedAt: r.detected_at,
     acknowledged: !!r.acknowledged,
+    // The condition tier the market price was adjusted to, and the raw NM
+    // price before that adjustment — both null on alerts raised before
+    // condition-aware checking (those compared against NM directly).
+    condition: r.condition || null,
+    marketNmPrice: r.market_nm_price != null ? Number(r.market_nm_price) : null,
     // Which card the check compared against (phase15_price_alert_match.sql)
     // — null for an alert raised before those columns existed.
     match: r.matched_name

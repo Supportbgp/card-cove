@@ -22,3 +22,13 @@ alter table price_alerts add column matched_number text not null default '';
 alter table price_alerts add column matched_image text not null default '';
 alter table price_alerts add column matched_url text not null default '';
 alter table price_alerts add column match_basis text not null default '';
+
+-- Condition: provider prices are Near Mint, so price-check now scales the NM
+-- price by the store's condition multipliers (store_settings) before
+-- comparing — real report: a Damaged Gengar alerting against an NM price.
+-- `condition` is the item's condition tier at check time (NM/LP/MP/HP/DMG),
+-- `market_nm_price` the raw NM price found; `new_price` becomes the
+-- condition-adjusted estimate that was actually compared. Both null for
+-- alerts raised before this migration (compared as NM).
+alter table price_alerts add column condition text;
+alter table price_alerts add column market_nm_price numeric;

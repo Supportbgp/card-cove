@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { GAME_TAG_CLASS } from '../lib/cardUtils.js';
-import { formatMoney, formatPctChange } from '../lib/priceAlertUtils.js';
+import { formatMoney, formatPctChange, alertConditionNote } from '../lib/priceAlertUtils.js';
 import { useUI } from '../context/UIContext.jsx';
 import PriceAlertMatch from './PriceAlertMatch.jsx';
 
@@ -62,6 +62,7 @@ export default function PriceAlertsModal({ alerts, catalog, onClose, onFindCard,
                         <span aria-hidden="true">→</span>
                         <span title="Market price found by the daily check">{formatMoney(a.newPrice)}</span>
                         <span className="price-alert-pct">{formatPctChange(a.pctChange)}</span>
+                        <span className="price-alert-cond">{alertConditionNote(a)}</span>
                       </div>
                       <div className="price-alert-meta">
                         Detected {a.detectedAt ? new Date(a.detectedAt).toLocaleDateString() : '—'}

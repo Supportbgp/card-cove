@@ -193,6 +193,11 @@
       color: var(--blue);
       font-weight: 600;
     }
+    .price-alert-cond {
+      font-family: 'Inter', sans-serif;
+      font-size: 11.5px;
+      color: var(--ink-soft);
+    }
     .price-alert-meta {
       font-size: 11.5px;
       color: var(--ink-faint);

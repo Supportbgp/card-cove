@@ -5,7 +5,7 @@ import { searchCardImage as searchByGame, tcgplayerSearchUrl, ebaySoldSearchUrl,
 import { resizeImageFile } from '../../lib/image.js';
 import LocationPicker from '../LocationPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
-import { formatMoney, formatPctChange } from '../../lib/priceAlertUtils.js';
+import { formatMoney, formatPctChange, alertConditionNote } from '../../lib/priceAlertUtils.js';
 import PriceAlertMatch from '../PriceAlertMatch.jsx';
 
 // A flat condition percentage is a population average, not this specific
@@ -551,7 +551,8 @@ export default function EditModal({ card, catalog, locations, multipliers, price
               <div className="price-alert-ref">
                 <strong>Price alert:</strong> the daily check found a market price of{' '}
                 <span className="mono">{formatMoney(priceAlert.newPrice)}</span>{' '}
-                ({formatPctChange(priceAlert.pctChange)} vs. <span className="mono">{formatMoney(priceAlert.previousPrice)}</span>)
+                ({alertConditionNote(priceAlert)};{' '}
+                {formatPctChange(priceAlert.pctChange)} vs. <span className="mono">{formatMoney(priceAlert.previousPrice)}</span>)
                 {priceAlert.detectedAt ? ` on ${new Date(priceAlert.detectedAt).toLocaleDateString()}` : ''}.
                 Saving this item clears the alert.
                 <PriceAlertMatch alert={priceAlert} onZoom={openLightbox} />

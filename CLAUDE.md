@@ -5292,6 +5292,31 @@ rather than adding a second button with identical behavior.
   redeploy lets the next run repopulate with recorded, non-guessed matches
   only.
 
+- **Condition-aware comparison** — real report while reviewing this PR: a
+  Damaged Gengar (Fossil #5) alerting because its price was compared
+  against a **Near Mint** market price. Every provider price is NM, but our
+  catalog prices each copy for its own condition. `price-check` now loads
+  the store's condition multipliers (`store_settings`, the same table the
+  app's Market Value uses, defaults NM 100/LP 85/MP 65/HP 45/DMG 25) and
+  compares Our Price against `NM price × that tier's %` (same rounding as
+  `marketValueForCondition`). `canonicalizeCondition` and its alias table
+  are duplicated from `cardUtils.js` per the no-shared-code convention, and
+  so is its rule: **a blank or unrecognized condition is never silently
+  treated as NM** — the price is still logged to `price_history`, but no
+  alert is raised, counted as `unknownConditionSpikes` (also in the
+  workflow's combined totals). `price_history` keeps the raw NM price.
+  Alerts record `condition` (the tier) and `market_nm_price`, with
+  `new_price` now the condition-adjusted estimate actually compared —
+  added to the same `phase15_price_alert_match.sql` since it hadn't been
+  run yet. The UI shows it via `alertConditionNote` ("est. for Damaged · NM
+  $223.38", "Near Mint", or "compared as Near Mint (older alert)").
+  Verified live: Gengar + Set "Fossil" → Fossil #5, NM $223.38 → $55.85
+  for Damaged. Note the name as typed ("Gengar (5) Fossil (FO)") with no
+  Set finds nothing — "Fossil"/"FO" aren't part of the card's name — so
+  that row needs its Set filled in to be tracked at all. Covered by
+  `priceAlertUtils.test.js`, `db.test.js` and a new
+  `e2e/price-alerts.spec.js` case.
+
 **Requires, in order:** running `phase15_price_alert_match.sql` in the
 Supabase SQL Editor, then `supabase functions deploy price-check`.
 

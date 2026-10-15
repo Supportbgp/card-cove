@@ -46,6 +46,15 @@ export default function PricingSettingsSection() {
         "Mew") won't raise alerts, because there are too many Mews to tell
         apart. Fill in its Set to have it tracked properly.
       </DocsCallout>
+      <p>
+        Market prices are Near Mint prices, so the check first adjusts them
+        to each item's own <strong>Condition</strong>, using the same
+        percentages set at the top of this window. A Damaged card is compared
+        against 25% of the NM price by default, not the full price. Each
+        alert shows this as, for example, "est. for Damaged · NM $223.38".
+        An item with a blank or unrecognized Condition won't raise alerts,
+        so make sure its Condition is filled in.
+      </p>
       <p>For each alert you can:</p>
       <ul>
         <li>

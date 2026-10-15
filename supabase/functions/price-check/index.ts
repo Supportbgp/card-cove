@@ -508,6 +508,30 @@ const PRICE_LOOKUPS = {
   SWU: swuPrice,
 };
 
+// Condition — every provider's price is a Near Mint price, but our catalog
+// prices each copy for its own condition. Comparing a Damaged copy's price
+// against an NM market price always looks like a big spike (real report: a
+// Damaged Gengar from Fossil raising an alert). The NM price is scaled by
+// the store's own condition multipliers (store_settings — the same table
+// the app's Market Value uses, defaulting to NM 100 / LP 85 / MP 65 / HP 45 /
+// DMG 25) before comparing. Same alias table as cardUtils.js's
+// canonicalizeCondition (duplicated per this repo's no-shared-code-between-
+// client-and-Edge-Function convention), and the same rule: an unrecognized
+// or blank condition is never silently treated as NM — the price is still
+// logged, but no alert is raised.
+const DEFAULT_CONDITION_MULTIPLIERS = { NM: 100, LP: 85, MP: 65, HP: 45, DMG: 25 };
+const CONDITION_ALIASES = {
+  nm: "NM", "near mint": "NM", mint: "NM", m: "NM",
+  lp: "LP", "lightly played": "LP", "light play": "LP", "slightly played": "LP", sp: "LP",
+  mp: "MP", "moderately played": "MP", "moderate play": "MP",
+  hp: "HP", "heavily played": "HP", "heavy play": "HP",
+  dmg: "DMG", damaged: "DMG", poor: "DMG", d: "DMG",
+};
+function canonicalizeCondition(raw) {
+  const c = String(raw || "").trim().toLowerCase();
+  return c ? (CONDITION_ALIASES[c] || null) : null;
+}
+
 // Japanese-print Pokemon items are skipped entirely until there's a JP
 // price source (decided with the user). TCGdex's pricing is English-print
 // TCGPlayer data, and cleanCardName strips "(JP)" like any other
@@ -602,6 +626,11 @@ Deno.serve(async (req) => {
   const floor = (settingsRow && settingsRow.floor_price) ?? 25;
   const spikePct = (settingsRow && settingsRow.spike_pct) ?? 20;
 
+  const { data: storeRow } = await admin.from("store_settings").select("*").eq("id", 1).maybeSingle();
+  const multipliers = storeRow
+    ? { NM: 100, LP: Number(storeRow.lp_pct), MP: Number(storeRow.mp_pct), HP: Number(storeRow.hp_pct), DMG: Number(storeRow.dmg_pct) }
+    : DEFAULT_CONDITION_MULTIPLIERS;
+
   // Bulk lots have no per-print identity to look up at all (see CLAUDE.md's
   // "Sorting stage + Bulk item type" section) — excluded the same way
   // catalog_public_view excludes them. No `number` column — collector
@@ -642,7 +671,7 @@ Deno.serve(async (req) => {
   // this app) without needing its own special case.
   const { data: items, error } = await admin
     .from("catalog")
-    .select("sku, name, set_name, game, price")
+    .select("sku, name, set_name, game, price, condition")
     .neq("item_type", "bulk")
     .not("price", "is", null)
     .gte("price", floor)
@@ -661,6 +690,9 @@ Deno.serve(async (req) => {
   // the first TCGdex runs' false spikes came from. Counted, with a capped
   // sample, so the response still shows what was held back.
   let guessedSpikes = 0;
+  // A spike against an item whose condition isn't recognized (see
+  // canonicalizeCondition) — not alerted, same as a guessed match.
+  let unknownConditionSpikes = 0;
   const sampleGuessedSpikes = [];
   // An alert insert that fails (e.g. the matched_* columns from
   // phase15_price_alert_match.sql not added yet) used to fail silently —
@@ -721,8 +753,15 @@ Deno.serve(async (req) => {
       sku: item.sku, name: item.name, game: item.game, price,
     });
 
-    const pctChange = item.price > 0 ? ((price - item.price) / item.price) * 100 : 0;
-    if (pctChange >= spikePct && match && match.basis === "guess") {
+    // `price` is the provider's NM price; compare our price against what
+    // that's worth in this copy's own condition.
+    const tier = canonicalizeCondition(item.condition);
+    const nmPctChange = item.price > 0 ? ((price - item.price) / item.price) * 100 : 0;
+    const conditionPrice = tier ? Math.round(price * multipliers[tier]) / 100 : null;
+    const pctChange = conditionPrice != null && item.price > 0 ? ((conditionPrice - item.price) / item.price) * 100 : 0;
+    if (!tier) {
+      if (nmPctChange >= spikePct) unknownConditionSpikes++;
+    } else if (pctChange >= spikePct && match && match.basis === "guess") {
       guessedSpikes++;
       if (sampleGuessedSpikes.length < MAX_SAMPLE_FAILURES) {
         sampleGuessedSpikes.push({ sku: item.sku, name: item.name, matched: `${match.name} (${match.set} #${match.number})` });
@@ -743,7 +782,8 @@ Deno.serve(async (req) => {
         // tell a real spike from a wrong-print match at a glance.
         const { error: insertError } = await admin.from("price_alerts").insert({
           sku: item.sku, name: item.name, game: item.game,
-          previous_price: item.price, new_price: price, pct_change: pctChange,
+          previous_price: item.price, new_price: conditionPrice, pct_change: pctChange,
+          condition: tier, market_nm_price: price,
           matched_name: (match && match.name) || "",
           matched_set: (match && match.set) || "",
           matched_number: (match && match.number) || "",
@@ -784,7 +824,7 @@ Deno.serve(async (req) => {
     total: (items || []).length, checked, spikes, failed, skippedJapanese,
     truncated: skippedForTime > 0, skippedForTime,
     failedByGame, failedByReason, failedDetail, sampleFailures,
-    guessedSpikes, sampleGuessedSpikes,
+    guessedSpikes, sampleGuessedSpikes, unknownConditionSpikes,
     alertInsertErrors, firstAlertInsertError,
   }, 200);
 });
