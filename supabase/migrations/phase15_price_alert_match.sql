@@ -12,23 +12,27 @@
 -- the first search result without a basis). 'guess' never appears here:
 -- price-check doesn't raise an alert for a guessed match at all.
 --
--- Run once in the Supabase SQL Editor BEFORE redeploying price-check — the
+-- Safe to run more than once (every column is `if not exists`) — it was
+-- extended with condition/market_nm_price after it had already been run once.
+--
+-- Run in the Supabase SQL Editor BEFORE redeploying price-check — the
 -- new function writes these columns, and a missing column makes the alert
 -- insert fail (it now reports that as `alertInsertErrors` in its response
 -- instead of failing silently).
-alter table price_alerts add column matched_name text not null default '';
-alter table price_alerts add column matched_set text not null default '';
-alter table price_alerts add column matched_number text not null default '';
-alter table price_alerts add column matched_image text not null default '';
-alter table price_alerts add column matched_url text not null default '';
-alter table price_alerts add column match_basis text not null default '';
+alter table price_alerts add column if not exists matched_name text not null default '';
+alter table price_alerts add column if not exists matched_set text not null default '';
+alter table price_alerts add column if not exists matched_number text not null default '';
+alter table price_alerts add column if not exists matched_image text not null default '';
+alter table price_alerts add column if not exists matched_url text not null default '';
+alter table price_alerts add column if not exists match_basis text not null default '';
 
 -- Condition: provider prices are Near Mint, so price-check now scales the NM
 -- price by the store's condition multipliers (store_settings) before
 -- comparing — real report: a Damaged Gengar alerting against an NM price.
 -- `condition` is the item's condition tier at check time (NM/LP/MP/HP/DMG),
 -- `market_nm_price` the raw NM price found; `new_price` becomes the
--- condition-adjusted estimate that was actually compared. Both null for
--- alerts raised before this migration (compared as NM).
-alter table price_alerts add column condition text;
-alter table price_alerts add column market_nm_price numeric;
+-- condition-adjusted estimate that was actually compared. `condition` is
+-- 'NONE' when the item had no recognized condition (compared as NM, and the
+-- app says so). Both null for alerts raised before this (compared as NM).
+alter table price_alerts add column if not exists condition text;
+alter table price_alerts add column if not exists market_nm_price numeric;

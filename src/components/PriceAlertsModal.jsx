@@ -62,7 +62,7 @@ export default function PriceAlertsModal({ alerts, catalog, onClose, onFindCard,
                         <span aria-hidden="true">→</span>
                         <span title="Market price found by the daily check">{formatMoney(a.newPrice)}</span>
                         <span className="price-alert-pct">{formatPctChange(a.pctChange)}</span>
-                        <span className="price-alert-cond">{alertConditionNote(a)}</span>
+                        <span className={`price-alert-cond${a.condition === 'NONE' ? ' missing' : ''}`}>{alertConditionNote(a)}</span>
                       </div>
                       <div className="price-alert-meta">
                         Detected {a.detectedAt ? new Date(a.detectedAt).toLocaleDateString() : '—'}

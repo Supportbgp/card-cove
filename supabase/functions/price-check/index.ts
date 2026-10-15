@@ -516,9 +516,9 @@ const PRICE_LOOKUPS = {
 // the app's Market Value uses, defaulting to NM 100 / LP 85 / MP 65 / HP 45 /
 // DMG 25) before comparing. Same alias table as cardUtils.js's
 // canonicalizeCondition (duplicated per this repo's no-shared-code-between-
-// client-and-Edge-Function convention), and the same rule: an unrecognized
-// or blank condition is never silently treated as NM — the price is still
-// logged, but no alert is raised.
+// client-and-Edge-Function convention). Unlike the app's Market Value, a
+// blank or unrecognized condition IS compared as NM here, by explicit user
+// decision — the alert flags the missing condition instead (see below).
 const DEFAULT_CONDITION_MULTIPLIERS = { NM: 100, LP: 85, MP: 65, HP: 45, DMG: 25 };
 const CONDITION_ALIASES = {
   nm: "NM", "near mint": "NM", mint: "NM", m: "NM",
@@ -690,9 +690,6 @@ Deno.serve(async (req) => {
   // the first TCGdex runs' false spikes came from. Counted, with a capped
   // sample, so the response still shows what was held back.
   let guessedSpikes = 0;
-  // A spike against an item whose condition isn't recognized (see
-  // canonicalizeCondition) — not alerted, same as a guessed match.
-  let unknownConditionSpikes = 0;
   const sampleGuessedSpikes = [];
   // An alert insert that fails (e.g. the matched_* columns from
   // phase15_price_alert_match.sql not added yet) used to fail silently —
@@ -755,13 +752,13 @@ Deno.serve(async (req) => {
 
     // `price` is the provider's NM price; compare our price against what
     // that's worth in this copy's own condition.
+    // A blank or unrecognized condition is compared as Near Mint (decided
+    // with the user) and still alerts — the alert is marked "NONE" so the
+    // app can say the Condition is missing, nudging staff to fill it in.
     const tier = canonicalizeCondition(item.condition);
-    const nmPctChange = item.price > 0 ? ((price - item.price) / item.price) * 100 : 0;
-    const conditionPrice = tier ? Math.round(price * multipliers[tier]) / 100 : null;
-    const pctChange = conditionPrice != null && item.price > 0 ? ((conditionPrice - item.price) / item.price) * 100 : 0;
-    if (!tier) {
-      if (nmPctChange >= spikePct) unknownConditionSpikes++;
-    } else if (pctChange >= spikePct && match && match.basis === "guess") {
+    const conditionPrice = Math.round(price * multipliers[tier || "NM"]) / 100;
+    const pctChange = item.price > 0 ? ((conditionPrice - item.price) / item.price) * 100 : 0;
+    if (pctChange >= spikePct && match && match.basis === "guess") {
       guessedSpikes++;
       if (sampleGuessedSpikes.length < MAX_SAMPLE_FAILURES) {
         sampleGuessedSpikes.push({ sku: item.sku, name: item.name, matched: `${match.name} (${match.set} #${match.number})` });
@@ -783,7 +780,7 @@ Deno.serve(async (req) => {
         const { error: insertError } = await admin.from("price_alerts").insert({
           sku: item.sku, name: item.name, game: item.game,
           previous_price: item.price, new_price: conditionPrice, pct_change: pctChange,
-          condition: tier, market_nm_price: price,
+          condition: tier || "NONE", market_nm_price: price,
           matched_name: (match && match.name) || "",
           matched_set: (match && match.set) || "",
           matched_number: (match && match.number) || "",
@@ -824,7 +821,7 @@ Deno.serve(async (req) => {
     total: (items || []).length, checked, spikes, failed, skippedJapanese,
     truncated: skippedForTime > 0, skippedForTime,
     failedByGame, failedByReason, failedDetail, sampleFailures,
-    guessedSpikes, sampleGuessedSpikes, unknownConditionSpikes,
+    guessedSpikes, sampleGuessedSpikes,
     alertInsertErrors, firstAlertInsertError,
   }, 200);
 });

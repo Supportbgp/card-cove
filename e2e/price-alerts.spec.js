@@ -150,3 +150,15 @@ test('a condition-adjusted alert shows the condition estimate and the NM price i
   await expect(row).toContainText('$55.85');
   await expect(row).toContainText('est. for Damaged · NM $223.38');
 });
+
+test('an alert for an item with no Condition says so, prompting staff to fill it in', async ({ page }) => {
+  await seedHarness(page, {
+    seed: {
+      ...catalogSeed([makeCardRow({ sku: 'sku-1', name: 'Charizard', condition: '', price: 250 })]),
+      price_alerts: [makeAlertRow({ condition: 'NONE', market_nm_price: 417.78 })],
+    },
+  });
+  await page.goto('./');
+  await page.locator('.price-alerts-badge').click();
+  await expect(page.locator('.price-alert-cond.missing')).toHaveText('no Condition set on this item — compared as Near Mint');
+});

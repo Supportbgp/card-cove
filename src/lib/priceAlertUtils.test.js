@@ -43,6 +43,10 @@ describe('alertConditionNote', () => {
     expect(alertConditionNote({ condition: 'NM', marketNmPrice: 50 })).toBe('Near Mint');
   });
 
+  it('tells staff when the item had no Condition, so it was compared as Near Mint', () => {
+    expect(alertConditionNote({ condition: 'NONE', marketNmPrice: 50 })).toBe('no Condition set on this item — compared as Near Mint');
+  });
+
   it('flags an older alert that compared against NM regardless of condition', () => {
     expect(alertConditionNote({ condition: null })).toBe('compared as Near Mint (older alert)');
   });

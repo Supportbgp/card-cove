@@ -5300,20 +5300,23 @@ rather than adding a second button with identical behavior.
   app's Market Value uses, defaults NM 100/LP 85/MP 65/HP 45/DMG 25) and
   compares Our Price against `NM price × that tier's %` (same rounding as
   `marketValueForCondition`). `canonicalizeCondition` and its alias table
-  are duplicated from `cardUtils.js` per the no-shared-code convention, and
-  so is its rule: **a blank or unrecognized condition is never silently
-  treated as NM** — the price is still logged to `price_history`, but no
-  alert is raised, counted as `unknownConditionSpikes` (also in the
-  workflow's combined totals). `price_history` keeps the raw NM price.
+  are duplicated from `cardUtils.js` per the no-shared-code convention.
+  **A blank or unrecognized condition is compared as Near Mint and still
+  alerts** — decided with the user, reversing a first cut that (following
+  the app's own Market Value rule) logged the price but held the alert
+  back: an alert on a condition-less item is exactly what prompts staff to
+  add the missing condition. Such alerts store `condition: 'NONE'` and the
+  app shows "no Condition set on this item — compared as Near Mint" in
+  amber. `price_history` keeps the raw NM price.
   Alerts record `condition` (the tier) and `market_nm_price`, with
   `new_price` now the condition-adjusted estimate actually compared —
   added to the same `phase15_price_alert_match.sql` since it hadn't been
   run yet. The UI shows it via `alertConditionNote` ("est. for Damaged · NM
-  $223.38", "Near Mint", or "compared as Near Mint (older alert)").
-  Verified live: Gengar + Set "Fossil" → Fossil #5, NM $223.38 → $55.85
-  for Damaged. Note the name as typed ("Gengar (5) Fossil (FO)") with no
-  Set finds nothing — "Fossil"/"FO" aren't part of the card's name — so
-  that row needs its Set filled in to be tracked at all. Covered by
+  $223.38", "Near Mint", the missing-condition note, or "compared as Near
+  Mint (older alert)"). Verified live: Gengar + Set "Fossil" → Fossil #5,
+  NM $223.38 → $55.85 for Damaged. The migration was made idempotent
+  (`add column if not exists` throughout) since it was extended after the
+  user had already run it once. Covered by
   `priceAlertUtils.test.js`, `db.test.js` and a new
   `e2e/price-alerts.spec.js` case.
 

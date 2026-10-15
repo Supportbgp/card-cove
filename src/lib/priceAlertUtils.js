@@ -40,9 +40,12 @@ export function formatMoney(n) {
 // "est. for Damaged · NM $40.00" when the check scaled an NM price down to
 // this copy's condition, "Near Mint" when it compared NM to NM, or a note
 // that an older alert (raised before condition-aware checking) compared
-// against NM regardless of the item's condition.
+// against NM regardless of the item's condition. "NONE" = the item had no
+// recognized Condition, so the check compared as NM — said plainly, since
+// the point (decided with the user) is to prompt staff to fill it in.
 export function alertConditionNote(alert) {
   if (!alert || !alert.condition) return 'compared as Near Mint (older alert)';
+  if (alert.condition === 'NONE') return 'no Condition set on this item — compared as Near Mint';
   const tier = CONDITION_TIERS.find(t => t.key === alert.condition);
   const name = tier ? tier.name : alert.condition;
   if (alert.condition === 'NM') return 'Near Mint';

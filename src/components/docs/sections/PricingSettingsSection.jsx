@@ -52,8 +52,8 @@ export default function PricingSettingsSection() {
         percentages set at the top of this window. A Damaged card is compared
         against 25% of the NM price by default, not the full price. Each
         alert shows this as, for example, "est. for Damaged · NM $223.38".
-        An item with a blank or unrecognized Condition won't raise alerts,
-        so make sure its Condition is filled in.
+        An item with no Condition is compared as Near Mint, and its alert
+        says so in amber. That's your cue to add the item's real Condition.
       </p>
       <p>For each alert you can:</p>
       <ul>

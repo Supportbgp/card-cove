@@ -198,6 +198,7 @@
       font-size: 11.5px;
       color: var(--ink-soft);
     }
+    .price-alert-cond.missing { color: var(--amber); font-weight: 600; }
     .price-alert-meta {
       font-size: 11.5px;
       color: var(--ink-faint);
