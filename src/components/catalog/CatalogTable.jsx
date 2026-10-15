@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUI } from '../../context/UIContext.jsx';
 import { timeAgo, activeImageSrc, GAME_TAG_CLASS } from '../../lib/cardUtils.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
+import { formatMoney, formatPctChange } from '../../lib/priceAlertUtils.js';
 
 const COLUMNS = [
   { key: 'name', label: 'Item' },
@@ -86,10 +87,19 @@ function RowActions({ card, onEdit }) {
   );
 }
 
+// A small ▲ next to Our Price when the daily price check has an open alert
+// for this item — the full detail lives in the topbar's alerts list and the
+// item's Edit screen; this is just the at-a-glance cue while browsing.
+function PriceAlertMarker({ alert }) {
+  if (!alert) return null;
+  const label = `Price alert: market ${formatMoney(alert.newPrice)} (${formatPctChange(alert.pctChange)})`;
+  return <span className="price-alert-marker" title={label} aria-label={label}>▲</span>;
+}
+
 export default function CatalogTable({
   catalogEmpty, rows, sortState, onSort,
   selectedSkus, onToggleSelected, onToggleSelectAll,
-  onEdit, onTogglePlatformStatus,
+  onEdit, onTogglePlatformStatus, priceAlertsBySku = new Map(),
 }) {
   const { openLightbox } = useUI();
   const isMobile = useIsMobile();
@@ -169,7 +179,10 @@ export default function CatalogTable({
                     <div className="catalog-card-row2">
                       <span className={`badge ${tagClass}`}>{c.game}</span>
                       <span className={`mono ${qtyClass}`}>Qty {c.qty}</span>
-                      <span className="mono">{c.price !== null ? "$" + Number(c.price).toFixed(2) : "—"}</span>
+                      <span className="mono">
+                        {c.price !== null ? "$" + Number(c.price).toFixed(2) : "—"}
+                        <PriceAlertMarker alert={priceAlertsBySku.get(c.sku)} />
+                      </span>
                     </div>
                   </div>
                   <span className="catalog-card-chevron">{isExpanded ? '▲' : '▼'}</span>
@@ -272,7 +285,10 @@ export default function CatalogTable({
                   </td>
                   <td className="mono">{c.sku || ""}</td>
                   <td className={`mono ${qtyClass}`}>{c.qty}</td>
-                  <td className="mono">{c.price !== null ? "$" + Number(c.price).toFixed(2) : "—"}</td>
+                  <td className="mono">
+                    {c.price !== null ? "$" + Number(c.price).toFixed(2) : "—"}
+                    <PriceAlertMarker alert={priceAlertsBySku.get(c.sku)} />
+                  </td>
                   <td className="mono" style={{ fontSize: '11.5px', color: 'var(--ink-soft)' }}>{timeAgo(c.lastUpdated)}</td>
                   <td><PlatformStatus card={c} onToggle={onTogglePlatformStatus} /></td>
                   <td onClick={(e) => e.stopPropagation()}><RowActions card={c} onEdit={onEdit} /></td>

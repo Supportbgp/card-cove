@@ -5119,6 +5119,209 @@ with the user before building:
 
 **Requires redeploying `price-check`** (`supabase functions deploy
 price-check`); the in-app search side ships with the GitHub Pages deploy.
+The follow-up run after it deployed: **244 checked / 14 failed** (was 41),
+every remaining failure one of the known gaps above, 4 JP items skipped.
+
+## Price tracking, PR 2: the in-app alerts UI
+
+The second half of Feature B (see "Price tracking & spike alerts" above,
+whose PR 1 wrote alerts but had no UI to read them). Four design calls
+confirmed with the user before building — placement, what "Update price"
+does, editable thresholds, and merging the TCGdex follow-up PR first:
+
+- **Topbar badge + Catalog row markers, not a new tab.** A blue
+  `.price-alerts-badge` ("▲ N price alerts") sits next to "N pending sync"
+  (the two are now grouped in `.topbar-badges` — `.topbar` is
+  `space-between`, so a second badge would otherwise float mid-bar), so
+  alerts are visible from every tab. It only renders when there's at least
+  one open alert — no "0 price alerts" noise. Clicking it opens
+  `PriceAlertsModal.jsx`: every open alert, biggest % jump first, showing
+  Our Price (the item's *current* catalog price, falling back to the
+  alert's `previous_price` snapshot) → the market price found → % change,
+  plus the detected date. Catalog rows with an open alert get a small blue
+  `▲` (`.price-alert-marker`, `CatalogTable.jsx`'s `PriceAlertMarker`) next
+  to the price on both the desktop table and the mobile cards, with the
+  market price/% in its tooltip. Blue because that's this app's
+  informational role — a market rise is something to review, not a
+  warning (amber, already "pending sync") or a danger/sold state (rust);
+  the border uses the same 65%-soft/35%-fg blend as the other badges.
+- **"Update price" opens the item's normal Edit screen, never prefilled.**
+  `App.jsx`'s `handleUpdatePriceFromAlert` closes the modal, switches to
+  the Catalog tab (required — every tab stays mounted but CSS-hidden, so
+  an Edit modal opened inside a hidden Catalog panel would be invisible),
+  and sets an `editRequest` that `CatalogPanel` turns into its own
+  `editingSku`. `EditModal` gets the alert as a `priceAlert` prop and shows
+  a `.price-alert-ref` box right under Our price: the market price found,
+  the % vs. the price at the time, the date, and "Saving this item clears
+  the alert." Our Price is left exactly as it was — the user's explicit
+  choice, consistent with this app's standing "never silently overwrite a
+  manual entry" rule.
+- **Saving an item clears its alert; Dismiss clears it without a save.**
+  `handleSaveCard` acknowledges any open alert for the saved sku (old or
+  new sku, in case it was renamed) after a successful save — any save
+  counts as "reviewed," even one that keeps the same price. "Dismiss" (and
+  "Dismiss all", behind a confirm) acknowledges without touching the
+  item. Either way the row is **acknowledged, never deleted**
+  (`dbAcknowledgePriceAlerts`), keeping `price_alerts` as the historical
+  record PR 1 designed it to be. An alert whose item has since been
+  deleted shows "no longer in the catalog" with Update price disabled and
+  Dismiss still available.
+- **The two thresholds are editable in Pricing settings** (previously SQL
+  Editor only): "Track items priced at or above ($)" and "Alert when
+  market is up at least (%)", saved to `price_tracking_settings` row id 1
+  (`dbLoadPriceTrackingSettings`/`dbSavePriceTrackingSettings`), same
+  singleton pattern as `store_settings`/`quote_settings`, defaulting to
+  $25/20% (`DEFAULT_PRICE_TRACKING` in the new `priceAlertUtils.js`) until
+  the real row loads. Real `htmlFor`/`id` labels from the start, per the
+  accessibility lesson recorded elsewhere in this file. Takes effect from
+  the next daily run.
+- **Loaded once at sign-in, no realtime.** `dbLoadPriceAlerts` loads only
+  unacknowledged rows (through `fetchAllRows`, newest first). Alerts only
+  change once a day, so `price_alerts` was deliberately not added to the
+  realtime channel (which would also need the manual Supabase publication
+  step). Accepted consequence: a dismissal on one device shows on another
+  only after a reload.
+- `priceAlertUtils.js` holds the shared shaping — `alertsBySku` (one alert
+  per sku, the most recent if there are ever two), `formatPctChange`,
+  `formatMoney` — so the badge, modal, row marker and Edit box can't
+  disagree. Writing its tests caught a real bug: `formatPctChange(null)`
+  rendered "+0%" because `Number(null)` is 0.
+- Staff docs: a "Price alerts" subsection in `PricingSettingsSection.jsx`.
+- Covered by `priceAlertUtils.test.js`, new `db.test.js` cases (row
+  mapping, unacknowledged-only load, acknowledge-not-delete, settings
+  load/default/save), and a new `e2e/price-alerts.spec.js` (Desktop +
+  Mobile): no badge without open alerts; badge + row marker + modal
+  contents; Update price → Edit shows the reference box with Our Price
+  untouched, and saving acknowledges the alert and removes the badge and
+  marker; Dismiss acknowledges without changing the price; a deleted
+  item's alert can be dismissed but not updated; Pricing settings writes
+  both thresholds. The mock harness and `catalogSeed` gained
+  `price_alerts`/`price_tracking_settings` tables. Visually checked at
+  desktop and mobile widths via throwaway Playwright screenshots (deleted
+  before committing), which caught the alert list's name running into its
+  game tag.
+
+No migration, no Edge Function redeploy for the UI itself — both tables
+already exist from `phase13_price_tracking.sql`, and their RLS already
+grants `authenticated` full access. (The follow-up below, in the same PR,
+does need both.)
+
+## Price alerts: matched card, Find card, and no alerts on guessed matches
+
+Real report from reviewing the UI above against live data: **46 open
+alerts where ~5 were expected**, many on generic names like "Mew", with no
+way to tell whether an alert compared our card against the right print.
+Two causes, confirmed rather than guessed:
+
+- **Alerts never recorded which card the check matched** — only name and
+  old/new price — so a wrong-print comparison was invisible.
+- **A generic name priced off an arbitrary print.** Confirmed live: a bare
+  "Mew" with no Set was priced off the **Southern Islands Mew at $644.58**.
+  (Older alerts from the pokemontcg.io-era runs also accumulate — the check
+  only skips a sku that already has an *open* alert — which is why the
+  count was so far above a single run's spikes.)
+
+Decided with the user (three questions): record the matched card on every
+alert; don't alert on guessed matches; and a **"Find card"** button that
+"just jumps into the card detail view" — which is exactly what the earlier
+"Update price" already did, so that button was **renamed to Find card**
+rather than adding a second button with identical behavior.
+
+- **`phase15_price_alert_match.sql`** adds `matched_name`/`matched_set`/
+  `matched_number`/`matched_image`/`matched_url`/`match_basis` (all text,
+  default `''`) to `price_alerts`. **Must run before redeploying
+  `price-check`** — the new function writes these columns.
+- **Every provider's lookup now returns a `match`** alongside the price,
+  using only field paths already confirmed elsewhere in this codebase
+  (`cardSearch.js`/`card-lookup-proxy`): Pokemon (TCGdex `name`/`set.name`/
+  `localId`/`image` + `/low.webp`, TCGPlayer product link), Magic
+  (`name`/`set_name`/`collector_number`/`image_uris.normal` or first face/
+  `purchase_uris.tcgplayer`), Lorcana (`name`+`version`/`set.name`/
+  `collector_number`/`image_uris.digital`/`purchase_uris.tcgplayer`),
+  Yu-Gi-Oh (`name`/`card_images[0].image_url` only — one YGOPRODeck entry
+  covers every printing, so there's no set/number to report), Egman games
+  (`name`/`set_code`/`card_code`/`_defaultImagePath` image/`tcgplayer_url`),
+  SWU (`Name`/`Set`/`FrontArt`).
+- **`match.basis` — how solidly the print was identified — Pokemon only**:
+  `number` (the number typed into the name), `set` (the item's own Set),
+  `only_print` (the only print with that name), else `guess`. **A spike on
+  a `guess` match is logged to `price_history` but never raised as an
+  alert** — counted as `guessedSpikes` (with a capped `sampleGuessedSpikes`
+  list) in the response and the workflow's combined totals. Pokemon only,
+  same reasoning as the JP skip: it's the only provider whose lookup ranks
+  prints and therefore knows *why* it picked one; every other game takes
+  the first search result with `basis: null` and alerts as before.
+- **Two more wrong-print bugs found while verifying live, both fixed**:
+  - **"Charizard 4/102" matched Base Set 2 #4.** The "/102" is the set's
+    printed card count (Base Set has 102, Base Set 2 has 130), so
+    `numberFromRawName` now also returns that total and prints whose set
+    `cardCount.official` equals it score higher (TCGdex GraphQL exposes
+    `set { cardCount { official } }` — confirmed). Now matches Base Set #4.
+  - **Magic "Sol Ring" was priced as "Searing Soloist".** Scryfall's plain
+    search matches each word separately and returns results
+    alphabetically; the check took the first. `magicPrice` now prefers a
+    result whose name — or a double-faced card's front face — equals the
+    searched name, falling back to the first only if none does.
+  - Also: Scryfall requests from `price-check` now send an explicit
+    `User-Agent`/`Accept`, per Scryfall's API rules — confirmed it rejects
+    Node's default User-Agent with a 400 `generic_user_agent` (Deno's
+    default has been accepted so far, so this was defensive, not a fix for
+    an observed production failure).
+- **An alert insert that fails is no longer silent** — counted as
+  `alertInsertErrors` with `firstAlertInsertError`, and only successful
+  inserts count toward `spikes`.
+- **UI — `PriceAlertMatch.jsx`**, shown in both the alerts list and Edit's
+  `.price-alert-ref` box: "Compared against: **Mew** — Southern Islands #1",
+  a thumbnail (click to zoom; hidden if the image fails to load), how it
+  was matched ("matched by this item's Set", "matched by the number in the
+  name", "the only print with this name", else "first search result"), and
+  a "View listing ↗" link. Alerts raised before this migration say
+  "Compared against: not recorded" instead of showing nothing.
+- Staff docs (`PricingSettingsSection.jsx`): Find card, the Compared
+  against check, and a note that a Pokemon item with no Set won't raise
+  alerts — fill its Set in to have it tracked.
+- **Verified live** (TCGdex/Scryfall reachable from this sandbox) against
+  real catalog names: bare "Mew" → `guess` (no alert); "Mew ex" + Set
+  "151" → `set`, 151 #151; "Charizard 4/102" → `number`, Base Set #4;
+  "Miraidon ex - 102/078" → `guess` (TCGdex has no English #102 — 078 is a
+  Japanese set size); "Sol Ring" → Sol Ring. Plus `db.test.js` (match
+  mapping) and two new `e2e/price-alerts.spec.js` cases (the Compared
+  against block in the list and in Edit; the not-recorded fallback).
+- **The existing open alerts predate all of this** — they show "not
+  recorded" and include guessed matches. "Dismiss all" once after the
+  redeploy lets the next run repopulate with recorded, non-guessed matches
+  only.
+
+- **Condition-aware comparison** — real report while reviewing this PR: a
+  Damaged Gengar (Fossil #5) alerting because its price was compared
+  against a **Near Mint** market price. Every provider price is NM, but our
+  catalog prices each copy for its own condition. `price-check` now loads
+  the store's condition multipliers (`store_settings`, the same table the
+  app's Market Value uses, defaults NM 100/LP 85/MP 65/HP 45/DMG 25) and
+  compares Our Price against `NM price × that tier's %` (same rounding as
+  `marketValueForCondition`). `canonicalizeCondition` and its alias table
+  are duplicated from `cardUtils.js` per the no-shared-code convention.
+  **A blank or unrecognized condition is compared as Near Mint and still
+  alerts** — decided with the user, reversing a first cut that (following
+  the app's own Market Value rule) logged the price but held the alert
+  back: an alert on a condition-less item is exactly what prompts staff to
+  add the missing condition. Such alerts store `condition: 'NONE'` and the
+  app shows "no Condition set on this item — compared as Near Mint" in
+  amber. `price_history` keeps the raw NM price.
+  Alerts record `condition` (the tier) and `market_nm_price`, with
+  `new_price` now the condition-adjusted estimate actually compared —
+  added to the same `phase15_price_alert_match.sql` since it hadn't been
+  run yet. The UI shows it via `alertConditionNote` ("est. for Damaged · NM
+  $223.38", "Near Mint", the missing-condition note, or "compared as Near
+  Mint (older alert)"). Verified live: Gengar + Set "Fossil" → Fossil #5,
+  NM $223.38 → $55.85 for Damaged. The migration was made idempotent
+  (`add column if not exists` throughout) since it was extended after the
+  user had already run it once. Covered by
+  `priceAlertUtils.test.js`, `db.test.js` and a new
+  `e2e/price-alerts.spec.js` case.
+
+**Requires, in order:** running `phase15_price_alert_match.sql` in the
+Supabase SQL Editor, then `supabase functions deploy price-check`.
 
 ## Backlog
 

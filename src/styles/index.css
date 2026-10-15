@@ -123,6 +123,126 @@
       border-color: #8FC99E;
     }
 
+    /* Groups the topbar's status badges on the right — .topbar spreads its
+       children with space-between, so a second badge would otherwise float
+       in the middle. */
+    .topbar-badges {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* Price alerts from the daily price check (PriceAlertsModal.jsx). Blue =
+       this app's informational role — a market rise is something to review,
+       not a warning (amber) or a danger/sold state (rust). Border is the
+       same 65%-soft/35%-fg blend the other badge borders use. */
+    .price-alerts-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      border: 1px solid #8DBBDA;
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .price-alerts-badge:hover { background: #BFDDF2; }
+
+    .price-alert-marker {
+      color: var(--blue);
+      margin-left: 5px;
+      font-size: 11px;
+      cursor: help;
+    }
+
+    .price-alert-list {
+      display: flex;
+      flex-direction: column;
+    }
+    .price-alert-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .price-alert-row:last-child { border-bottom: none; }
+    .price-alert-main { min-width: 0; }
+    .price-alert-main .n-name {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+    .price-alert-prices {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px;
+      margin-top: 3px;
+      font-size: 13px;
+    }
+    .price-alert-pct {
+      color: var(--blue);
+      font-weight: 600;
+    }
+    .price-alert-cond {
+      font-family: 'Inter', sans-serif;
+      font-size: 11.5px;
+      color: var(--ink-soft);
+    }
+    .price-alert-cond.missing { color: var(--amber); font-weight: 600; }
+    .price-alert-meta {
+      font-size: 11.5px;
+      color: var(--ink-faint);
+      margin-top: 2px;
+    }
+    .price-alert-actions { flex-shrink: 0; }
+
+    /* PriceAlertMatch.jsx — the card the check actually compared against. */
+    .price-alert-match {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--ink-soft);
+    }
+    .price-alert-match.none { font-style: italic; color: var(--ink-faint); }
+    .price-alert-match strong { color: var(--ink); }
+    .price-alert-match-img {
+      width: 32px;
+      height: 44px;
+      object-fit: contain;
+      border-radius: 3px;
+      background: var(--surface-alt);
+      flex-shrink: 0;
+      cursor: zoom-in;
+    }
+    .price-alert-match-meta {
+      font-size: 11.5px;
+      color: var(--ink-faint);
+      margin-top: 1px;
+    }
+
+    /* EditModal's reference box for an item with an open alert. */
+    .price-alert-ref {
+      background: var(--blue-soft);
+      color: var(--ink);
+      border: 1px solid #8DBBDA;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12.5px;
+      margin: 2px 0 12px;
+    }
+
     .pending-dot {
       width: 7px;
       height: 7px;
@@ -1632,6 +1752,9 @@
        just a style change, but everything else here just needs to stop
        being a fixed-width row and start stacking. */
     @media (max-width: 640px) {
+      .price-alert-row { flex-direction: column; align-items: stretch; }
+      .price-alert-actions { width: 100%; }
+      .price-alert-actions .btn { flex: 1; }
       .app {
         padding: 14px 12px 40px;
       }

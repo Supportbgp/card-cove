@@ -7,7 +7,10 @@ import EditModal from './EditModal.jsx';
 import SellQuantityModal from './SellQuantityModal.jsx';
 import { useUI } from '../../context/UIContext.jsx';
 
-export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onSellPartial, onTogglePlatformStatus, multipliers }) {
+export default function CatalogPanel({
+  catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onSellPartial, onTogglePlatformStatus, multipliers,
+  priceAlertsBySku = new Map(), editRequest = null, onEditRequestHandled = () => {},
+}) {
   const { showConfirm } = useUI();
   const [search, setSearch] = useState("");
   const [gameFilter, setGameFilter] = useState("");
@@ -129,6 +132,17 @@ export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatc
     setSelectedSkus(new Set());
   }
 
+  // The topbar price-alerts modal's "Find card" asks for a specific
+  // item's Edit screen — App.jsx owns that request (it also switches to this
+  // tab), this just opens it and reports back so the same request can't
+  // re-open the modal after it's closed.
+  useEffect(() => {
+    if (!editRequest) return;
+    setEditingSku(editRequest.sku);
+    onEditRequestHandled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editRequest]);
+
   const editingCard = editingSku ? catalog.find(c => c.sku === editingSku) : null;
 
   return (
@@ -165,6 +179,7 @@ export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatc
           onToggleSelectAll={toggleSelectAll}
           onEdit={(sku) => setEditingSku(sku)}
           onTogglePlatformStatus={onTogglePlatformStatus}
+          priceAlertsBySku={priceAlertsBySku}
         />
       </div>
       {editingSku !== undefined && (
@@ -173,6 +188,7 @@ export default function CatalogPanel({ catalog, onSaveCard, onDeleteCard, onBatc
           catalog={catalog}
           locations={locations}
           multipliers={multipliers}
+          priceAlert={editingSku ? priceAlertsBySku.get(editingSku) : null}
           onClose={() => setEditingSku(undefined)}
           onSave={async (record, prevSku) => { await onSaveCard(record, prevSku); setEditingSku(undefined); }}
           onDelete={async (sku) => { await onDeleteCard(sku); setEditingSku(undefined); }}

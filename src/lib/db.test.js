@@ -46,6 +46,8 @@ const {
   dbLoadSettings, dbLoadPublicBinder, dbLoadAll,
   rowToSortingItem, dbInsertSortingItems,
   dbInsertSales, rowToSale, dbLoadSales, dbUpdateSale,
+  rowToPriceAlert, dbLoadPriceAlerts, dbAcknowledgePriceAlerts,
+  dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
 } = await import('./db.js');
 
 beforeEach(() => {
@@ -383,5 +385,89 @@ describe('dbLoadAll (fetchAllRows pagination)', () => {
     const { catalog } = await dbLoadAll(toast);
     expect(catalog).toEqual([]);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('connection reset'), true);
+  });
+});
+
+describe('price alerts', () => {
+  const alertRow = {
+    id: 'a1', sku: 'sku-1', name: 'Charizard', game: 'Pokemon',
+    previous_price: '250', new_price: '417.78', pct_change: '67.1',
+    detected_at: '2026-10-14T13:07:00.000Z', acknowledged: false,
+  };
+
+  it('maps a price_alerts row to the camelCase shape, with numeric prices', () => {
+    expect(rowToPriceAlert(alertRow)).toEqual({
+      id: 'a1', sku: 'sku-1', name: 'Charizard', game: 'Pokemon',
+      previousPrice: 250, newPrice: 417.78, pctChange: 67.1,
+      detectedAt: '2026-10-14T13:07:00.000Z', acknowledged: false,
+      condition: null, marketNmPrice: null, // raised before condition-aware checking
+      match: null, // raised before matched-card recording existed
+    });
+  });
+
+  it('maps the condition tier and the raw NM price behind a condition-adjusted alert', () => {
+    const a = rowToPriceAlert({ ...alertRow, condition: 'DMG', market_nm_price: '223.38', new_price: '55.85' });
+    expect(a).toMatchObject({ condition: 'DMG', marketNmPrice: 223.38, newPrice: 55.85 });
+  });
+
+  it('maps the matched card the price check compared against', () => {
+    const a = rowToPriceAlert({
+      ...alertRow, matched_name: 'Mew', matched_set: 'Southern Islands', matched_number: '1',
+      matched_image: 'https://img/mew', matched_url: 'https://www.tcgplayer.com/product/46466', match_basis: 'set',
+    });
+    expect(a.match).toEqual({
+      name: 'Mew', set: 'Southern Islands', number: '1',
+      image: 'https://img/mew', url: 'https://www.tcgplayer.com/product/46466', basis: 'set',
+    });
+  });
+
+  it('loads only unacknowledged alerts, newest first', async () => {
+    tableResults.price_alerts = { data: [alertRow], error: null };
+    const alerts = await dbLoadPriceAlerts(vi.fn());
+    const builder = fromMock.mock.results[0].value;
+    expect(builder.eq).toHaveBeenCalledWith('acknowledged', false);
+    expect(builder.order).toHaveBeenCalledWith('detected_at', { ascending: false });
+    expect(alerts.map(a => a.id)).toEqual(['a1']);
+  });
+
+  it('returns [] and toasts on a load error', async () => {
+    tableResults.price_alerts = { data: null, error: { message: 'boom' } };
+    const toast = vi.fn();
+    expect(await dbLoadPriceAlerts(toast)).toEqual([]);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('boom'), true);
+  });
+
+  it('acknowledges alerts by id — never deletes them', async () => {
+    tableResults.price_alerts = { data: null, error: null };
+    await dbAcknowledgePriceAlerts(['a1', 'a2'], vi.fn());
+    const builder = fromMock.mock.results[0].value;
+    expect(builder.update).toHaveBeenCalledWith({ acknowledged: true });
+    expect(builder.in).toHaveBeenCalledWith('id', ['a1', 'a2']);
+    expect(builder.delete).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for an empty id list', async () => {
+    await dbAcknowledgePriceAlerts([], vi.fn());
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('price tracking settings', () => {
+  it('loads floor/spike from the singleton row', async () => {
+    tableResults.price_tracking_settings = { data: { id: 1, floor_price: '40', spike_pct: '15' }, error: null };
+    expect(await dbLoadPriceTrackingSettings(vi.fn())).toEqual({ floorPrice: 40, spikePct: 15 });
+  });
+
+  it('falls back to the $25 / 20% defaults when the row is missing', async () => {
+    tableResults.price_tracking_settings = { data: null, error: null };
+    expect(await dbLoadPriceTrackingSettings(vi.fn())).toEqual({ floorPrice: 25, spikePct: 20 });
+  });
+
+  it('saves both thresholds to row id 1', async () => {
+    tableResults.price_tracking_settings = { data: null, error: null };
+    await dbSavePriceTrackingSettings({ floorPrice: 30, spikePct: 25 }, vi.fn());
+    const builder = fromMock.mock.results[0].value;
+    expect(builder.update.mock.calls[0][0]).toMatchObject({ floor_price: 30, spike_pct: 25 });
+    expect(builder.eq).toHaveBeenCalledWith('id', 1);
   });
 });

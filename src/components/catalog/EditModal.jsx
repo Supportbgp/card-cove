@@ -5,6 +5,8 @@ import { searchCardImage as searchByGame, tcgplayerSearchUrl, ebaySoldSearchUrl,
 import { resizeImageFile } from '../../lib/image.js';
 import LocationPicker from '../LocationPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
+import { formatMoney, formatPctChange, alertConditionNote } from '../../lib/priceAlertUtils.js';
+import PriceAlertMatch from '../PriceAlertMatch.jsx';
 
 // A flat condition percentage is a population average, not this specific
 // card's real going rate — the higher the NM price, the bigger the dollar
@@ -48,7 +50,7 @@ function initForm(card) {
   };
 }
 
-export default function EditModal({ card, catalog, locations, multipliers, onClose, onSave, onDelete }) {
+export default function EditModal({ card, catalog, locations, multipliers, priceAlert, onClose, onSave, onDelete }) {
   const { showConfirm, openLightbox } = useUI();
   const [form, setForm] = useState(() => initForm(card));
   const [channelsTouched, setChannelsTouched] = useState(false);
@@ -542,6 +544,20 @@ export default function EditModal({ card, catalog, locations, multipliers, onClo
                 </div>
               </div>
             </div>
+            {/* An open alert from the daily price check, shown for reference
+                only — Our Price is never filled in for staff (decided with
+                the user). Saving this item clears the alert. */}
+            {priceAlert && (
+              <div className="price-alert-ref">
+                <strong>Price alert:</strong> the daily check found a market price of{' '}
+                <span className="mono">{formatMoney(priceAlert.newPrice)}</span>{' '}
+                ({alertConditionNote(priceAlert)};{' '}
+                {formatPctChange(priceAlert.pctChange)} vs. <span className="mono">{formatMoney(priceAlert.previousPrice)}</span>)
+                {priceAlert.detectedAt ? ` on ${new Date(priceAlert.detectedAt).toLocaleDateString()}` : ''}.
+                Saving this item clears the alert.
+                <PriceAlertMatch alert={priceAlert} onZoom={openLightbox} />
+              </div>
+            )}
             <div className="field-group">
               <label>Cost ($)</label>
               <input type="number" step="0.01" min="0" value={form.cost} onChange={(e) => set('cost', e.target.value)} placeholder="What we paid, if known" />
