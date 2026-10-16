@@ -662,15 +662,23 @@ const CONFIDENCE_RANK = { low: 0, medium: 1, high: 2 };
 // Only used for the scanner's own review queue, before anything is saved —
 // this has nothing to do with matching a newly scanned card against
 // something already in the catalog (a separate, unbuilt feature).
+// The identity rule behind mergeScanDuplicates, on its own so the stack
+// scanner can ask "is this card already in the stack?" one card at a time
+// with exactly the same rule. null = not safe to merge (no name or no
+// number captured — see mergeScanDuplicates for why Name alone isn't enough).
+export function scanDuplicateKey(row) {
+  const name = ((row && row.name) || "").trim().toLowerCase();
+  // Leading zeros are an OCR/formatting detail, not a different print —
+  // "0451" and "451" should still be recognized as the same number.
+  const number = ((row && row.number) || "").trim().replace(/^0+(?=\d)/, "");
+  return name && number ? `${row.game}::${name}::${number}` : null;
+}
+
 export function mergeScanDuplicates(rows) {
   const indexByKey = new Map();
   const merged = [];
   for (const row of rows) {
-    const name = (row.name || "").trim().toLowerCase();
-    // Leading zeros are an OCR/formatting detail, not a different print —
-    // "0451" and "451" should still be recognized as the same number.
-    const number = (row.number || "").trim().replace(/^0+(?=\d)/, "");
-    const key = name && number ? `${row.game}::${name}::${number}` : null;
+    const key = scanDuplicateKey(row);
 
     if (key && indexByKey.has(key)) {
       const i = indexByKey.get(key);

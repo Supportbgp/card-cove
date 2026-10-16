@@ -197,7 +197,17 @@ export const supabaseClient = {
     // No real card-search/scanner backend in the harness — every provider
     // resolves to "no matches" rather than hanging or erroring, which is
     // enough to exercise the surrounding UI (status text, empty states).
-    async invoke() { return { data: { results: [] }, error: null }; },
+    // scan-binder-page can be scripted per test: each call takes the next
+    // entry (an array of detected cards) off window.__HARNESS_SCAN_QUEUE__,
+    // and returns no cards once it's empty.
+    async invoke(name) {
+      if (name === 'scan-binder-page') {
+        const queue = window.__HARNESS_SCAN_QUEUE__;
+        const cards = queue && queue.length ? queue.shift() : [];
+        return { data: { cards }, error: null };
+      }
+      return { data: { results: [] }, error: null };
+    },
   },
 };
 
