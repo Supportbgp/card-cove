@@ -108,3 +108,21 @@ test('live camera: tapping the preview captures the card inside the guide into t
   await page.getByRole('button', { name: 'Stop camera' }).click();
   await expect(page.getByRole('button', { name: 'Start camera' })).toBeVisible();
 });
+
+test('"+1 same card" bumps the last card\'s quantity with no new AI call, even while it\'s still being recognized', async ({ page }) => {
+  await seedHarness(page, { seed: catalogSeed([]) });
+  await seedScanQueue(page, [[griffey]]);
+  await openStackMode(page);
+
+  await page.getByRole('button', { name: 'Start camera' }).click();
+  await expect(page.locator('.stack-counter')).toHaveText('0 in stack');
+  await page.locator('.stack-camera').click({ position: { x: 40, y: 80 } });
+  // Tapped twice right away — the card may still be recognizing; both
+  // copies must survive recognition finishing.
+  await page.getByRole('button', { name: '+1 same card' }).click();
+  await page.getByRole('button', { name: '+1 same card' }).click();
+
+  const griffeyRow = page.locator('.scan-row').filter({ has: page.locator('input[value="Ken Griffey Jr."]') });
+  await expect(griffeyRow.locator('input[placeholder="Qty"]')).toHaveValue('3');
+  expect(await page.evaluate(() => window.__HARNESS_SCAN_CALLS__)).toBe(1);
+});

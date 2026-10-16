@@ -97,12 +97,16 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
         return;
       }
       const d = item.sessionDefaults || {};
+      // Read the quantity fresh — "+1 same card" may have bumped it while
+      // this card was still being recognized.
+      const current = itemsRef.current.find(o => o.id === item.id);
+      if (!current) return; // removed from the stack mid-recognition
       const row = {
         ...detectedToRow(card),
         id: item.id,
         capturedAt: item.capturedAt,
         status: 'ready',
-        qty: item.qty || 1,
+        qty: current.qty || 1,
         // The capture is already just this card — it IS the real photo, no
         // bbox crop needed (unlike a binder page).
         photoData: item.photoData,
@@ -154,6 +158,22 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
     waiting.slice(0, free).forEach(recognize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, loaded]);
+
+  // "+1 same card" — ManaBox's "tap to scan the same card again": another
+  // copy of the card just scanned bumps its quantity with no new photo and
+  // no AI call at all (recognizing a duplicate costs a full call just to
+  // learn it's a duplicate). Works even while that card is still being
+  // recognized — recognize() reads the quantity fresh when it finishes.
+  function addSameAgain() {
+    const last = itemsRef.current[0];
+    if (!last) return;
+    const qty = (Number(last.qty) || 1) + 1;
+    setItems(prev => prev.map((o, i) => (i === 0 ? { ...o, qty } : o)));
+    setFlashKey(k => k + 1);
+    try { navigator.vibrate?.(40); } catch { /* no haptics */ }
+    if (soundOn) playScanBeep();
+    toast(`${last.name || 'Same card'} — now ×${qty}`);
+  }
 
   function addCapture(photoData) {
     const item = {
@@ -292,8 +312,9 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
         <div className="section-label">Scan a stack</div>
         <div style={{ fontSize: '12.5px', color: 'var(--ink-soft)', marginBottom: '12px' }}>
           Hold one card inside the frame and tap to capture — it goes straight into the stack and gets identified
-          in the background while you scan the next one. Scanning the same card again adds to its quantity. Review the
-          stack below, then add everything to the {destinationLabel} at once. The stack is kept on this device until then.
+          in the background while you scan the next one. Another copy of the card you just scanned? Tap{' '}
+          <strong>+1 same card</strong> instead of scanning it again — it's instant. Review the stack below, then add
+          everything to the {destinationLabel} at once. The stack is kept on this device until then.
         </div>
 
         <div className="stack-camera" ref={boxRef} onClick={captureFromCamera} role={camera === 'on' ? 'button' : undefined}
@@ -328,6 +349,12 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
                 type="button" className="btn secondary small stack-stop"
                 onClick={(e) => { e.stopPropagation(); stopCamera(); }}
               >Stop camera</button>
+              {last && (
+                <button
+                  type="button" className="btn small stack-again"
+                  onClick={(e) => { e.stopPropagation(); addSameAgain(); }}
+                >+1 same card</button>
+              )}
             </>
           )}
         </div>
@@ -335,6 +362,9 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
           <button type="button" className="btn secondary small" onClick={() => cameraFileRef.current.click()}>Take photo</button>
           <button type="button" className="btn secondary small" onClick={() => fileRef.current.click()}>Upload photos</button>
+          {camera !== 'on' && last && (
+            <button type="button" className="btn secondary small" onClick={addSameAgain}>+1 same card</button>
+          )}
           <label className="checkbox-row" style={{ marginBottom: 0, marginLeft: 'auto' }}>
             <input type="checkbox" checked={soundOn} onChange={(e) => setSoundOn(e.target.checked)} />
             <span className="checkbox-label-plain">Scan sound</span>

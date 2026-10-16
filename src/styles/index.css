@@ -2086,6 +2086,14 @@
       right: 8px;
     }
 
+    /* "+1 same card" sits bottom-right, clear of the last-card chip
+       (bottom-left) and the capture hint (bottom-center). */
+    .stack-again {
+      position: absolute;
+      right: 10px;
+      bottom: 44px;
+    }
+
     .stack-defaults {
       display: flex;
       flex-wrap: wrap;

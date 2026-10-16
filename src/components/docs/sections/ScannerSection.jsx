@@ -68,6 +68,13 @@ export default function ScannerSection() {
         camera shows how many cards are in the stack and how many are still
         being recognized.
       </p>
+      <p>
+        Scanning several copies of the same card? Scan the first one, then tap{' '}
+        <strong>+1 same card</strong> for each extra copy instead of scanning
+        it again. It adds one to the last card's quantity right away, without
+        waiting on recognition, and works even while that card is still being
+        identified.
+      </p>
       <ul>
         <li>
           <strong>Before you start</strong>, set <strong>Game</strong>,{' '}

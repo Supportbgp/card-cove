@@ -5350,8 +5350,8 @@ the user's ask, modeled on ManaBox/Mythic Tools.
   Quote tab's embedded Scan gets it for free; **tap-to-capture** for v1
   (auto-capture later); the stack kept **on this device** (IndexedDB), not
   a shared table; and the **same model and prompt** as the binder scanner
-  (`scan-binder-page` handles a single-card photo unchanged — no Edge
-  Function change, no redeploy). Accepted trade-off: one AI call per card,
+  (`scan-binder-page` handles a single-card photo unchanged. Its prompt
+  caching came later, see below). Accepted trade-off: one AI call per card,
   so up to ~9× the calls of scanning a 9-card page as one photo.
 - **Refactor first, so the two modes can't drift**: `ScanRow`,
   `detectedToRow`, `findImageCandidates` and `HIGH_VALUE_THRESHOLD` moved
@@ -5431,7 +5431,52 @@ the user's ask, modeled on ManaBox/Mythic Tools.
   at phone and desktop widths with the fake camera.
 - Staff docs: a "Stack mode" subsection in `ScannerSection.jsx`.
 
-No migration, no Edge Function redeploy.
+### Stack scanner: cost, prompt caching, and "+1 same card"
+
+Before real testing, the user asked what one-call-per-card does to cost.
+The estimate, at `claude-sonnet-5` pricing ($2/MTok input, $10/MTok output):
+every call resends the full tool schema plus `PROMPT_TEXT`, about 7,500
+tokens, which is far more than a single card photo (~1,000-1,400 tokens).
+That fixed overhead dominates. Per 1,000 cards: about $4-6 for binder pages,
+since 9 cards share one call, versus roughly $20-40 for the stack. The
+user's real volume is "hundreds, never close to 1000". Two changes followed,
+confirmed with the user:
+
+- **Prompt caching in `scan-binder-page`.** `PROMPT_TEXT` moved from the
+  user message into `system`, with `cache_control: {type: "ephemeral"}` on
+  that block. Caching covers tools, then system, so the tool schema and the
+  instructions are cached together. That's about 7,500 tokens, well over
+  Sonnet's 1,024-token minimum. The user message is now just the image plus
+  a one-line "report every card in this photo" instruction. A cache read
+  costs ~10% of normal input and lasts 5 minutes, refreshed on every hit, so
+  a scanning session pays full price for the prefix once. After that, each
+  card pays mostly for its own image. Binder-page scans benefit too, though
+  less, since they make fewer calls. **This is an estimate, not yet
+  measured**: the function now returns the API's `usage` object next to
+  `cards`, and also logs it. Check `cache_read_input_tokens` on a real
+  second scan to confirm the cache actually hits; the client ignores the
+  extra field. Model, forced `tool_choice`, and schema are unchanged.
+- **"+1 same card"** (stack mode only). This saves tokens specific to the
+  stack: an extra copy of the card just scanned costs **zero** AI calls.
+  `addSameAgain` bumps the newest stack entry's qty immediately (flash,
+  vibrate, beep, toast). It appears on the camera overlay (`.stack-again`,
+  bottom-left) and in the toolbar when the camera is off. It works even
+  while that card is still recognizing, because `recognize` now reads the
+  entry's current qty from `itemsRef` when the result lands, instead of the
+  qty captured when it was queued. Without that, a "+1" tapped
+  mid-recognition would have been overwritten back to 1. Covered by a new
+  e2e test asserting qty 3 after two taps and exactly one
+  `scan-binder-page` call (the harness counts calls in
+  `window.__HARNESS_SCAN_CALLS__`).
+- **Considered and not done**: shrinking the capture below 1024px. The image
+  is already the smaller part of each call once caching is in, and
+  set-symbol/number reading is already the weakest field. Also not done:
+  trimming the per-game schema or prompt for single-card photos. It's cached
+  anyway, and a second prompt would drift from the binder one.
+
+**Requires redeploying `scan-binder-page`** (`supabase functions deploy
+scan-binder-page`) for caching and the `usage` passthrough. Stack mode and
+"+1 same card" work without it, just without the caching discount.
 
 ## Backlog
 

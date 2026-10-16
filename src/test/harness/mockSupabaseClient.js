@@ -199,9 +199,11 @@ export const supabaseClient = {
     // enough to exercise the surrounding UI (status text, empty states).
     // scan-binder-page can be scripted per test: each call takes the next
     // entry (an array of detected cards) off window.__HARNESS_SCAN_QUEUE__,
-    // and returns no cards once it's empty.
+    // and returns no cards once it's empty. window.__HARNESS_SCAN_CALLS__
+    // counts the calls (e.g. to prove "+1 same card" makes none).
     async invoke(name) {
       if (name === 'scan-binder-page') {
+        window.__HARNESS_SCAN_CALLS__ = (window.__HARNESS_SCAN_CALLS__ || 0) + 1;
         const queue = window.__HARNESS_SCAN_QUEUE__;
         const cards = queue && queue.length ? queue.shift() : [];
         return { data: { cards }, error: null };
