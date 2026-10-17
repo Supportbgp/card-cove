@@ -5,7 +5,7 @@ import {
   timeAgo, canonicalizeCondition, marketValueForCondition, roundPriceUp, roundPriceDown,
   resolveActiveImage, activeImageSrc, SORT_COLUMNS, DEFAULT_CONDITION_MULTIPLIERS,
   RARITY_OPTIONS_BY_GAME, CONDITION_TIERS, CONDITION_OPTIONS, PRINTING_OPTIONS_BY_GAME,
-  mergeScanDuplicates, findBulkRow, buildBulkCatalogItem,
+  mergeScanDuplicates, scanDuplicateKey, findBulkRow, buildBulkCatalogItem,
 } from './cardUtils.js';
 
 describe('parseMoney', () => {
@@ -446,6 +446,25 @@ describe('SORT_COLUMNS', () => {
   it('sorts a null price below every real price', () => {
     expect(SORT_COLUMNS.price({ price: null })).toBe(-Infinity);
     expect(SORT_COLUMNS.price({ price: 5 })).toBe(5);
+  });
+});
+
+describe('scanDuplicateKey', () => {
+  it('identifies the same print by game + name + number, ignoring case, spacing and leading zeros', () => {
+    const a = scanDuplicateKey({ game: 'Pokemon', name: 'Charizard ', number: '004' });
+    const b = scanDuplicateKey({ game: 'Pokemon', name: 'charizard', number: '4' });
+    expect(a).toBe(b);
+    expect(a).not.toBeNull();
+  });
+
+  it('returns null (never merge) without both a name and a number', () => {
+    expect(scanDuplicateKey({ game: 'Pokemon', name: 'Charizard', number: '' })).toBeNull();
+    expect(scanDuplicateKey({ game: 'Pokemon', name: '', number: '4' })).toBeNull();
+  });
+
+  it('keeps different games apart', () => {
+    expect(scanDuplicateKey({ game: 'Magic', name: 'X', number: '1' }))
+      .not.toBe(scanDuplicateKey({ game: 'Pokemon', name: 'X', number: '1' }));
   });
 });
 

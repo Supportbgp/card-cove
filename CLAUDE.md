@@ -5323,6 +5323,161 @@ rather than adding a second button with identical behavior.
 **Requires, in order:** running `phase15_price_alert_match.sql` in the
 Supabase SQL Editor, then `supabase functions deploy price-check`.
 
+## Stack scanner: scan single cards one after another into a stack
+
+New feature (a rework of the Scanner tab): scan individual cards quickly
+into a stack, review it, then add the whole stack to the catalog at once —
+the user's ask, modeled on ManaBox/Mythic Tools.
+
+- **Research first** (their own docs/listings, not guessed): ManaBox's
+  scanner detects and identifies each card from the live camera
+  automatically, drops it into a **session list**, and keeps the camera
+  open; session-wide defaults (foil, set lock, language, copies) are set
+  up front; **Quick Mode** auto-picks the first matching version, otherwise
+  it asks on ambiguity; at the end you review/bulk-edit the session and
+  save. Scrytics/Grimoria work the same way (continuous session, review,
+  commit in one tap). Mythic Tools documents almost nothing about its
+  scanner beyond "point your camera at the card," switching printings when
+  it guesses wrong, and saving scans to a collection. **The key
+  difference**: all of these are native apps recognizing cards *instantly,
+  on-device*, from a model trained on 100,000+ card images — not something
+  a web app can ship across 8 games. So the *experience* was copied, not
+  the recognition: the card goes into the stack the instant it's snapped,
+  and recognition (the same vision model as the binder scanner, one call
+  per card) runs in a background queue while staff keep scanning.
+- **Decided with the user** (four questions): a **mode in the existing
+  Scan Binder tab** ("Binder page" / "Stack"), not a new tab — so the
+  Quote tab's embedded Scan gets it for free; **tap-to-capture** for v1
+  (auto-capture later); the stack kept **on this device** (IndexedDB), not
+  a shared table; and the **same model and prompt** as the binder scanner
+  (`scan-binder-page` handles a single-card photo unchanged. Its prompt
+  caching came later, see below). Accepted trade-off: one AI call per card,
+  so up to ~9× the calls of scanning a 9-card page as one photo.
+- **Refactor first, so the two modes can't drift**: `ScanRow`,
+  `detectedToRow`, `findImageCandidates` and `HIGH_VALUE_THRESHOLD` moved
+  verbatim from `ScannerPanel.jsx` into **`scanShared.jsx`**, plus a new
+  **`ScanReview`** component — the review section both modes end in
+  (binder/case picker, channels with `channelDefaultsForLocation`, the
+  review rows and their actions, "+ Add missed card", and the
+  `normalizeCard` → `onImport` hand-off that used to be inline).
+  `ScannerPanel` is now a thin mode switch over `BinderPageScanner` (the
+  original flow, behavior unchanged) and `StackScanner`; its props didn't
+  change, so `QuoteDetail`'s embed needed nothing. `mergeScanDuplicates`'s
+  identity rule was extracted as **`scanDuplicateKey`** (`cardUtils.js`) so
+  the stack can ask "is this card already in the stack?" one card at a time
+  with the exact same rule (game + name + number, never name alone).
+- **`StackScanner.jsx`**:
+  - **Live camera** via `getUserMedia` (rear camera preferred), shown with
+    `object-fit: cover` and a card-shaped guide (63×88 —
+    `CARD_ASPECT`). Tapping the preview captures the guide region:
+    `cameraCapture.js`'s `coverRectToVideoRect` maps the on-screen guide
+    back into real video pixels (undoing the cover scaling/centering, unit
+    tested), with a 6% margin, downscaled to 1024px JPEG. Feedback: a
+    white flash (respects reduced motion), `navigator.vibrate` where
+    supported, and a Web Audio beep (toggle: "Scan sound").
+  - **The camera never runs in the background**: it stops on
+    `visibilitychange` (phone locked / tab switched), when the Scanner
+    panel stops being displayed (every app tab stays mounted, just hidden —
+    an `IntersectionObserver` plus `getClientRects().length === 0` tells a
+    hidden panel apart from merely scrolled away), on mode switch and on
+    unmount. There's always an explicit "Start camera".
+  - **Fallbacks**: "Take photo" (OS camera, one card per photo) and
+    "Upload photos" (several at once) feed the same capture path — also
+    how the e2e suite drives it, and the answer for any browser where a
+    live camera isn't available or permitted (the error message says so).
+  - **Background recognition queue**: 2 calls in flight
+    (`RECOGNITION_CONCURRENCY`), oldest first. Each result becomes a normal
+    review row (`detectedToRow`) whose "real photo" is the capture itself
+    (no bbox crop needed), then the usual image/price lookup fills it in.
+    A card already in the stack (same `scanDuplicateKey`) bumps that row's
+    qty instead, with a toast ("Another X — now ×2").
+  - **Session defaults** (Game / Condition / Printing below the camera,
+    ManaBox's "set it up first" menu) are snapshotted onto each card at
+    capture time, so changing them between cards affects only later cards.
+    A chosen Game overrides the model's guess; Condition/Printing only fill
+    what the scan left blank.
+  - **A card the model can't read** becomes a full, blank review row
+    (`markFailed`) with its photo and a "Retry" — never a dead entry.
+  - **The stack persists on this device** — `stackStore.js`, IndexedDB
+    (each card's photo is ~50-150 KB, which would blow through
+    localStorage's ~5 MB), keyed per destination (`stack:catalog` vs.
+    `stack:quote`) so a quote's stack and the catalog's never mix. Saves
+    are debounced; every call is best-effort (missing/blocked IndexedDB
+    just means no persistence). Cards that were mid-recognition at reload
+    are re-queued automatically.
+  - **Review & commit**: `ScanReview` with a `renderRow` override (a
+    still-recognizing card shows a thumbnail + spinner + remove; a failed
+    one shows its note + Retry above the normal row) and
+    `confirmBlockedReason` (the Add button waits until nothing is still
+    being recognized). "Clear stack" (with confirm) discards it.
+- **A real race found by the new e2e test, fixed**: the saved stack loads
+  asynchronously, and a capture made before it finished loading was wiped
+  out when the load *replaced* the stack. The load now merges with
+  anything already captured. (A person tapping right after opening Stack
+  mode could have hit this too, not just the test.)
+- **Testing**: `cameraCapture.test.js` (cover-fit crop math incl.
+  clamping), `stackStore.test.js` (graceful no-IndexedDB fallback),
+  `scanDuplicateKey` cases in `cardUtils.test.js`, and a new
+  `e2e/stack-scanner.spec.js` (Desktop + Mobile): upload-path scanning
+  with a repeat card merging into qty 2 and a session Condition applied
+  through to the saved catalog rows; a failed recognition becoming a blank
+  row and recovering via Retry; the stack surviving a reload (real
+  IndexedDB in Chromium); and the **live camera path** end to end using
+  Chromium's built-in fake camera (`--use-fake-device-for-media-stream`,
+  auto-granted permission) — start camera, tap, card recognized into the
+  stack, stop camera. The harness's `functions.invoke` mock gained a
+  scriptable `scan-binder-page` (`window.__HARNESS_SCAN_QUEUE__`, one
+  detected-cards array per call). Also visually checked via screenshots
+  at phone and desktop widths with the fake camera.
+- Staff docs: a "Stack mode" subsection in `ScannerSection.jsx`.
+
+### Stack scanner: cost, prompt caching, and "+1 same card"
+
+Before real testing, the user asked what one-call-per-card does to cost.
+The estimate, at `claude-sonnet-5` pricing ($2/MTok input, $10/MTok output):
+every call resends the full tool schema plus `PROMPT_TEXT`, about 7,500
+tokens, which is far more than a single card photo (~1,000-1,400 tokens).
+That fixed overhead dominates. Per 1,000 cards: about $4-6 for binder pages,
+since 9 cards share one call, versus roughly $20-40 for the stack. The
+user's real volume is "hundreds, never close to 1000". Two changes followed,
+confirmed with the user:
+
+- **Prompt caching in `scan-binder-page`.** `PROMPT_TEXT` moved from the
+  user message into `system`, with `cache_control: {type: "ephemeral"}` on
+  that block. Caching covers tools, then system, so the tool schema and the
+  instructions are cached together. That's about 7,500 tokens, well over
+  Sonnet's 1,024-token minimum. The user message is now just the image plus
+  a one-line "report every card in this photo" instruction. A cache read
+  costs ~10% of normal input and lasts 5 minutes, refreshed on every hit, so
+  a scanning session pays full price for the prefix once. After that, each
+  card pays mostly for its own image. Binder-page scans benefit too, though
+  less, since they make fewer calls. **This is an estimate, not yet
+  measured**: the function now returns the API's `usage` object next to
+  `cards`, and also logs it. Check `cache_read_input_tokens` on a real
+  second scan to confirm the cache actually hits; the client ignores the
+  extra field. Model, forced `tool_choice`, and schema are unchanged.
+- **"+1 same card"** (stack mode only). This saves tokens specific to the
+  stack: an extra copy of the card just scanned costs **zero** AI calls.
+  `addSameAgain` bumps the newest stack entry's qty immediately (flash,
+  vibrate, beep, toast). It appears on the camera overlay (`.stack-again`,
+  bottom-left) and in the toolbar when the camera is off. It works even
+  while that card is still recognizing, because `recognize` now reads the
+  entry's current qty from `itemsRef` when the result lands, instead of the
+  qty captured when it was queued. Without that, a "+1" tapped
+  mid-recognition would have been overwritten back to 1. Covered by a new
+  e2e test asserting qty 3 after two taps and exactly one
+  `scan-binder-page` call (the harness counts calls in
+  `window.__HARNESS_SCAN_CALLS__`).
+- **Considered and not done**: shrinking the capture below 1024px. The image
+  is already the smaller part of each call once caching is in, and
+  set-symbol/number reading is already the weakest field. Also not done:
+  trimming the per-game schema or prompt for single-card photos. It's cached
+  anyway, and a second prompt would drift from the binder one.
+
+**Requires redeploying `scan-binder-page`** (`supabase functions deploy
+scan-binder-page`) for caching and the `usage` passthrough. Stack mode and
+"+1 same card" work without it, just without the caching discount.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -5369,6 +5524,14 @@ than repeated.
     (see "TCGdex follow-up" above) — removing that skip is the first step
     once a JP price source is in place (Pokemon only — other games' JP items
     are still looked up as before).
+- **Stack scanner, next steps (see "Stack scanner" above)**:
+  - Auto-capture — snap when a steady card is in the guide, instead of a
+    tap; deliberately left for after tap-to-capture is proven in real use.
+  - Try a faster/cheaper model for single-card recognition, compared
+    against the current one on real cards before switching.
+  - The review rows are tall on a phone (one field per line) — fine for a
+    handful of cards, long for a 50-card stack; consider a compact
+    collapsed row once real stacks show whether it's a problem.
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a

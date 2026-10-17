@@ -54,6 +54,65 @@ export default function ScannerSection() {
         harder for the scan to judge). If a crop looks off, just switch that
         row's toggle to Stock, or re-photograph the page straighter-on.
       </DocsCallout>
+
+      <h3>Stack mode: scanning cards one at a time</h3>
+      <p>
+        Switch the toggle at the top from <strong>Binder page</strong> to{' '}
+        <strong>Stack</strong> to scan loose cards one after another, the
+        way apps like ManaBox work. Tap <strong>Start camera</strong>, hold
+        one card inside the white frame, and tap anywhere on the camera view
+        to capture it. You'll get a flash, a beep (turn it off with{' '}
+        <strong>Scan sound</strong>), and the card drops straight into the
+        stack. You don't have to wait: each card is identified in the
+        background while you scan the next one. The counter at the top of the
+        camera shows how many cards are in the stack and how many are still
+        being recognized.
+      </p>
+      <p>
+        Scanning several copies of the same card? Scan the first one, then tap{' '}
+        <strong>+1 same card</strong> for each extra copy instead of scanning
+        it again. It adds one to the last card's quantity right away, without
+        waiting on recognition, and works even while that card is still being
+        identified.
+      </p>
+      <ul>
+        <li>
+          <strong>Before you start</strong>, set <strong>Game</strong>,{' '}
+          <strong>Condition</strong> and (for some games){' '}
+          <strong>Printing / finish</strong> below the camera if the whole
+          stack shares them. They're applied to each card as it's scanned,
+          and you can change them between cards.
+        </li>
+        <li>
+          <strong>Scanning the same card again</strong> adds to its quantity
+          instead of adding a second row (matched by name and collector
+          number).
+        </li>
+        <li>
+          <strong>No live camera?</strong> Use <strong>Take photo</strong>{' '}
+          (one card per photo) or <strong>Upload photos</strong> to add
+          several existing photos at once.
+        </li>
+        <li>
+          A card that can't be recognized still stays in the stack as a blank
+          row with its photo, so you can type it in or tap{' '}
+          <strong>Retry</strong>.
+        </li>
+      </ul>
+      <p>
+        The stack works like the binder review above: fix anything, set the
+        Condition and Price, pick the binder/case and channels, then{' '}
+        <strong>Add N item(s) to catalog</strong> adds the whole stack at
+        once. That button waits until every card has finished being
+        recognized.
+      </p>
+      <DocsCallout kind="note">
+        The stack is saved on <strong>this device</strong> until it's added,
+        so it survives a refresh or the phone going to sleep. It isn't shared
+        with other devices, and <strong>Clear stack</strong> throws it away
+        without adding anything. The camera turns itself off when you leave
+        the tab or lock the phone.
+      </DocsCallout>
     </DocsSection>
   );
 }

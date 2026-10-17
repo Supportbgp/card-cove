@@ -399,14 +399,26 @@ Deno.serve(async (req) => {
         // photo) — confirmed via a real API error that this model rejects
         // the parameter outright ("`temperature` is deprecated for this
         // model"), not just ignores/clamps it, so it can't be set at all.
+        // Prompt caching. The tool schema + PROMPT_TEXT (~7,500 tokens of
+        // per-game rarity/set/number rules) are identical on every call;
+        // only the photo changes. A cache is a prefix match in the order
+        // tools → system → messages, so the instructions live in `system`
+        // (ahead of the photo) with the cache marker on it — that caches
+        // tools + system together. Within 5 minutes of the last call (a
+        // stack-scanning session is a steady stream of calls), that prefix
+        // is billed at ~10% of the normal input price instead of in full.
+        // Same instructions, word for word — previously they were a text
+        // block after the image in the user message, where the changing
+        // image ahead of them made them uncacheable.
         tools: [DETECT_CARDS_TOOL],
         tool_choice: { type: "tool", name: "report_detected_cards" },
+        system: [{ type: "text", text: PROMPT_TEXT, cache_control: { type: "ephemeral" } }],
         messages: [
           {
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
-              { type: "text", text: PROMPT_TEXT },
+              { type: "text", text: "Report every card in this photo with the report_detected_cards tool." },
             ],
           },
         ],
@@ -422,7 +434,13 @@ Deno.serve(async (req) => {
     const toolUse = (data.content || []).find((b) => b.type === "tool_use");
     const cards = toolUse?.input?.cards || [];
 
-    return json({ cards }, 200, headers);
+    // The API's own token counts for this call, passed through so real
+    // costs (and whether the cache is hitting — cache_read_input_tokens > 0)
+    // can be checked from the browser's network tab or a log, instead of
+    // estimated. The app ignores this field.
+    const usage = data.usage || null;
+    console.log("scan-binder-page usage", JSON.stringify(usage));
+    return json({ cards, usage }, 200, headers);
   } catch (err) {
     return json({ error: String(err) }, 500, headers);
   }
