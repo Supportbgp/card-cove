@@ -190,7 +190,11 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
   async function startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCamera('error');
-      setCameraError("This browser can't open a live camera here — use Take photo instead.");
+      // Browsers only expose the camera API on secure pages (HTTPS or
+      // localhost) — a phone hitting the dev server at http://<LAN IP> lands here.
+      setCameraError(window.isSecureContext === false
+        ? 'The live camera needs a secure (https://) page — this one is http://. Use Take photo here, or open the live site.'
+        : "This browser can't open a live camera here — use Take photo instead.");
       return;
     }
     setCamera('starting');
