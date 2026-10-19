@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabaseClient } from './lib/supabase.js';
 import {
   dbLoadAll, dbUpsertCard, dbUpsertCards, dbDeleteCard, dbDeleteCards, dbClearCatalog,
   dbInsertTickets, dbUpdateTicketStamp, dbClearQueue, dbUpdatePlatformStatus, dbInsertSales, dbLoadSales, dbUpdateSale,
+  dbDeleteTickets, dbDeleteSaleForTicket,
   dbLoadSettings, dbSaveSettings,
   dbLoadPriceAlerts, dbAcknowledgePriceAlerts, dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadQuotes, dbUpsertQuote, dbDeleteQuote, dbLoadQuoteSettings, dbSaveQuoteSettings,
@@ -89,6 +90,15 @@ export default function App() {
   const [tab, setTab] = useState('catalog');
   const [catalog, setCatalog] = useState([]);
   const [queue, setQueue] = useState([]);
+  // An Undo toast's click handler is created when the sale happens, so it
+  // would otherwise see the catalog as it was back then. Undo reads the
+  // current catalog through this ref instead.
+  const catalogRef = useRef(catalog);
+  catalogRef.current = catalog;
+  const undoingRef = useRef(new Set());
+  // Bumped whenever sales rows are added or removed, so an open Reports tab
+  // re-fetches instead of still showing an undone sale.
+  const [salesRevision, setSalesRevision] = useState(0);
   // Starts as the real defaults, not null — "Pricing settings" should be
   // usable the instant staff tap it, not gated behind a network round trip
   // that (on a flaky mobile connection) could leave this null indefinitely
@@ -229,12 +239,14 @@ export default function App() {
       setQueue(prev => [...prev, newTicket]);
       await dbInsertTickets([newTicket], toast);
       await dbInsertSales([newSale], toast);
+      setSalesRevision(v => v + 1);
     }
     if (reviewedAlertIds.length) await handleDismissPriceAlerts(reviewedAlertIds);
     // Toasts are single-slot, not a queue — combine into one call so a
     // warning doesn't just silently overwrite an unseen "Saved" message.
     const warnings = [priceOrderingWarning(nextCatalog, record), priceVsMarketValueWarning(record, multipliers)].filter(Boolean);
-    if (warnings.length) toast(warnings.join(' '), true);
+    if (newTicket) offerUndo([newTicket], existing ? { [existing.sku]: existing } : {}, warnings.join(' '));
+    else if (warnings.length) toast(warnings.join(' '), true);
     else toast(`Saved ${record.name}`);
   }
 
@@ -256,10 +268,12 @@ export default function App() {
     const updatedList = [];
     const newTickets = [];
     const newSales = [];
+    const snapshots = {};
     const soldAt = Date.now();
     const nextCatalog = catalog.map(c => {
       if (!skus.has(c.sku) || c.sold || c.qty <= 0) return c;
       const qtySold = c.qty;
+      snapshots[c.sku] = c;
       const updated = {
         ...c, qty: 0, sold: true, lastUpdated: soldAt,
         posSynced: false, tcgplayerSynced: false, collectrSynced: false,
@@ -286,7 +300,9 @@ export default function App() {
     await dbUpsertCards(updatedList, toast);
     await dbInsertTickets(newTickets, toast);
     await dbInsertSales(newSales, toast);
-    toast(`Marked ${affected} item(s) sold`);
+    if (!affected) { toast('Nothing to mark sold'); return; }
+    setSalesRevision(v => v + 1);
+    offerUndo(newTickets, snapshots);
   }
 
   // Restores the one-item partial-quantity sell this app's older per-row
@@ -325,7 +341,75 @@ export default function App() {
     await dbUpsertCard(updated, toast);
     await dbInsertTickets([newTicket], toast);
     await dbInsertSales([newSale], toast);
-    toast(`Marked ${qtySold} of ${c.name} sold`);
+    setSalesRevision(v => v + 1);
+    offerUndo([newTicket], { [c.sku]: c });
+  }
+
+  // --- Undo a sale -------------------------------------------------------
+  // Every sell path above writes the same pair: a Sync Queue ticket and a
+  // Reports (sales) row, both stamped with one timestamp. Undo reverses all
+  // of it: the item's qty comes back (and it's no longer "sold"), the ticket
+  // is deleted, and the sales row is deleted. Reachable from the toast right
+  // after selling and from each ticket in the Sync Queue.
+
+  function soldMessage(tickets) {
+    if (tickets.length === 1) return `Sold ${tickets[0].qtySold} ${tickets[0].name}`;
+    return `Sold ${tickets.length} items`;
+  }
+
+  // `snapshots` (sku -> the catalog row right before selling) lets the
+  // toast's undo also put the P/T/C status chips back as they were, since
+  // selling resets them. The Sync Queue's undo has no snapshot, so the chips
+  // stay unchecked there; staff re-check them if needed.
+  function offerUndo(tickets, snapshots, extra) {
+    const msg = soldMessage(tickets) + (extra ? `. ${extra}` : '');
+    toast(msg, false, { action: { label: 'Undo', onClick: () => undoSales(tickets, snapshots) } });
+  }
+
+  async function undoSales(tickets, snapshots = {}) {
+    // Guards a double tap, or the toast and the queue button racing.
+    const live = tickets.filter(t => !undoingRef.current.has(t.id));
+    if (!live.length) return;
+    live.forEach(t => undoingRef.current.add(t.id));
+    try {
+      const now = Date.now();
+      const restoredBySku = new Map();
+      let missing = 0;
+      for (const t of live) {
+        const base = restoredBySku.get(t.sku) || catalogRef.current.find(c => c.sku === t.sku);
+        if (!base) { missing++; continue; }
+        const snap = snapshots[t.sku];
+        restoredBySku.set(t.sku, {
+          ...base,
+          qty: (Number(base.qty) || 0) + (Number(t.qtySold) || 0),
+          sold: false,
+          lastUpdated: now,
+          ...(snap ? { posSynced: snap.posSynced, tcgplayerSynced: snap.tcgplayerSynced, collectrSynced: snap.collectrSynced } : {}),
+        });
+      }
+      const restored = Array.from(restoredBySku.values());
+      const ids = live.map(t => t.id);
+      setCatalog(prev => prev.map(c => restoredBySku.get(c.sku) || c));
+      setQueue(prev => prev.filter(t => !ids.includes(t.id)));
+      await dbUpsertCards(restored, toast);
+      await dbDeleteTickets(ids, toast);
+      let salesRemoved = 0;
+      for (const t of live) salesRemoved += await dbDeleteSaleForTicket(t, toast);
+      setSalesRevision(v => v + 1);
+
+      const what = live.length === 1 ? `the sale of ${live[0].name}` : `${live.length} sales`;
+      const notes = [];
+      if (missing) notes.push(live.length === 1
+        ? "The item is no longer in the catalog, so its quantity couldn't be put back"
+        : `${missing} item(s) are no longer in the catalog, so their quantity couldn't be put back`);
+      if (salesRemoved < live.length) {
+        notes.push(`${live.length - salesRemoved} Reports entry wasn't found (edited in Reports?), so remove it there`);
+      }
+      if (notes.length) toast(`Undid ${what}. ${notes.join('. ')}.`, true);
+      else toast(`Undid ${what}. Quantity is back in the catalog.`);
+    } finally {
+      live.forEach(t => undoingRef.current.delete(t.id));
+    }
   }
 
   // Thin passthrough to dbLoadSales — ReportsTab owns the date-range UI and
@@ -550,7 +634,7 @@ export default function App() {
         />
       </div>
       <div className={`panel${tab === 'queue' ? ' active' : ''}`}>
-        <SyncQueueTab queue={queue} onToggleStamp={handleToggleStamp} />
+        <SyncQueueTab queue={queue} onToggleStamp={handleToggleStamp} onUndoSale={(t) => undoSales([t])} />
       </div>
       <div className={`panel${tab === 'import' ? ' active' : ''}`}>
         <ImportExportPanel
@@ -582,7 +666,7 @@ export default function App() {
       </div>
 
       <div className={`panel${tab === 'reports' ? ' active' : ''}`}>
-        <ReportsTab onLoadSales={handleLoadSalesReport} onUpdateSale={handleUpdateSale} />
+        <ReportsTab onLoadSales={handleLoadSalesReport} onUpdateSale={handleUpdateSale} refreshKey={salesRevision} />
       </div>
 
       <div className="footnote">

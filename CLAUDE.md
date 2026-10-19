@@ -5478,6 +5478,74 @@ confirmed with the user:
 scan-binder-page`) for caching and the `usage` passthrough. Stack mode and
 "+1 same card" work without it, just without the caching discount.
 
+## Undo a sale: from the toast, and from the Sync Queue
+
+Staff ask: undo a sale right after confirming it (a pop-up like "Sold 1
+Kyogre EX - Undo?") and later from the Sync Queue. Undo puts the quantity
+back and removes both the Sync Queue ticket and the Reports entry, with as
+little friction as possible for the existing data setup.
+
+- **No migration.** There's no link column between a ticket and its sales
+  row, but every sell path (`handleBatchSell`, `handleSellPartial`, Edit's
+  Mark as sold in `handleSaveCard`) stamps the ticket's `ts` and the sale's
+  `sold_at` from the same timestamp, and the sync_queue backfill copied
+  `ts` into `sold_at` too. So **sku + that timestamp identifies the pair**:
+  `dbDeleteSaleForTicket` deletes `sales` where `sku` and `sold_at` match
+  the ticket, returning how many rows it removed. `dbDeleteTickets` deletes
+  tickets by id. Both rely on the existing `authenticated full access` RLS
+  policies (the same ones the Edit Sale feature confirmed).
+- **`undoSales(tickets, snapshots)` in `App.jsx`** is the one undo path for
+  both triggers: for each ticket it adds `qtySold` back onto the catalog
+  row, sets `sold: false`, deletes the tickets, and deletes the matching
+  sales rows. It reads the catalog through `catalogRef`, because the toast's
+  click handler is created at sell time and would otherwise act on a stale
+  catalog. `undoingRef` blocks a double tap, or the toast and the queue
+  button racing on the same ticket.
+  - **Status chips (P/T/C)**: selling resets them. The toast's undo passes
+    the pre-sale catalog rows as `snapshots`, so it puts the chips back
+    exactly as they were. The Sync Queue's undo has no snapshot, so the
+    chips stay unchecked and staff re-check them. If a platform stamp on
+    the ticket was already done, the confirm dialog says to put the listing
+    back there.
+  - **Honest results**: if the catalog row was deleted after the sale, the
+    ticket and sales row are still removed but the qty can't be restored,
+    and the toast says so (shown as an error). Same if no sales row matched,
+    e.g. its Sold date was changed with Edit Sale in Reports. The toast then
+    says to remove it there.
+- **Toast with an action** (`UIContext`/`Toast.jsx`):
+  `toast(msg, isErr, { action: { label, onClick } })` adds a button and
+  keeps the toast up 8 seconds instead of 2.4. The action is one-shot (the
+  toast hides before running it). `.toast` still has `pointer-events: none`
+  (see Mobile polish round 3); only `.toast-action` takes clicks, and it's
+  only rendered while the toast shows, so an invisible toast never eats a
+  click. The toast became a content-sized flex row (`width: max-content`,
+  capped at the screen width): with `left: 50%` it previously laid out in
+  half the screen and wrapped the button under the text on a phone.
+  Toasts are still single-slot, so a later toast replaces an unused Undo.
+  That's acceptable because the Sync Queue undo is always there.
+- Sell messages changed from "Marked N item(s) sold" to `Sold 1 Kyogre EX`
+  (or `Sold 3 items`) + Undo. Edit's Mark as sold now shows the same toast
+  instead of "Saved X" (any price warnings are appended to it).
+- **Reports refresh**: `ReportsTab` takes a `refreshKey` (`salesRevision`
+  in `App.jsx`, bumped on every sell and undo) and re-fetches when it
+  changes, so an undone sale doesn't linger there. The open game drill-down
+  only resets when the date range changes, not on a refresh.
+- **Sync Queue**: each ticket (pending and completed) has an "Undo sale"
+  button, with a confirm.
+- Staff docs: "Undoing a sale" in `SellingItemSection.jsx` and a paragraph
+  in `SyncQueueSection.jsx`. The Selling section's old warning that Mark
+  sold always sells the whole quantity was stale since partial-quantity
+  selling came back, and was corrected in the same change.
+- Covered by `db.test.js` (both new helpers, including the sku + sold_at
+  filter) and `e2e/undo-sale.spec.js` (Desktop + Mobile): the toast undo
+  restores qty, sold flag and the POS chip and empties sync_queue/sales; the
+  Sync Queue undo restores qty 1 → 3 and removes only the sales row with
+  that ticket's timestamp; the stamped-platform warning, with Cancel leaving
+  everything untouched. The harness's `delete()` gained `.select()`
+  returning support so `dbDeleteSaleForTicket`'s row count works under e2e.
+
+No migration, no Edge Function redeploy.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

@@ -46,6 +46,7 @@ const {
   dbLoadSettings, dbLoadPublicBinder, dbLoadAll,
   rowToSortingItem, dbInsertSortingItems,
   dbInsertSales, rowToSale, dbLoadSales, dbUpdateSale,
+  dbDeleteTickets, dbDeleteSaleForTicket,
   rowToPriceAlert, dbLoadPriceAlerts, dbAcknowledgePriceAlerts,
   dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
 } = await import('./db.js');
@@ -183,6 +184,41 @@ describe('dbInsertSales (saleToRow via the real call)', () => {
     tableResults.sales = { data: null, error: { message: 'boom' } };
     const toast = vi.fn();
     await dbInsertSales([{ sku: 's', name: 'n', soldAt: Date.now() }], toast);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('boom'), true);
+  });
+});
+
+describe('undo a sale: dbDeleteTickets / dbDeleteSaleForTicket', () => {
+  it('deletes tickets by id', async () => {
+    tableResults.sync_queue = { data: null, error: null };
+    await dbDeleteTickets(['t1', 't2'], vi.fn());
+    const builder = fromMock.mock.results[0].value;
+    expect(fromMock).toHaveBeenCalledWith('sync_queue');
+    expect(builder.delete).toHaveBeenCalled();
+    expect(builder.in).toHaveBeenCalledWith('id', ['t1', 't2']);
+  });
+
+  it('is a no-op for no tickets', async () => {
+    await dbDeleteTickets([], vi.fn());
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("finds the ticket's sales row by sku + the shared sale timestamp, and returns how many it removed", async () => {
+    tableResults.sales = { data: [{ id: 's1' }], error: null };
+    const removed = await dbDeleteSaleForTicket({ sku: 'sku-1', timestamp: Date.parse('2026-10-18T15:30:00.000Z') }, vi.fn());
+    const builder = fromMock.mock.results[0].value;
+    expect(fromMock).toHaveBeenCalledWith('sales');
+    expect(builder.delete).toHaveBeenCalled();
+    expect(builder.eq).toHaveBeenCalledWith('sku', 'sku-1');
+    expect(builder.eq).toHaveBeenCalledWith('sold_at', '2026-10-18T15:30:00.000Z');
+    expect(removed).toBe(1);
+  });
+
+  it('returns 0 and toasts on error', async () => {
+    tableResults.sales = { data: null, error: { message: 'boom' } };
+    const toast = vi.fn();
+    const removed = await dbDeleteSaleForTicket({ sku: 's', timestamp: Date.now() }, toast);
+    expect(removed).toBe(0);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('boom'), true);
   });
 });

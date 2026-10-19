@@ -116,7 +116,9 @@ function execute(table, op, filters, single, order, range) {
     return { data: null, error: null };
   }
   if (op.type === 'delete') {
+    const removed = rows.filter((r) => matchesFilters(r, filters));
     db[table] = rows.filter((r) => !matchesFilters(r, filters));
+    if (op.returning) return { data: single ? removed[0] ?? null : removed, error: null };
     return { data: null, error: null };
   }
   return { data: null, error: null };
