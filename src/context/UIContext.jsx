@@ -10,14 +10,29 @@ export function useUI() {
 }
 
 export function UIProvider({ children }) {
-  const [toastState, setToastState] = useState({ msg: '', isErr: false, show: false });
+  const [toastState, setToastState] = useState({ msg: '', isErr: false, show: false, action: null });
   const toastTimer = useRef(null);
 
-  const toast = useCallback((msg, isErr) => {
-    setToastState({ msg, isErr: !!isErr, show: true });
+  // opts.action = { label, onClick } adds a button to the toast (e.g. the
+  // "Undo" after Mark sold) and keeps it up longer so there's time to tap
+  // it. Toasts are still single-slot: a later toast replaces this one,
+  // action and all.
+  const toast = useCallback((msg, isErr, opts) => {
+    const action = (opts && opts.action) || null;
+    setToastState({ msg, isErr: !!isErr, show: true, action });
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToastState(s => ({ ...s, show: false })), 2400);
+    const duration = (opts && opts.duration) || (action ? 8000 : 2400);
+    toastTimer.current = setTimeout(() => setToastState(s => ({ ...s, show: false, action: null })), duration);
   }, []);
+
+  // One-shot: hide the toast first so a second tap can't fire the action twice.
+  const runToastAction = useCallback(() => {
+    const action = toastState.action;
+    if (!action) return;
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastState(s => ({ ...s, show: false, action: null }));
+    action.onClick();
+  }, [toastState.action]);
 
   const [confirmState, setConfirmState] = useState(null);
 
@@ -36,7 +51,8 @@ export function UIProvider({ children }) {
   return (
     <UIContext.Provider value={value}>
       {children}
-      <Toast msg={toastState.msg} isErr={toastState.isErr} show={toastState.show} />
+      <Toast msg={toastState.msg} isErr={toastState.isErr} show={toastState.show}
+        actionLabel={toastState.action && toastState.action.label} onAction={runToastAction} />
       {confirmState && (
         <ConfirmModal
           message={confirmState.message}

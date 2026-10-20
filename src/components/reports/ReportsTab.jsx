@@ -14,7 +14,7 @@ const PRESETS = [
 // App.jsx's top-level state the way catalog/quotes/sorting are — sales only
 // ever grows, with no natural cap, so eagerly loading all of it on every
 // sign-in doesn't scale the way it does for those.
-export default function ReportsTab({ onLoadSales, onUpdateSale }) {
+export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
   const [preset, setPreset] = useState('month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -29,8 +29,6 @@ export default function ReportsTab({ onLoadSales, onUpdateSale }) {
     if (!range) { setSales([]); return; }
     let cancelled = false;
     setLoading(true);
-    setExpandedGame(null);
-    setEditingSale(null);
     onLoadSales(range.from, range.to).then(rows => {
       if (!cancelled) { setSales(rows); setLoading(false); }
     });
@@ -40,6 +38,13 @@ export default function ReportsTab({ onLoadSales, onUpdateSale }) {
     // range's own primitive values instead is what actually determines
     // when a re-fetch is needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range?.from, range?.to, refreshKey]);
+
+  // A new range starts collapsed; a refresh after a sale or an undo
+  // (refreshKey) keeps whichever game is open.
+  useEffect(() => {
+    setExpandedGame(null);
+    setEditingSale(null);
   }, [range?.from, range?.to]);
 
   const report = computeSalesReport(sales);

@@ -144,6 +144,29 @@ export async function dbInsertTickets(tickets, toast) {
   if (error) toast('Sync tickets failed: ' + error.message, true);
 }
 
+export async function dbDeleteTickets(ids, toast) {
+  if (!ids.length) return;
+  const { error } = await supabaseClient.from('sync_queue').delete().in('id', ids);
+  if (error) toast('Removing sync ticket failed: ' + error.message, true);
+}
+
+// Undo support: removes the sales row written by the same sell action as a
+// ticket. There's no link column between the two tables — every sell path
+// (handleBatchSell/handleSellPartial/Edit's Mark as sold) stamps the ticket's
+// `ts` and the sale's `sold_at` from the same timestamp, and the sync_queue
+// backfill copied `ts` into `sold_at` too, so sku + that timestamp
+// identifies the pair without a migration. Returns how many rows were
+// removed (0 if the sale was edited to a different date in Reports, or
+// never existed), so the caller can say so instead of claiming success.
+export async function dbDeleteSaleForTicket(ticket, toast) {
+  const { data, error } = await supabaseClient.from('sales').delete()
+    .eq('sku', ticket.sku)
+    .eq('sold_at', new Date(ticket.timestamp).toISOString())
+    .select('id');
+  if (error) { toast('Removing sales record failed: ' + error.message, true); return 0; }
+  return (data || []).length;
+}
+
 // One row per Mark Sold event (see phase12_sales_history.sql) — written
 // alongside the sync_queue ticket, not instead of it; the two tables track
 // different things (in-flight cross-platform cleanup vs. a durable sales

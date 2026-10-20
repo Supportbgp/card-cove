@@ -638,6 +638,10 @@
       font-size: 14px;
     }
 
+    .ticket-undo {
+      margin-top: 6px;
+    }
+
     .ticket-info .t-meta {
       font-size: 12px;
       color: var(--ink-soft);
@@ -848,6 +852,36 @@
 
     .toast.show {
       opacity: 1;
+    }
+
+    /* The one clickable thing a toast can hold (e.g. "Undo" after Mark sold).
+       Only this button takes clicks — the toast box itself keeps
+       pointer-events: none (see above) — and it's only rendered while the
+       toast is showing, so an invisible toast never eats a click. */
+    .toast {
+      /* left: 50% would otherwise cap it at half the screen and wrap early. */
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .toast-action {
+      pointer-events: auto;
+      flex: 0 0 auto;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, .55);
+      color: #fff;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .toast-action:hover {
+      background: rgba(255, 255, 255, .14);
     }
 
     .footnote {
