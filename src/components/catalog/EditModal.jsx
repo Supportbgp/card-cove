@@ -22,6 +22,24 @@ const GAME_LABELS = {
 };
 
 
+// "Duplicate" (Catalog's selection bar): a new item prefilled from an
+// existing one, e.g. a second copy of a card sold last week. Everything that
+// describes the card carries over; what belongs to the old physical copy
+// doesn't: its SKU (a new one is generated on save), quantity (back to 1),
+// sold flag, what the shop paid for it (cost), a slab's cert number, and
+// its real photo (see EditModal's image slots below).
+function initFormFromTemplate(t) {
+  return {
+    ...initForm(t),
+    sku: "",
+    qty: 1,
+    sold: false,
+    cost: "",
+    cert: "",
+    activeImage: "stock",
+  };
+}
+
 function initForm(card) {
   return {
     name: card?.name || "",
@@ -50,10 +68,15 @@ function initForm(card) {
   };
 }
 
-export default function EditModal({ card, catalog, locations, multipliers, priceAlert, onClose, onSave, onDelete }) {
+export default function EditModal({ card, template, catalog, locations, multipliers, priceAlert, onClose, onSave, onDelete }) {
   const { showConfirm, openLightbox } = useUI();
-  const [form, setForm] = useState(() => initForm(card));
-  const [channelsTouched, setChannelsTouched] = useState(false);
+  // `template` only matters for a new item (card == null): the item being
+  // duplicated.
+  const tpl = card ? null : template || null;
+  const [form, setForm] = useState(() => (tpl ? initFormFromTemplate(tpl) : initForm(card)));
+  // A duplicate keeps the original's channels rather than switching to the
+  // binder's majority, so treat them as already chosen.
+  const [channelsTouched, setChannelsTouched] = useState(!!tpl);
   // Number is a best-guess/scratch field only, same as ScannerPanel's
   // row.number — never saved to the catalog directly, just narrows Find
   // stock image/Find market price below (selectCandidate fills it back in
@@ -116,7 +139,10 @@ export default function EditModal({ card, catalog, locations, multipliers, price
     if (existingUrl === 'local' && existingData) return existingData;
     return null;
   }
-  const stockSrc = pendingSrc(stockPending, card && card.imageUrl, card && card.imageData);
+  // A duplicate starts with the original's stock image (it's the same card)
+  // but not its real photo (that was the other copy).
+  const stockBase = card || tpl;
+  const stockSrc = pendingSrc(stockPending, stockBase && stockBase.imageUrl, stockBase && stockBase.imageData);
   const photoSrc = pendingSrc(photoPending, card && card.photoUrl, card && card.photoData);
   // Preview follows the toggle, but falls back to whichever slot actually
   // has something if the preferred one is blank — same rule as
@@ -267,7 +293,7 @@ export default function EditModal({ card, catalog, locations, multipliers, price
       }
       return { url, data };
     }
-    const stock = resolveSlot(stockPending, card && card.imageUrl, card && card.imageData);
+    const stock = resolveSlot(stockPending, stockBase && stockBase.imageUrl, stockBase && stockBase.imageData);
     const photo = resolveSlot(photoPending, card && card.photoUrl, card && card.photoData);
 
     const record = normalizeCard({
@@ -323,8 +349,12 @@ export default function EditModal({ card, catalog, locations, multipliers, price
     <div className="overlay show">
       <div className="modal wide">
         <div className="modal-head">
-          <div className="name">{card ? "Edit item" : "Add item"}</div>
-          <div className="meta">Changes save with today's date as Last Updated</div>
+          <div className="name">{card ? "Edit item" : tpl ? "Duplicate item" : "Add item"}</div>
+          <div className="meta">
+            {tpl
+              ? `Copy of ${tpl.name}. Saves as a new item; the original isn't changed.`
+              : "Changes save with today's date as Last Updated"}
+          </div>
         </div>
         <div className="modal-body">
           <div className="img-preview-wrap">

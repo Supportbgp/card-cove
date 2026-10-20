@@ -29,6 +29,8 @@ export default function CatalogPanel({
   const [sortState, setSortState] = useState({ col: 'name', dir: 1 });
   const [selectedSkus, setSelectedSkus] = useState(new Set());
   const [editingSku, setEditingSku] = useState(undefined); // undefined = closed, null = adding, sku = editing
+  // When adding (editingSku === null) via Duplicate: the item being copied.
+  const [duplicateSku, setDuplicateSku] = useState(null);
   // Set only when "Mark sold" is clicked with exactly one multi-copy item
   // selected — lets staff sell fewer than the full qty (see
   // SellQuantityModal.jsx). A single qty-1 item or a multi-item batch skip
@@ -144,6 +146,21 @@ export default function CatalogPanel({
   }, [editRequest]);
 
   const editingCard = editingSku ? catalog.find(c => c.sku === editingSku) : null;
+  const duplicateTemplate = editingSku === null && duplicateSku ? catalog.find(c => c.sku === duplicateSku) || null : null;
+
+  // Duplicate one selected item (sold or not) into a new, prefilled Add item.
+  function handleDuplicate() {
+    if (selectedSkus.size !== 1) return;
+    const [sku] = selectedSkus;
+    setDuplicateSku(sku);
+    setEditingSku(null);
+    setSelectedSkus(new Set());
+  }
+
+  function closeEdit() {
+    setEditingSku(undefined);
+    setDuplicateSku(null);
+  }
 
   return (
     <div>
@@ -158,12 +175,13 @@ export default function CatalogPanel({
         printingFilter={printingFilter} setPrintingFilter={setPrintingFilter}
         rarityOptions={rarityOptions} conditionOptions={conditionOptions} printingOptions={printingOptions}
         games={games} locations={locations}
-        onAddItem={() => setEditingSku(null)}
+        onAddItem={() => { setDuplicateSku(null); setEditingSku(null); }}
       />
       {selectedSkus.size > 0 && (
         <BatchBar
           count={selectedSkus.size}
           onMarkSold={handleBatchSell}
+          onDuplicate={handleDuplicate}
           onDelete={handleBatchDelete}
           onClear={() => setSelectedSkus(new Set())}
         />
@@ -184,14 +202,16 @@ export default function CatalogPanel({
       </div>
       {editingSku !== undefined && (
         <EditModal
+          key={editingSku === null ? `new-${duplicateSku || ''}` : editingSku}
           card={editingCard}
+          template={duplicateTemplate}
           catalog={catalog}
           locations={locations}
           multipliers={multipliers}
           priceAlert={editingSku ? priceAlertsBySku.get(editingSku) : null}
-          onClose={() => setEditingSku(undefined)}
-          onSave={async (record, prevSku) => { await onSaveCard(record, prevSku); setEditingSku(undefined); }}
-          onDelete={async (sku) => { await onDeleteCard(sku); setEditingSku(undefined); }}
+          onClose={closeEdit}
+          onSave={async (record, prevSku) => { await onSaveCard(record, prevSku); closeEdit(); }}
+          onDelete={async (sku) => { await onDeleteCard(sku); closeEdit(); }}
         />
       )}
       {sellPromptCard && (

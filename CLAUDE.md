@@ -5546,6 +5546,52 @@ little friction as possible for the existing data setup.
 
 No migration, no Edge Function redeploy.
 
+## Duplicate an item
+
+Staff ask: when another copy of a card comes in (e.g. a "Gecko Moria" that
+sold last week), look up the old entry, select it, and duplicate it into the
+edit window with everything already filled in.
+
+- **`BatchBar.jsx`** shows a **Duplicate** button only when exactly one
+  item is selected. It works on sold items too, which is the main case.
+  `CatalogPanel.handleDuplicate` remembers the selected sku
+  (`duplicateSku`), clears the selection, and opens EditModal in its
+  normal "new item" mode (`editingSku === null`) with a new `template`
+  prop. The modal is keyed per open (`new-<sku>`) so its form state
+  re-initializes from the template every time.
+- **`EditModal`'s `template`** (ignored whenever `card` is set) feeds
+  `initFormFromTemplate`: `initForm(template)` with what belonged to the
+  old physical copy reset. That's the SKU (blank, so Save generates a new
+  `sku-<timestamp>`), qty (1), sold (false), cost (blank, since this copy's
+  cost is its own), a slab's cert number (blank, since certs are unique),
+  and the real photo (the stock image carries over through
+  `stockBase = card || tpl`; the photo slot stays tied to `card` only, so
+  it starts empty, and `activeImage` starts on `stock`). Everything else
+  carries over as-is: name, game, set, rarity, condition, printing, price,
+  base price, source URL, binder/case, notes, and channels. Channels start
+  as "already chosen" (`channelsTouched = !!tpl`), so the binder-majority
+  default doesn't overwrite the original's channels. Sync chips start
+  unchecked (a new item isn't listed anywhere yet). Title is "Duplicate
+  item", and the subtitle says the original isn't changed. Save goes
+  through the same `onSave(record, null)` path as Add item, so nothing new
+  was needed in `App.jsx`.
+- **Phone layout fix found along the way**: with four buttons, the
+  selection bar ran off the screen on a phone ("Clear selection" was cut
+  off). `.batch-bar.show` now wraps under the shared 640px breakpoint,
+  with the "N selected" count on its own line.
+- Staff docs: "Duplicating an item" in `CatalogSection.jsx`. Also
+  corrected a stale line in `EditingItemSection.jsx` that still said
+  Edit's Mark as sold doesn't create a Sync Queue ticket (it has since the
+  partial-quantity selling fix, and now also offers Undo).
+- Covered by two new `EditModal.test.jsx` cases (the prefilled form, and
+  the saved record: new sku, qty 1, unsold, no cost or photo, same
+  channels/price/location/stock image) and `e2e/duplicate-item.spec.js`
+  (Desktop + Mobile: duplicating a sold item saves a second, separate row
+  and leaves the original sold at qty 0; Duplicate only shows with exactly
+  one item selected).
+
+No migration, no Edge Function redeploy.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

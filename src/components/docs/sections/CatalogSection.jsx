@@ -38,6 +38,23 @@ export default function CatalogSection() {
         actually does. Deleting is permanent.
       </p>
 
+      <h3>Duplicating an item</h3>
+      <p>
+        Got another copy of something you've had before, even one that
+        already sold? Search for it, select just that one item, and tap{' '}
+        <strong>Duplicate</strong> in the bar. The edit window opens as a{' '}
+        <strong>new</strong> item with everything filled in from the
+        original: name, game, set, rarity, condition, printing, price,
+        binder/case, channels, notes and the stock image. Check the details
+        against the card in your hand, then <strong>Save</strong>.
+      </p>
+      <p>
+        What doesn't carry over, because it belonged to the other copy: the
+        SKU (a new one is made), the quantity (starts at 1), the sold mark,
+        the Cost, a slab's cert number, and the real photo. The original item
+        isn't changed.
+      </p>
+
       <h3>Per-row actions</h3>
       <p>
         <strong>Edit</strong> opens the full item editor (see{' '}
