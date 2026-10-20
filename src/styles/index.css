@@ -1372,6 +1372,20 @@
       flex: 1;
     }
 
+    /* Up to four buttons (Mark sold, Duplicate, Delete, Clear selection):
+       on a phone they wrap onto a second line instead of running off the
+       screen. The count gets its own line there. */
+    @media (max-width: 640px) {
+      .batch-bar.show {
+        flex-wrap: wrap;
+      }
+
+      .batch-bar .spacer {
+        flex-basis: 100%;
+        height: 0;
+      }
+    }
+
     .sheet-picker {
       display: flex;
       align-items: center;

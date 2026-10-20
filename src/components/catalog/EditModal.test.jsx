@@ -317,3 +317,38 @@ describe('EditModal — per-location channel defaults', () => {
     expect(screen.getByLabelText('TCG Player')).toBeChecked();
   });
 });
+
+describe('EditModal — Duplicate (prefilled new item)', () => {
+  const sold = baseCard({
+    sku: 'sku-gecko', name: 'Gecko Moria', game: 'One Piece', set: 'OP01', condition: 'Near Mint',
+    qty: 0, sold: true, price: 12, cost: 3, basePrice: 11, location: 'Binder A', notes: 'From Jake',
+    sourceUrl: 'https://tcg/gecko', posChannel: true, tcgplayerChannel: false, collectrChannel: true,
+    imageUrl: 'https://x/stock.jpg', photoUrl: 'local', photoData: 'data:image/jpeg;base64,AAAA', activeImage: 'photo',
+  });
+
+  it('opens as "Duplicate item" with the card prefilled, qty back to 1, and a blank SKU and cost', () => {
+    render(<EditModal card={null} template={sold} catalog={[sold]} locations={['Binder A']} multipliers={{}} onClose={vi.fn()} onSave={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByText('Duplicate item')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Gecko Moria')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('From Jake')).toBeInTheDocument();
+    // The stock image carries over; the old copy's real photo doesn't.
+    expect(document.querySelector('img.img-preview').src).toBe('https://x/stock.jpg');
+  });
+
+  it('saves as a new item: new SKU, qty 1, not sold, no cost or photo, same channels/price/location', async () => {
+    const onSave = vi.fn(async () => {});
+    render(<EditModal card={null} template={sold} catalog={[sold]} locations={['Binder A']} multipliers={{}} onClose={vi.fn()} onSave={onSave} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [record, prevSku] = onSave.mock.calls[0];
+    expect(prevSku).toBeNull();
+    expect(record.sku).not.toBe('sku-gecko');
+    expect(record).toMatchObject({
+      name: 'Gecko Moria', game: 'One Piece', set: 'OP01', condition: 'Near Mint', qty: 1, sold: false,
+      price: 12, basePrice: 11, location: 'Binder A', sourceUrl: 'https://tcg/gecko',
+      tcgplayerChannel: false, imageUrl: 'https://x/stock.jpg', photoUrl: '', photoData: '',
+      posSynced: false, tcgplayerSynced: false, collectrSynced: false,
+    });
+    expect(record.cost == null || record.cost === '').toBe(true);
+  });
+});
