@@ -8,7 +8,12 @@
 // jsdom in unit tests) or blocked (private windows, cleared site data). A
 // failure just means the stack isn't saved — scanning itself never breaks.
 
-const DB_NAME = 'card-cove';
+import { IS_STAGING } from './appEnv.js';
+
+// Staging is served from the same origin as production
+// (supportbgp.github.io), and IndexedDB is per origin, so it gets its own
+// database: a stack scanned on staging must never show up in production.
+const DB_NAME = IS_STAGING ? 'card-cove-staging' : 'card-cove';
 const STORE = 'scan-stacks';
 let dbPromise = null;
 
