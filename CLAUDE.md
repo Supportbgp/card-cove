@@ -5592,6 +5592,116 @@ edit window with everything already filled in.
 
 No migration, no Edge Function redeploy.
 
+## Staging environment
+
+A separate copy of the app and its database for testing a change before it
+reaches the live shop, at `https://supportbgp.github.io/card-cove/staging/`.
+Decided with the user: staging is **off unless something is being
+tested**; deploying it copies production's data fresh; taking it down
+empties that copy; it uses the **same login email with a staging-only
+password**; and the database passwords are **saved on the user's PC**
+(a gitignored file) so a deploy needs no typing. A
+`supportbgp.github.io/staging/card-cove/` address was considered and
+declined: GitHub serves each repo at `/<repo-name>/`, so it would have
+needed a second public repo.
+
+- **Commands**: `npm run deploy-staging` / `npm run staging-down`, or
+  `/deploy-staging` / `/staging-down` in Claude Code
+  (`.claude/commands/`, which run the same scripts with `-NoPrompt`).
+  - **deploy-staging** (`scripts/deploy-staging.ps1`): copies production's
+    database into staging, runs the migration files this branch adds or
+    changes vs `origin/main` on staging, force-pushes the current commit to
+    the `staging` branch, starts `deploy.yml` on main and waits for it, then
+    checks the site serves that exact commit (`staging-version.txt`). Only
+    committed work is published (GitHub builds it). Refuses if the commit
+    doesn't have the staging setup (merge main first).
+  - **staging-down** (`scripts/staging-down.ps1`): deletes the `staging`
+    branch, redeploys (the site then has no `/staging/`, so it 404s), and
+    truncates every table in the staging database (structure kept), so
+    customer data only exists in the copy while something is being tested.
+- **A second Supabase project** (`card-cove-staging`) holds the staging
+  database, login and Edge Functions. Its public URL and publishable key
+  are in **`.env.staging`** (committed; same kind of public values
+  `src/lib/supabase.js` hardcodes for production, never a service-role key
+  or password).
+- **Builds pick their project by mode.** `npm run build`/`npm run dev` are
+  production, unchanged (production's URL/key stay hardcoded).
+  `npm run dev:staging`/`npm run build:staging` (`vite --mode staging`)
+  load `.env.staging`, serve under `/card-cove/staging/`, and read the
+  project from it (`src/lib/appEnv.js`'s `IS_STAGING`). A staging build
+  never falls back to production: `vite.config.js` stops the build while
+  `.env.staging` still has its `YOUR_` placeholders, and `supabase.js`
+  throws if the values are missing. Verified: a staging bundle contains no
+  reference to the production project, and a production bundle contains
+  none of the staging code.
+- **`StagingBanner.jsx`**: an amber strip across every page of a staging
+  build (app, binder page, staff docs) showing the commit being tested
+  (`VITE_STAGING_COMMIT`, set by `deploy.yml`), plus "STAGING ·" in the tab
+  title. Renders nothing in production.
+- **Same web origin, separate on-device storage.** Staging is served from
+  `supportbgp.github.io` like production, and browser storage is per
+  origin, so the stack scanner's IndexedDB database is `card-cove-staging`
+  on staging (`stackStore.js`); otherwise a stack scanned on staging would
+  appear in production. Supabase's own login session is already separate
+  (its storage key includes the project ref). The Edge Functions' CORS
+  allowlist already covers staging (same origin).
+- **Hosting: one Pages site, two folders.** Pages replaces the whole site
+  on every deploy, so `deploy.yml` builds both on every run: production
+  from `main` into `/card-cove/`, and the `staging` branch (only while it
+  exists, i.e. staging is up) with `build:staging` into
+  `/card-cove/staging/`. A staging build failure is `continue-on-error`:
+  production still deploys, without `/staging/`, with a warning (and
+  deploy-staging reports it, since the live commit doesn't match). The
+  deploy is always started on main (`gh workflow run deploy.yml --ref
+  main`, with the user's own `gh` login) because the `github-pages`
+  environment only accepts deploys from main. A push to main while staging
+  is up keeps it up. Binder QR codes made on staging point at staging
+  (`qr.js` uses `BASE_URL`).
+- **The database copy** (`scripts/staging-lib.ps1`'s `Copy-ProdToStaging`):
+  `pg_dump` of production's `public` schema (read only), restored into
+  staging in **one transaction**, so a failure leaves staging exactly as it
+  was. Each connection string must contain its own project's ref and not
+  the other's (staging's ref comes from `.env.staging`), checked before
+  credentials are even saved. Found by actually running it against a
+  throwaway local Postgres set up like Supabase (roles, Realtime
+  publication, Supabase-style default privileges, RLS, a view, a sequence,
+  FKs, a trigger, multi-MB rows):
+  - `--schema=public` makes `pg_dump` emit `CREATE SCHEMA public`, its
+    comment and its grants, which fail on a project that already has
+    them: filtered out.
+  - `pg_dump` writes each table's grants assuming it starts with none, but
+    Supabase auto-grants new tables to `anon`/`authenticated`/
+    `service_role`, so production's revokes (e.g. `anon` on `catalog`)
+    silently came back on staging. The copy switches those automatic
+    grants off for the duration of the restore, and production's own
+    default grants (for `postgres`) are re-applied from the dump at the
+    end; the `supabase_admin` ones are skipped (not changeable by
+    `postgres`, and identical in every project). Verified: table access and
+    default grants match production exactly.
+  - It first clears staging's public schema (tables, views, sequences,
+    functions, enum/domain types; never anything owned by an extension),
+    then adds the same tables to Realtime that production has.
+  - The dump holds real customer data: it's written to `.staging-copy/`
+    (gitignored) and always deleted afterwards.
+  - Not copied: logins (`auth`), Edge Functions and their secrets, Storage
+    (unused). Production's daily `price-check` workflow stays
+    production-only.
+  - Also tested: missing credentials under `-NoPrompt` fail with
+    instructions; a swapped pair is refused and never saved; a password
+    with special characters is URL-encoded; a failing migration rolls back
+    and stops the deploy before publishing; truncation empties every table.
+    PowerShell's hidden password prompt reads the real keyboard only, so
+    the first-run prompt itself is exercised by the user's first run. The
+    GitHub side (pushing `staging`, starting and waiting for the deploy)
+    can only be exercised for real, on the first deploy.
+- **`.staging-db.local`** (gitignored) holds both connection strings and
+  passwords. Claude must never open, print or read it.
+- **One-time setup** (the user): create the `card-cove-staging` project,
+  put its URL/publishable key in `.env.staging`, add the login user,
+  deploy `scan-binder-page`/`card-lookup-proxy` to it with
+  `--project-ref` and set its `ANTHROPIC_API_KEY` secret, then run
+  `npm run deploy-staging` once in a terminal to save the credentials.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -5677,6 +5787,12 @@ discipline this file already follows everywhere else.
 - Never guess an external platform's exact file format/API capability when
   wrong-ness risk is high — get a real sample or do the research first
   (this burned us once on TCG Player/Collectr bulk-upload assumptions).
+- **Staging before production** (see "Staging environment"): anything that
+  needs real data or a real phone to check gets `/deploy-staging`ed and
+  tested at `/card-cove/staging/` before merging, then `/staging-down`.
+  A branch's new migrations run on staging automatically during that
+  deploy, and on production right before merging. Edge Function deploys go
+  to the staging project first, production second.
 - **Verification cadence while iterating on an open PR**: run `npm test`
   (unit) and `npm run build` on every push — they're fast. Only run the
   full `npm run test:e2e` suite (~3 min) right before actually merging, not

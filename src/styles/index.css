@@ -867,6 +867,25 @@
       gap: 14px;
     }
 
+    /* Staging builds only (StagingBanner.jsx): a strip across the top of
+       every page so the test copy is never mistaken for the live shop. */
+    .staging-banner {
+      background: var(--amber);
+      color: #fff;
+      font-weight: 600;
+      font-size: 13px;
+      text-align: center;
+      padding: 6px 16px;
+      letter-spacing: 0.02em;
+    }
+
+    .staging-banner-commit {
+      display: block;
+      font-weight: 400;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
     .toast-action {
       pointer-events: auto;
       flex: 0 0 auto;

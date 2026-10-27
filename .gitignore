@@ -4,3 +4,8 @@ dist/
 *.local
 test-results/
 playwright-report/
+
+# Staging scripts: the dump work folder (real customer data) and the saved
+# database credentials. Never commit either.
+.staging-copy/
+.staging-db.local

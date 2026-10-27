@@ -4,6 +4,8 @@ import App from './App.jsx';
 import BinderView from './components/BinderView.jsx';
 import StaffDocs from './components/docs/StaffDocs.jsx';
 import { UIProvider } from './context/UIContext.jsx';
+import StagingBanner from './components/StagingBanner.jsx';
+import { IS_STAGING } from './lib/appEnv.js';
 import './styles/index.css';
 
 // A binder QR code links to ?binder=<location>, and the staff docs page
@@ -18,23 +20,28 @@ const params = new URLSearchParams(window.location.search);
 const binderParam = params.get('binder');
 const helpParam = params.get('help');
 
+if (IS_STAGING) document.title = `STAGING · ${document.title}`;
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
 if (binderParam) {
   root.render(
     <React.StrictMode>
+      <StagingBanner />
       <BinderView location={binderParam} />
     </React.StrictMode>
   );
 } else if (helpParam) {
   root.render(
     <React.StrictMode>
+      <StagingBanner />
       <StaffDocs />
     </React.StrictMode>
   );
 } else {
   root.render(
     <React.StrictMode>
+      <StagingBanner />
       <UIProvider>
         <App />
       </UIProvider>
