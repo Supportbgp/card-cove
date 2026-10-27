@@ -301,6 +301,12 @@ describe('CONDITION_TIERS / CONDITION_OPTIONS', () => {
     }
   });
 
+  it('recognizes the shorthand the old quote spreadsheet used ("Light P", "Moderate P", "Heavy P")', () => {
+    expect(canonicalizeCondition('Light P')).toBe('LP');
+    expect(canonicalizeCondition('Moderate P')).toBe('MP');
+    expect(canonicalizeCondition('Heavy P')).toBe('HP');
+  });
+
   it('CONDITION_OPTIONS is just the full names, NM-first', () => {
     expect(CONDITION_OPTIONS).toEqual(['Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged']);
   });

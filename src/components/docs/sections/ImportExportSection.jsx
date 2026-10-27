@@ -34,6 +34,41 @@ export default function ImportExportSection() {
         unusual.
       </DocsCallout>
 
+      <h3>Importing old quote spreadsheets</h3>
+      <p>
+        Switch the toggle at the top of the tab from <strong>Cards</strong> to{' '}
+        <strong>Quotes</strong> and drop in the old Excel quote file (one sheet
+        per quote, the format the <a href="#quote">Quote</a> tab was based on).
+        Every sheet with a customer or cards on it shows up as one quote, with
+        its status read from the sheet's Offer Status: <strong>In
+        progress</strong> (left blank), <strong>Accepted Cash</strong>,{' '}
+        <strong>Accepted Store Credit</strong> or <strong>Rejected
+        Offer</strong>. Empty sheets, like the blank Template, are skipped.
+      </p>
+      <p>
+        Pick a <strong>Game</strong> for each quote (or use "Game for all
+        quotes"); the old sheets don't say which game a card is. Show cards
+        lets you check what was read: name, set and collector number are split
+        out of the "Name of Card" text, and shorthand like "Light P" becomes
+        Lightly Played. Untick any quote you don't want, then Import.
+      </p>
+      <ul>
+        <li><strong>In progress</strong> quotes land in the Quote tab to finish as usual.</li>
+        <li><strong>Rejected</strong> quotes land there too, as a record.</li>
+        <li>
+          <strong>Accepted</strong> quotes also send their cards to{' '}
+          <a href="#sorting">Sorting</a>, with Cost filled in from the payout,
+          exactly like accepting a quote in the app.
+        </li>
+      </ul>
+      <DocsCallout kind="note">
+        A quote that looks already imported (same customer, date and number of
+        cards as one already in the Quote tab) starts unticked, so importing the
+        same file twice doesn't double anything by accident. A card name that
+        really contains " - " (e.g. a Lorcana "Pongo - Determined Father") gets
+        split as if the second half were its set; fix it in the quote afterward.
+      </DocsCallout>
+
       <h3>Exporting</h3>
       <p>
         Pick a format — Full catalog, a TCG Player entry list, a Collectr

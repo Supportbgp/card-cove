@@ -131,6 +131,18 @@ describe('dbUpsertCard (cardToRow via the real call)', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
+  it('sends source_quote_id only when the item has one, so a save never clears it (or needs the column)', async () => {
+    tableResults.catalog = { data: null, error: null };
+    await dbUpsertCard({ sku: 'a', name: 'n', lastUpdated: Date.now(), sourceQuoteId: 'quote-uuid-1' }, vi.fn());
+    await dbUpsertCard({ sku: 'b', name: 'n', lastUpdated: Date.now() }, vi.fn());
+    const withLink = fromMock.mock.results[0].value.upsert.mock.calls[0][0];
+    const without = fromMock.mock.results[1].value.upsert.mock.calls[0][0];
+    expect(withLink.source_quote_id).toBe('quote-uuid-1');
+    expect('source_quote_id' in without).toBe(false);
+    expect(rowToCard({ sku: 'a', name: 'n', source_quote_id: 'quote-uuid-1' }).sourceQuoteId).toBe('quote-uuid-1');
+    expect(rowToCard({ sku: 'b', name: 'n' }).sourceQuoteId).toBe(null);
+  });
+
   it('reports a save error to the toast instead of throwing', async () => {
     tableResults.catalog = { data: null, error: { message: 'boom' } };
     const toast = vi.fn();

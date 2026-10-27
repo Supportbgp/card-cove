@@ -382,6 +382,12 @@ describe('buildCatalogItemsFromQuoteItems', () => {
     expect(buildCatalogItemsFromQuoteItems([])).toEqual([]);
   });
 
+  it("keeps the quote a Sorting row came from as the new item's sourceQuoteId", () => {
+    const fromSorting = [{ ...normalizeQuoteItem({ name: 'A' }), quoteId: 'quote-uuid-1' }];
+    expect(buildCatalogItemsFromQuoteItems(fromSorting)[0].sourceQuoteId).toBe('quote-uuid-1');
+    expect(buildCatalogItemsFromQuoteItems([normalizeQuoteItem({ name: 'B' })])[0].sourceQuoteId).toBe(null);
+  });
+
   it('carries the quote item\'s image over onto the new catalog row', () => {
     const items = [normalizeQuoteItem({ name: 'A', imageUrl: 'https://x/stock.jpg', activeImage: 'stock' })];
     const cards = buildCatalogItemsFromQuoteItems(items);

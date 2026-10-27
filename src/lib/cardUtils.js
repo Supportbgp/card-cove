@@ -438,6 +438,10 @@ export function normalizeCard(c) {
     // payout (see quoteUtils.js's computeQuoteItemCosts). See CLAUDE.md's
     // "Cost tracking" section.
     cost: parseMoney(c.cost),
+    // The quote this item was bought in, when it came through the Quote tab
+    // and Sorting (phase16_catalog_source_quote.sql). Null for everything
+    // else. Shown as "Bought in Quote #N" next to Cost in the edit screen.
+    sourceQuoteId: c.sourceQuoteId || null,
     // Dual-image model (Sprint 6): imageUrl/imageData above are the "stock"
     // reference (card search/manual paste); photoUrl/photoData are a real
     // photo (scanner crop or manual upload). activeImage records which one
@@ -557,6 +561,10 @@ const CONDITION_ALIASES = {
   lp: "LP", "lightly played": "LP", "light play": "LP", "slightly played": "LP", sp: "LP",
   mp: "MP", "moderately played": "MP", "moderate play": "MP",
   hp: "HP", "heavily played": "HP", "heavy play": "HP",
+  // The shop's old quote spreadsheet abbreviates conditions this way
+  // ("Light P", "Moderate P", "Heavy P"); see quoteImport.js.
+  "light p": "LP", "light played": "LP", "moderate p": "MP", "moderately p": "MP", "moderate played": "MP",
+  "heavy p": "HP", "heavily p": "HP", "heavy played": "HP", "near mint p": "NM",
   dmg: "DMG", damaged: "DMG", poor: "DMG", d: "DMG",
 };
 

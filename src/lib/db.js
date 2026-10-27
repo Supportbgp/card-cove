@@ -48,6 +48,7 @@ export function rowToCard(r) {
     posChannel: r.pos_channel, tcgplayerChannel: r.tcgplayer_channel, collectrChannel: r.collectr_channel,
     basePrice: r.base_price,
     cost: r.cost,
+    sourceQuoteId: r.source_quote_id || null,
     photoUrl: r.photo_data ? "local" : (r.photo_url || ""),
     photoData: r.photo_data || "",
     activeImage: r.active_image,
@@ -55,7 +56,7 @@ export function rowToCard(r) {
 }
 
 function cardToRow(c) {
-  return {
+  const row = {
     sku: c.sku, name: c.name, set_name: c.set, game: c.game, condition: c.condition,
     printing: c.printing, rarity: c.rarity, qty: c.qty, price: c.price, notes: c.notes,
     image_url: (c.imageUrl && c.imageUrl.startsWith('http')) ? c.imageUrl : '',
@@ -71,6 +72,12 @@ function cardToRow(c) {
     photo_data: c.photoUrl === 'local' ? (c.photoData || '') : '',
     active_image: c.activeImage === 'stock' ? 'stock' : 'photo',
   };
+  // Only sent when there is a link (phase16_catalog_source_quote.sql). An
+  // upsert leaves an omitted column as it was, so editing an item never
+  // clears its link, and saving any other item keeps working even before
+  // the migration has been run.
+  if (c.sourceQuoteId) row.source_quote_id = c.sourceQuoteId;
+  return row;
 }
 
 export function rowToTicket(r) {

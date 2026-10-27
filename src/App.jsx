@@ -123,6 +123,9 @@ export default function App() {
   // alert's "Find card"). A fresh object each time, so asking for the
   // same sku twice still opens it twice.
   const [editRequest, setEditRequest] = useState(null);
+  // Same idea for the Quote tab: open one quote's detail view (from an
+  // item's "Bought in Quote #N" link in Catalog).
+  const [quoteOpenRequest, setQuoteOpenRequest] = useState(null);
 
   useEffect(() => {
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -174,6 +177,13 @@ export default function App() {
     setShowPriceAlerts(false);
     setTab('catalog');
     setEditRequest({ sku });
+  }
+
+  // "View quote" from an item's edit screen: switch to the Quote tab and
+  // open the quote it was bought in.
+  function handleOpenQuote(id) {
+    setTab('quote');
+    setQuoteOpenRequest({ id });
   }
 
   useRealtimeSync({ enabled: signedIn, setCatalog, setQueue, setQuotes, setSorting });
@@ -475,25 +485,45 @@ export default function App() {
   // made individually, per card, from the Sorting tab, not once for the
   // whole quote at accept time. Guarded by `movedToSorting` so re-saving
   // an already-accepted quote never creates duplicate sorting rows.
-  async function handleSaveQuote(quoteDraft) {
-    const toSave = { ...quoteDraft };
+  // opts.quiet skips the "Quote #N saved" toast (the quote import shows one
+  // summary for the whole file instead); opts.result, if given, gets
+  // movedCount, the number of cards actually sent to Sorting.
+  async function handleSaveQuote(quoteDraft, opts = {}) {
+    let toSave = { ...quoteDraft };
     const isAccepted = toSave.offerStatus === 'accepted_cash' || toSave.offerStatus === 'accepted_store_credit';
     let movedCount = 0;
     if (isAccepted && !toSave.movedToSorting) {
+      // A brand-new quote accepted in its first save (or imported already
+      // accepted) has no id yet. The Sorting rows need it so the cards
+      // remember which quote they came from, and sorting_queue.quote_id
+      // references quotes(id), so the quote row has to exist first: save it
+      // once (not yet moved), then move its cards.
+      if (!toSave.id) {
+        const first = await dbUpsertQuote({ ...toSave, movedToSorting: false }, toast);
+        if (!first) {
+          if (opts.result) opts.result.movedCount = 0;
+          return null;
+        }
+        toSave = { ...toSave, id: first.id, quoteNumber: first.quoteNumber };
+      }
       // Compute each real card/bulk item's own cost from the quote's actual
       // payout before it becomes a sorting_queue row — see
       // quoteUtils.js's computeQuoteItemCosts for the full allocation
       // reasoning (CLAUDE.md's "Cost tracking" section).
       const itemsWithCost = computeQuoteItemCosts(toSave.items, toSave.payoutAmount, tierSettings);
-      const newSortingItems = buildSortingItemsFromQuoteItems(itemsWithCost, quoteDraft.id, toSave.collectionName);
+      const newSortingItems = buildSortingItemsFromQuoteItems(itemsWithCost, toSave.id, toSave.collectionName);
       if (newSortingItems.length) {
         const inserted = await dbInsertSortingItems(newSortingItems, toast);
         if (inserted.length) {
           setSorting(prev => [...prev, ...inserted]);
           movedCount = inserted.length;
+          toSave.movedToSorting = true;
         }
+        // If the insert failed (already reported by a toast), the quote
+        // stays not-moved, so saving it again retries the move.
+      } else {
+        toSave.movedToSorting = true;
       }
-      toSave.movedToSorting = true;
     }
     const saved = await dbUpsertQuote(toSave, toast);
     if (saved) {
@@ -504,9 +534,12 @@ export default function App() {
         next[idx] = saved;
         return next;
       });
-      toast(`Quote #${saved.quoteNumber} saved`
-        + (movedCount ? ` — ${movedCount} item(s) moved to Sorting` : ''));
+      if (!opts.quiet) {
+        toast(`Quote #${saved.quoteNumber} saved`
+          + (movedCount ? ` — ${movedCount} item(s) moved to Sorting` : ''));
+      }
     }
+    if (opts.result) opts.result.movedCount = saved ? movedCount : 0;
     return saved;
   }
 
@@ -630,6 +663,8 @@ export default function App() {
           multipliers={multipliers}
           priceAlertsBySku={priceAlertsBySku}
           editRequest={editRequest}
+          quotes={quotes}
+          onOpenQuote={handleOpenQuote}
           onEditRequestHandled={() => setEditRequest(null)}
         />
       </div>
@@ -641,6 +676,8 @@ export default function App() {
           catalog={catalog}
           queue={queue}
           locations={locations}
+          quotes={quotes}
+          onSaveQuote={handleSaveQuote}
           onImport={handleImport}
           onClearAll={handleClearAll}
         />
@@ -657,6 +694,8 @@ export default function App() {
           tierSettings={tierSettings}
           onSaveQuote={handleSaveQuote}
           onDeleteQuote={handleDeleteQuote}
+          openRequest={quoteOpenRequest}
+          onOpenRequestHandled={() => setQuoteOpenRequest(null)}
           onSaveTierSettings={handleSaveTierSettings}
         />
       </div>
