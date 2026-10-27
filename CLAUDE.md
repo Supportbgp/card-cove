@@ -5592,6 +5592,114 @@ edit window with everything already filled in.
 
 No migration, no Edge Function redeploy.
 
+## Quote link on Catalog items, and importing old quote spreadsheets
+
+Staff ask: for a card bought through a quote, a link next to Cost showing
+who sold it and when (open that quote), plus importing the shop's old Excel
+quote sheets (the template the Quote tab was built from) through the
+Import tab. Decided with the user before building: an accepted imported
+quote goes **through Sorting** like any accepted quote (Cost auto-filled,
+link kept); rejected quotes are imported **as a record**; staff **pick one
+game per quote** at import; and **no backfill** of the link onto items
+created before this change (there's no reliable way to match them).
+
+- **`catalog.source_quote_id`** (`phase16_catalog_source_quote.sql`, uuid,
+  references `quotes(id)` `on delete set null`). `sorting_queue` already
+  kept `quote_id`; the link was dropped when a Sorting row became a catalog
+  row. `buildCatalogItemsFromQuoteItems` now carries it as `sourceQuoteId`.
+  Bulk rows never get one (a Bulk row collects cards from many quotes).
+  `cardToRow` only sends `source_quote_id` when the item has one, so an
+  ordinary edit never clears it, and saving still works if the migration
+  hasn't been run yet. A duplicated item starts without the link (it's a
+  different physical copy).
+- **EditModal** shows a `.quote-source-ref` box under Cost: "Bought in
+  Quote #N (collection)", then customer, date, employee, payout and
+  status, and a **View quote** button. `CatalogPanel` resolves the quote
+  from the already-loaded `quotes` (no fetch); a deleted quote shows "Bought
+  in a quote that has since been deleted." View quote closes Edit and uses
+  a `quoteOpenRequest` in `App.jsx` (same request-plus-`setTab` pattern as
+  the price alerts' `editRequest`, since every tab stays mounted) that
+  `QuotesTab` turns into its own `selectedId`.
+- **A real bug fixed along the way**: a brand-new quote accepted in its
+  first save (now also every imported accepted quote) inserted its Sorting
+  rows with `quote_id: null`, since the quote had no id yet, so those cards
+  never knew where they came from. And because `sorting_queue.quote_id` is
+  a foreign key to `quotes`, simply generating a uuid first isn't enough;
+  the quote row must exist before its Sorting rows. `handleSaveQuote` now
+  saves a new accepted quote once (not yet moved), then inserts its Sorting
+  rows with the real id, then saves again as moved. Also: `movedToSorting`
+  is now only set when the Sorting insert actually succeeded (before, a
+  failed insert still marked the quote moved, so its cards were lost); a
+  failure leaves it retryable by saving again.
+- **Import/Export → Cards / Quotes toggle** (`ImportExportPanel`, same
+  `.scan-mode-toggle` as the Scanner's). Cards is the unchanged
+  `ImportPanel`; Quotes is the new `QuoteImportPanel.jsx`.
+- **The parser (`src/lib/quoteImport.js`) was written against the user's
+  real file** (`Quotes templates.xlsx`, sheets Template + Example 1-4), not
+  guessed. Layout: label cells with the value one cell to the right
+  (Customer Name/Customer ID/Phone #, Date Quoted, Offer Status/Payout
+  Amount, Paid Out?, Time taken to Quote/Employee), then a header row
+  ("Name of Card | Set - PKM # | Condition | Price | Qty | Notes:") and one
+  card per row. Values are found by label text and columns by header text,
+  so a moved column or an inserted row still reads. Details:
+  - Dates arrive as Excel day numbers (`readWorkbook` doesn't use
+    `cellDates`); `parseQuoteDate` also takes ISO and US strings.
+  - Offer Status: anything with "reject" → rejected; "accept" + "credit" →
+    store credit; "accept" → cash (the real sheets have a trailing space,
+    "Accepted Cash "); blank → in progress; anything else → in progress
+    with a warning.
+  - The "Name of Card" cell usually packs everything:
+    `"Ethan's Typhlosion - 190/182 - SV10: Destined Rivals (DRI)"`.
+    `splitCardText` splits on " - ": first part is the name, a part that
+    looks like a collector number (`190/182`, `056`, `SWSH050`,
+    `TG05/TG30`) is the number, the rest is the set. A real name containing
+    " - " (Lorcana's "Pongo - Determined Father") splits wrong; documented
+    for staff to fix in the quote. The Set column, when filled, is split the
+    same way and wins over the name's parts.
+  - Conditions are the sheet's shorthand ("Light P", "Moderate P",
+    "Heavy P"); added to `CONDITION_ALIASES` in `cardUtils.js`, and the
+    importer stores the full tier name ("Lightly Played"), like the
+    Condition dropdown. Unrecognized text is kept as typed.
+  - **Example 4 lost its "Price" header** in the real file (the cell is
+    blank but the prices are there), so with no Price header the column
+    just left of Qty is used, matching the template.
+  - Qty blank or 0 → 1. A sheet with no customer and no cards (the blank
+    Template) is skipped. Warnings per quote: unknown status, no header row,
+    cards with no price, accepted with no payout (no Cost then).
+- **Import screen**: one box per quote (status badge, sheet, date, card
+  count, quoted value, payout, employee, warnings, Game select, Show cards
+  preview), plus "Game for all quotes". Import is disabled until every
+  ticked quote has a game, and guarded against double clicks (the
+  duplication bug class found on Sorting/Import before). Quotes are saved
+  one at a time through the same `onSaveQuote` the Quote tab uses, with
+  `{ quiet: true, result }` so there's one summary toast for the file
+  instead of one per quote, and the count of cards moved to Sorting comes
+  back in `result.movedCount`. Imported quotes get collection name
+  "Customer (date)" and an intake note naming the source sheet. A quote
+  that **looks already imported** (same customer, date and card count as an
+  existing one, `looksAlreadyImported`) starts unticked. Saved quotes drop
+  off the list; failed ones stay for a retry.
+- Staff docs: "Importing old quote spreadsheets" in
+  `ImportExportSection.jsx`, and the Bought-in-Quote link in
+  `EditingItemSection.jsx`.
+- Covered by `quoteImport.test.js` (dates, statuses, conditions, the name
+  split, the full sheet incl. the missing-Price-header case, the blank
+  Template, warnings, `buildImportedQuote`, `looksAlreadyImported`), new
+  cases in `quoteUtils.test.js`/`db.test.js`/`cardUtils.test.js`/
+  `EditModal.test.jsx`, and `e2e/quote-import.spec.js` (Desktop + Mobile):
+  a generated workbook in the template's layout → three quotes with their
+  statuses, the accepted one's cards in Sorting with the right `quote_id`
+  and Cost (payout split by card value), sorting one into a binder gives a
+  catalog row with `source_quote_id`, and its Edit screen's View quote
+  opens that quote; plus the already-imported case. The import screen was
+  also checked with the real file at phone and desktop widths via a
+  throwaway screenshot spec (deleted).
+
+**Requires running `phase16_catalog_source_quote.sql`** in the Supabase
+SQL Editor for the link to be saved. Without it, saves still work (the
+column is only sent when set) except when sorting a quote's card into
+Catalog, which would fail on the missing column.
+
 ## Staging environment
 
 A separate copy of the app and its database for testing a change before it

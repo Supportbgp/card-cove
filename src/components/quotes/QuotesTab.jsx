@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { computeQuoteTotals } from '../../lib/quoteUtils.js';
 import QuoteDetail from './QuoteDetail.jsx';
 
@@ -41,7 +41,10 @@ const QUOTE_SORT_COLUMNS = {
 // quotes, a "+ New Quote" button offering the two confirmed entry points
 // (resume an in-progress collection, or start a brand-new one), and the
 // single-quote detail view (QuoteDetail) for whichever quote is open.
-export default function QuotesTab({ quotes, catalog, locations, multipliers, tierSettings, onSaveQuote, onDeleteQuote, onSaveTierSettings }) {
+export default function QuotesTab({
+  quotes, catalog, locations, multipliers, tierSettings, onSaveQuote, onDeleteQuote, onSaveTierSettings,
+  openRequest = null, onOpenRequestHandled = () => {},
+}) {
   const [selectedId, setSelectedId] = useState(null);
   // A brand-new quote is never written to the database on "Create" — only
   // on its first real Save inside QuoteDetail. This client-only draft
@@ -59,6 +62,17 @@ export default function QuotesTab({ quotes, catalog, locations, multipliers, tie
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortState, setSortState] = useState({ col: 'dateQuoted', dir: -1 });
+
+  // Another tab asked to open one quote (Catalog's "View quote" on an item
+  // bought in it).
+  useEffect(() => {
+    if (!openRequest) return;
+    setNewDraft(null);
+    setShowNewFlow(false);
+    setSelectedId(openRequest.id);
+    onOpenRequestHandled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequest]);
 
   const inProgress = quotes.filter(q => !q.offerStatus);
   const selected = selectedId ? quotes.find(q => q.id === selectedId) : null;

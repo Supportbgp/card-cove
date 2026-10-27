@@ -352,3 +352,47 @@ describe('EditModal — Duplicate (prefilled new item)', () => {
     expect(record.cost == null || record.cost === '').toBe(true);
   });
 });
+
+describe('EditModal — "Bought in Quote" link', () => {
+  const quote = {
+    id: 'quote-uuid-1', quoteNumber: 14, collectionName: 'Jake binder', customerName: 'Jake',
+    dateQuoted: '2026-08-24', employee: 'Noah', payoutAmount: 143, offerStatus: 'accepted_cash',
+  };
+
+  it('shows who sold it to us and when, and opens the quote', () => {
+    const onOpenQuote = vi.fn();
+    render(<EditModal card={baseCard({ sourceQuoteId: 'quote-uuid-1' })} sourceQuote={quote} onOpenQuote={onOpenQuote}
+      catalog={[]} locations={[]} multipliers={{}} onClose={vi.fn()} onSave={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(screen.getByText('Quote #14')).toBeInTheDocument();
+    const meta = document.querySelector('.quote-source-meta').textContent;
+    expect(meta).toContain('Customer: Jake');
+    expect(meta).toContain('Quoted by Noah');
+    expect(meta).toContain('Payout $143.00');
+    expect(meta).toContain('Accepted (cash)');
+    expect(meta).toContain('2026'); // the date, in the browser's own format
+    fireEvent.click(screen.getByRole('button', { name: 'View quote' }));
+    expect(onOpenQuote).toHaveBeenCalledWith('quote-uuid-1');
+  });
+
+  it('says so when the quote was deleted', () => {
+    render(<EditModal card={baseCard({ sourceQuoteId: 'gone' })} sourceQuote={{ missing: true }}
+      catalog={[]} locations={[]} multipliers={{}} onClose={vi.fn()} onSave={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByText(/quote that has since been deleted/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View quote' })).toBe(null);
+  });
+
+  it('shows nothing for an item that didn\'t come from a quote', () => {
+    render(<EditModal card={baseCard()} catalog={[]} locations={[]} multipliers={{}} onClose={vi.fn()} onSave={vi.fn()} onDelete={vi.fn()} />);
+    expect(document.querySelector('.quote-source-ref')).toBe(null);
+  });
+
+  it('keeps the link on save', async () => {
+    const onSave = vi.fn(async () => true);
+    render(<EditModal card={baseCard({ sourceQuoteId: 'quote-uuid-1' })} sourceQuote={quote} onOpenQuote={vi.fn()}
+      catalog={[]} locations={[]} multipliers={{}} onClose={vi.fn()} onSave={onSave} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].sourceQuoteId).toBe('quote-uuid-1');
+  });
+});

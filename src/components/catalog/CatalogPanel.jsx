@@ -10,6 +10,7 @@ import { useUI } from '../../context/UIContext.jsx';
 export default function CatalogPanel({
   catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onSellPartial, onTogglePlatformStatus, multipliers,
   priceAlertsBySku = new Map(), editRequest = null, onEditRequestHandled = () => {},
+  quotes = [], onOpenQuote = () => {},
 }) {
   const { showConfirm } = useUI();
   const [search, setSearch] = useState("");
@@ -205,6 +206,10 @@ export default function CatalogPanel({
           key={editingSku === null ? `new-${duplicateSku || ''}` : editingSku}
           card={editingCard}
           template={duplicateTemplate}
+          sourceQuote={editingCard && editingCard.sourceQuoteId
+            ? (quotes.find(q => q.id === editingCard.sourceQuoteId) || { missing: true })
+            : null}
+          onOpenQuote={(id) => { closeEdit(); onOpenQuote(id); }}
           catalog={catalog}
           locations={locations}
           multipliers={multipliers}

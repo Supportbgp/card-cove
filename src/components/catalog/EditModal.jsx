@@ -68,7 +68,22 @@ function initForm(card) {
   };
 }
 
-export default function EditModal({ card, template, catalog, locations, multipliers, priceAlert, onClose, onSave, onDelete }) {
+// "YYYY-MM-DD" (how quotes store date_quoted) to a short local date,
+// without a timezone shift turning Aug 24 into Aug 23.
+function formatQuoteDate(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || '');
+  if (!m) return '';
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    .toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const QUOTE_STATUS_LABELS = {
+  accepted_cash: 'Accepted (cash)',
+  accepted_store_credit: 'Accepted (store credit)',
+  rejected: 'Rejected',
+};
+
+export default function EditModal({ card, template, catalog, locations, multipliers, priceAlert, sourceQuote, onOpenQuote, onClose, onSave, onDelete }) {
   const { showConfirm, openLightbox } = useUI();
   // `template` only matters for a new item (card == null): the item being
   // duplicated.
@@ -324,6 +339,9 @@ export default function EditModal({ card, template, catalog, locations, multipli
       lastUpdated: Date.now(),
       // Carried forward as-is; App.jsx's save handler is what decides whether
       // a relevant field actually changed and resets these to false.
+      // Kept from the item itself; a duplicate (template) is a new copy
+      // that wasn't bought in that quote, so it starts without the link.
+      sourceQuoteId: card ? card.sourceQuoteId : null,
       posSynced: card ? card.posSynced : false,
       tcgplayerSynced: card ? card.tcgplayerSynced : false,
       collectrSynced: card ? card.collectrSynced : false,
@@ -595,6 +613,32 @@ export default function EditModal({ card, template, catalog, locations, multipli
                 Optional — feeds the Cost/Profit numbers on the Reports tab once this item sells. Left blank unless
                 entered by hand here, or auto-filled when this item came from an accepted Quote trade-in.
               </div>
+              {sourceQuote && (
+                <div className="quote-source-ref">
+                  {sourceQuote.missing ? (
+                    <span>Bought in a quote that has since been deleted.</span>
+                  ) : (
+                    <>
+                      <div>
+                        Bought in <strong>Quote #{sourceQuote.quoteNumber}</strong>
+                        {' '}({sourceQuote.collectionName})
+                      </div>
+                      <div className="quote-source-meta">
+                        {[
+                          sourceQuote.customerName && `Customer: ${sourceQuote.customerName}`,
+                          formatQuoteDate(sourceQuote.dateQuoted),
+                          sourceQuote.employee && `Quoted by ${sourceQuote.employee}`,
+                          sourceQuote.payoutAmount != null && `Payout ${formatMoney(sourceQuote.payoutAmount)}`,
+                          QUOTE_STATUS_LABELS[sourceQuote.offerStatus],
+                        ].filter(Boolean).join(' · ')}
+                      </div>
+                      <button type="button" className="btn secondary small" onClick={() => onOpenQuote && onOpenQuote(sourceQuote.id)}>
+                        View quote
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <div className="field-group">
               <button className="btn secondary small" disabled={searching} onClick={runFindMarketPrice}>

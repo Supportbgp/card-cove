@@ -325,6 +325,9 @@ export function buildCatalogItemsFromQuoteItems(items, destination) {
     photoData: item.photoData,
     activeImage: item.activeImage,
     sourceUrl: item.sourceUrl,
+    // A sorting_queue row carries the quote it came from (quoteId); the
+    // catalog row keeps it so its edit screen can link back to the quote.
+    sourceQuoteId: item.quoteId || item.sourceQuoteId || null,
     location: dest.location || '',
     posChannel: dest.posChannel,
     tcgplayerChannel: dest.tcgplayerChannel,

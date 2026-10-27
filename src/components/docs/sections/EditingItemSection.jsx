@@ -80,6 +80,14 @@ export default function EditingItemSection() {
         per-condition sales data — worth actually checking the live listing
         before pricing something expensive.
       </DocsCallout>
+      <p>
+        An item bought through a <a href="#quote">quote</a> shows{' '}
+        <strong>Bought in Quote #N</strong> under Cost: who sold it to us,
+        when, who quoted it, and the payout. <strong>View quote</strong> opens
+        that quote, so a card bought at an odd price can be traced back to
+        where it came from. Only cards sorted into Catalog from a quote after
+        this was added have the link; older ones don't.
+      </p>
 
       <h3>Notes &amp; status</h3>
       <p>

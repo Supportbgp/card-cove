@@ -97,11 +97,18 @@ function execute(table, op, filters, single, order, range) {
       if (key && row[key] == null) {
         row = { ...row, [key]: `harness-${table}-${rows.length}-${Math.random().toString(36).slice(2, 8)}` };
       }
-      if (table === 'quotes' && row.quote_number == null) {
-        row = { ...row, quote_number: ++harnessQuoteNumberCounter };
-      }
       const idx = rows.findIndex((r) => r[key] === row[key]);
-      if (idx === -1) rows.push(row); else rows[idx] = row;
+      if (idx === -1) {
+        if (table === 'quotes' && row.quote_number == null) {
+          row = { ...row, quote_number: ++harnessQuoteNumberCounter };
+        }
+        rows.push(row);
+      } else {
+        // Like Postgres's upsert, an update only changes the columns sent;
+        // the rest (e.g. quote_number, which the app never sends) is kept.
+        row = { ...rows[idx], ...row };
+        rows[idx] = row;
+      }
       affected.push(row);
     }
     if (op.returning) return { data: single ? affected[0] ?? null : affected, error: null };

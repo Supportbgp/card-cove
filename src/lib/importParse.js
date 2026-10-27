@@ -111,6 +111,19 @@ export async function readWorkbook(file) {
   });
 }
 
+// Every sheet of a workbook as plain rows (arrays of cell values), for the
+// quote import (quoteImport.js), which reads its own layout rather than a
+// header row. Raw values: dates stay Excel day numbers, TRUE/FALSE stay
+// booleans.
+export async function readWorkbookSheetRows(file) {
+  const XLSX = await loadXlsx();
+  const wb = await readWorkbook(file);
+  return wb.SheetNames.map(name => ({
+    name,
+    rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true }),
+  }));
+}
+
 // Loads a single sheet from an already-parsed workbook, auto-detecting the
 // binder-page (side-by-side pages) layout vs. the normal header-row layout.
 export async function loadXlsxSheet(workbook, sheetName) {
