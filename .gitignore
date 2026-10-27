@@ -4,3 +4,6 @@ dist/
 *.local
 test-results/
 playwright-report/
+
+# copy-prod-to-staging.ps1 work folder (dumps hold real customer data)
+.staging-copy/

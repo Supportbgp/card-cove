@@ -5592,6 +5592,93 @@ edit window with everything already filled in.
 
 No migration, no Edge Function redeploy.
 
+## Staging environment
+
+A second, separate copy of the app and its database for testing a change
+before it reaches the live shop. Decided with the user: staging is
+**hosted** (so it works on a phone, camera included), starts as a **full
+copy of production's data** (refreshable any time), and uses the **same
+login email with a staging-only password**.
+
+- **A second Supabase project** (`card-cove-staging`) holds the staging
+  database, login and Edge Functions. Its public URL and publishable key
+  live in **`.env.staging`** (committed; same kind of public values
+  `src/lib/supabase.js` hardcodes for production, never a service-role key
+  or password).
+- **Builds pick their project by mode.** `npm run build`/`npm run dev` are
+  production, unchanged (production's URL/key stay hardcoded).
+  `npm run dev:staging`/`npm run build:staging` (`vite --mode staging`)
+  load `.env.staging`, serve under `/card-cove/staging/`, and read the
+  project from it (`src/lib/appEnv.js`'s `IS_STAGING`). A staging build
+  never falls back to production: `vite.config.js` stops the build while
+  `.env.staging` still has its `YOUR_` placeholders, and `supabase.js`
+  throws if the values are missing. Verified: a staging bundle contains no
+  reference to the production project at all, and a production bundle
+  contains none of the staging code.
+- **`StagingBanner.jsx`**: an amber strip across every page of a staging
+  build (app, binder page, staff docs), plus "STAGING ·" in the tab title.
+  Renders nothing in production.
+- **Same web origin, separate on-device storage.** Staging is served from
+  `supportbgp.github.io` like production, and browser storage is per
+  origin, so the stack scanner's IndexedDB database is
+  `card-cove-staging` on staging (`stackStore.js`); otherwise a stack
+  scanned on staging would appear in production. Supabase's own login
+  session is already separate (its storage key includes the project ref).
+  The Edge Functions' CORS allowlist already covers staging (same origin).
+- **Hosting: one Pages site, two folders.** Pages replaces the whole site
+  on every deploy, so `deploy.yml` builds both on every run: production
+  from `main` into `/card-cove/`, and the `staging` branch (if it exists)
+  with `build:staging` into `/card-cove/staging/`. A staging build failure
+  is `continue-on-error`: production still deploys, without `/staging/`,
+  and the run shows a warning. Pushing the `staging` branch triggers
+  `staging-deploy.yml`, which starts `deploy.yml` **on main** with
+  `gh workflow run` (the `github-pages` environment only accepts deploys
+  from main, and a `workflow_dispatch` is one of the few events the
+  workflow token is allowed to start). Binder QR codes made on staging
+  point at staging (`qr.js` uses `BASE_URL`).
+- **`scripts/copy-prod-to-staging.ps1`** (the user runs it; it asks for
+  both connection strings and passwords itself, so they never pass through
+  this conversation). It `pg_dump`s production's `public` schema (read
+  only) and restores it into staging in **one transaction**, so a failure
+  leaves staging exactly as it was. Safety: the staging ref comes from
+  `.env.staging`; each connection string must contain its own project's
+  ref and not the other's; and you must type "staging" first. Details
+  found by actually running it (against a throwaway local Postgres set up
+  like Supabase: roles, Realtime publication, Supabase-style default
+  privileges, RLS, a view, a sequence, FKs, a trigger, multi-MB rows):
+  - `--schema=public` makes `pg_dump` emit `CREATE SCHEMA public`, its
+    comment and its grants, which fail on a project that already has
+    them: filtered out.
+  - `pg_dump` writes each table's grants assuming it starts with none, but
+    Supabase auto-grants new tables to `anon`/`authenticated`/
+    `service_role`, so production's revokes (e.g. `anon` on `catalog`)
+    silently came back on staging. The script switches those automatic
+    grants off for the duration of the restore, and production's own
+    default grants (for `postgres`) are re-applied from the dump at the
+    end; the `supabase_admin` ones are skipped (not changeable by
+    `postgres`, and identical in every project). Verified: every table's
+    access and the default grants match production exactly.
+  - It first clears staging's public schema (tables, views, sequences,
+    functions, enum/domain types; never anything owned by an extension),
+    then adds the same tables to Realtime that production has.
+  - The dump holds real customer data: it's written to `.staging-copy/`
+    (gitignored) and deleted afterwards unless `-KeepDump`.
+  - Also tested: a staging string given as production (and the reverse) is
+    refused, a wrong confirmation changes nothing, and a restore that fails
+    halfway rolls back with staging untouched.
+  - Not copied: logins (`auth`), Edge Functions and their secrets, Storage
+    (unused). Production's daily `price-check` workflow stays
+    production-only.
+- **How to use it** (also under Workflow conventions below):
+  - Test a branch: `git push origin <branch>:staging --force`, then open
+    `https://supportbgp.github.io/card-cove/staging/` once the Pages deploy
+    finishes. The branch must include this setup (merge main into it first).
+  - A new migration runs on **staging first**, then on production right
+    before merging.
+  - Refresh staging's data from production: run the script again.
+  - Edge Function changes: deploy to staging with `--project-ref <staging
+    ref>` first.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -5677,6 +5764,11 @@ discipline this file already follows everywhere else.
 - Never guess an external platform's exact file format/API capability when
   wrong-ness risk is high — get a real sample or do the research first
   (this burned us once on TCG Player/Collectr bulk-upload assumptions).
+- **Staging before production** (see "Staging environment"): anything that
+  needs real data or a real phone to check gets pushed to the `staging`
+  branch and tested at `/card-cove/staging/` before merging. Migrations
+  and Edge Function deploys go to the staging project first, production
+  second.
 - **Verification cadence while iterating on an open PR**: run `npm test`
   (unit) and `npm run build` on every push — they're fast. Only run the
   full `npm run test:e2e` suite (~3 min) right before actually merging, not
