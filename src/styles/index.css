@@ -879,6 +879,13 @@
       letter-spacing: 0.02em;
     }
 
+    .staging-banner-commit {
+      display: block;
+      font-weight: 400;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
     .toast-action {
       pointer-events: auto;
       flex: 0 0 auto;

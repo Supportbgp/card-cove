@@ -8,6 +8,8 @@
     "dev:staging": "vite --mode staging",
     "build": "vite build",
     "build:staging": "vite build --mode staging",
+    "deploy-staging": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-staging.ps1",
+    "staging-down": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/staging-down.ps1",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

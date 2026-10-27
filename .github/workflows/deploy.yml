@@ -5,9 +5,11 @@ name: Deploy to GitHub Pages
 #   /card-cove/staging/  staging, built from the `staging` branch (if it
 #                        exists) against the staging Supabase project
 # Pages replaces the whole site on every deploy, so every run builds both.
-# Runs on a push to main, or is started on main by staging-deploy.yml when
-# the staging branch is pushed (the github-pages environment only accepts
-# deploys from main).
+# Staging is off unless something is being tested: `npm run deploy-staging`
+# pushes a branch to `staging` and starts this workflow (on main: the
+# github-pages environment only accepts deploys from main); `npm run
+# staging-down` deletes the `staging` branch and runs it again. See
+# CLAUDE.md's "Staging environment".
 
 on:
   push:
@@ -63,7 +65,10 @@ jobs:
         working-directory: stg
         run: |
           npm ci
+          export VITE_STAGING_COMMIT="$(git log -1 --format='%h %s')"
           npm run build:staging
+          # deploy-staging checks this to know its commit is the one live.
+          git rev-parse HEAD > dist/staging-version.txt
       - name: Put the site together
         run: |
           mkdir site

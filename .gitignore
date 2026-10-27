@@ -5,5 +5,7 @@ dist/
 test-results/
 playwright-report/
 
-# copy-prod-to-staging.ps1 work folder (dumps hold real customer data)
+# Staging scripts: the dump work folder (real customer data) and the saved
+# database credentials. Never commit either.
 .staging-copy/
+.staging-db.local
