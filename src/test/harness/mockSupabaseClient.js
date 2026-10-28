@@ -21,6 +21,7 @@ const PRIMARY_KEY = {
   sales: 'id',
   price_alerts: 'id',
   price_tracking_settings: 'id',
+  inventory_losses: 'id',
 };
 
 function defaultSeed() {
@@ -35,6 +36,7 @@ function defaultSeed() {
     sales: [],
     price_alerts: [],
     price_tracking_settings: [{ id: 1, floor_price: 25, spike_pct: 20 }],
+    inventory_losses: [],
   };
 }
 
@@ -156,6 +158,7 @@ function makeBuilder(table) {
     lt(field, value) { filters.push(['lt', field, value]); return builder; },
     order(field, opts) { order = { field, ascending: !(opts && opts.ascending === false) }; return builder; },
     range(from, to) { range = { from, to }; return builder; },
+    limit(n) { range = { from: 0, to: n - 1 }; return builder; },
     maybeSingle() { single = true; return builder; },
     single() { single = true; return builder; },
     then(resolve, reject) {

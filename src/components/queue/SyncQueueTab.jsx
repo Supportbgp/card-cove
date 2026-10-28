@@ -15,10 +15,13 @@ function Ticket({ t, onToggleStamp, onUndo, undoing }) {
   return (
     <div className={`ticket ${complete ? 'complete' : ''}`}>
       <div className="ticket-info">
-        <div className="t-name">{t.name} × {t.qtySold}</div>
+        <div className="t-name">
+          {t.name} × {t.qtySold}
+          {t.kind === 'loss' && <span className="badge ticket-loss">Lost / stolen</span>}
+        </div>
         <div className="t-meta">{t.set || ""} · {t.condition || ""} · {t.sku || ""}</div>
         <button type="button" className="btn ghost small ticket-undo" disabled={undoing} onClick={() => onUndo(t)}>
-          {undoing ? 'Undoing…' : 'Undo sale'}
+          {undoing ? 'Undoing…' : (t.kind === 'loss' ? 'Undo loss' : 'Undo sale')}
         </button>
       </div>
       <div className="ticket-time">{time}</div>
@@ -33,7 +36,7 @@ function Ticket({ t, onToggleStamp, onUndo, undoing }) {
   );
 }
 
-export default function SyncQueueTab({ queue, onToggleStamp, onUndoSale }) {
+export default function SyncQueueTab({ queue, onToggleStamp, onUndoSale, onUndoLoss = async () => {} }) {
   const { showConfirm } = useUI();
   const [undoingId, setUndoingId] = useState(null);
 
@@ -41,12 +44,15 @@ export default function SyncQueueTab({ queue, onToggleStamp, onUndoSale }) {
   // its Reports entry. If a platform was already stamped done, the listing
   // was already changed there, so say so before going ahead.
   async function handleUndo(t) {
+    const isLoss = t.kind === 'loss';
     const doneOn = STAMPS.filter(s => t[s.channel] && t[s.field]).map(s => s.label);
-    let msg = `Undo the sale of ${t.qtySold} × ${t.name}? The quantity goes back into the catalog, and this ticket and its Reports entry are removed.`;
+    let msg = isLoss
+      ? `Undo the loss of ${t.qtySold} × ${t.name}? The quantity goes back into the catalog, and this ticket and its Reports entry are removed.`
+      : `Undo the sale of ${t.qtySold} × ${t.name}? The quantity goes back into the catalog, and this ticket and its Reports entry are removed.`;
     if (doneOn.length) msg += ` You already marked it updated on ${doneOn.join(', ')}, so put the listing back there too.`;
-    if (!(await showConfirm(msg, 'Undo sale'))) return;
+    if (!(await showConfirm(msg, isLoss ? 'Undo loss' : 'Undo sale'))) return;
     setUndoingId(t.id);
-    try { await onUndoSale(t); } finally { setUndoingId(null); }
+    try { await (isLoss ? onUndoLoss(t) : onUndoSale(t)); } finally { setUndoingId(null); }
   }
 
   const sorted = useMemo(() => [...queue].sort((a, b) => b.timestamp - a.timestamp), [queue]);
@@ -57,7 +63,7 @@ export default function SyncQueueTab({ queue, onToggleStamp, onUndoSale }) {
     <div>
       <div className="toolbar">
         <div style={{ fontSize: '13px', color: 'var(--ink-soft)', maxWidth: '520px' }}>
-          Tap each stamp once you've made the update in that system. A ticket clears once all three are stamped. Sold something by mistake? Use Undo sale.
+          Tap each stamp once you've made the update in that system. A ticket clears once all three are stamped. Sold something by mistake? Use Undo sale. Reported a loss by mistake? Use Undo loss.
         </div>
       </div>
       <div>
