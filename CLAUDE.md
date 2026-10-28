@@ -5851,6 +5851,56 @@ game was simply never required:
   existing `quotes.spec.js` tests accepted a card with no Game and now pick
   one. Staff docs: a line in `QuoteSection.jsx` and `SortingSection.jsx`.
 
+## Staging scripts: connection timeout and a VPN/password hint
+
+Found on the first real staging deploy: Proton VPN blocked outgoing port
+5432 (the Session pooler's port; confirmed by a neutral port-test site,
+with 6543 and 8080 working fine), so `pg_dump`'s connection was cut
+("server closed the connection unexpectedly") or hung until it timed out.
+The direct `db.<ref>.supabase.co` address isn't a workaround: it's
+IPv6-only and this network has no IPv6. The transaction pooler (6543)
+wasn't used either: `pg_dump` runs its session settings (like an empty
+`search_path`) outside its one transaction, which a transaction pooler
+can hand to a different backend, so the dump could come out with
+unqualified names that fail to restore.
+
+- `scripts/staging-lib.ps1` sets `PGCONNECT_TIMEOUT=20`, so every
+  `pg_dump`/`psql` call gives up after 20 seconds instead of hanging.
+- `Test-DbConnection` (`psql -w ... select 1`, `-w` so it can never sit at
+  a password prompt) runs before anything is changed: both databases in
+  `deploy-staging`, the staging one in `staging-down`. On failure it
+  explains the two real causes: a blocked port 5432 (turn the VPN off, or
+  exclude `pg_dump.exe`/`psql.exe` with split tunneling), or a wrong saved
+  password (delete `.staging-db.local` and enter it again).
+  `staging-down` checks *before* taking the site down, so a blocked
+  connection no longer leaves the site down with the data still in the
+  staging database (what happened on the first real run).
+- Verified against an unreachable address: stops after 20 seconds with the
+  hint.
+
+## CSV/XLSX import: a Cost column
+
+The Backlog item scoped out of Cost tracking's first version ("Cost today
+only supports manual entry and auto-fill from an accepted Quote").
+`FIELD_TARGETS` (`importParse.js`) gained `cost` ("Cost ($)", matched
+automatically from headers like Cost, Unit Cost, Cost Basis, Purchase
+Price, Buy Price), and `ImportPanel` passes it to `normalizeCard`, whose
+`parseMoney` already handles `$`/commas and turns a blank cell into no
+cost. Per copy, same as the Edit screen's Cost field and `price`.
+
+- **Worth knowing, not changed**: Merge imports upsert each matching SKU's
+  whole row (`dbUpsertCards` → `cardToRow`, which always sends `cost`), so
+  a card whose Cost was typed in by hand loses it if the file's Cost cell
+  is blank or the column is skipped. That's how every field on a Merge
+  already worked (photos, base price, rarity too); flagged in the staff
+  docs' Import section and in the Backlog rather than changing Merge's
+  meaning here.
+- Covered by new `importParse.test.js` cases (the header guess, and that a
+  Price/Market Price column isn't mistaken for Cost) and
+  `e2e/import-cost.spec.js` (Desktop + Mobile), the first e2e test of the
+  regular CSV import: the Cost column is auto-matched and `"$20.50"` saves
+  as `cost: 20.5`, a blank cell as none.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -5904,10 +5954,12 @@ than repeated.
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a
   permanent feature either way.
-- **Explicitly scoped out of Cost tracking for a future version**: a
-  Cost ($) column on CSV/XLSX import — Cost today only supports manual
-  entry (EditModal) and auto-fill from an accepted Quote trade-in; bulk
-  import was deliberately left out of v1 (see "Cost tracking" above).
+- **Possible follow-up, needs a decision**: a Merge import overwrites a
+  matching SKU's whole row, so values typed in by hand (Cost, photos, base
+  price, rarity) are lost when the file leaves them blank or a column is
+  skipped (see "CSV/XLSX import: a Cost column" above). Keeping existing
+  values for skipped columns would change what Merge means; confirm with
+  the user first.
 
 Keep this section current: when an item here gets built, or a parked
 question gets a real answer, move/remove it in the same change that
