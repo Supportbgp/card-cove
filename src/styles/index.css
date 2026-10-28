@@ -987,6 +987,14 @@
       opacity: 0.9;
     }
 
+    /* A required field left blank, e.g. a quote card's Game when the quote
+       is being accepted. */
+    select.field-missing,
+    input.field-missing {
+      border-color: var(--rust);
+      box-shadow: 0 0 0 1px var(--rust);
+    }
+
     .toast-action {
       pointer-events: auto;
       flex: 0 0 auto;

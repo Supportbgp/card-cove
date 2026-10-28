@@ -33,6 +33,7 @@ test('create from scratch, add cards via the catalog typeahead and freeform, acc
   // Row 2: a freeform name with no catalog match — still a valid row.
   await page.getByRole('button', { name: '+ Add card manually' }).click();
   await nameInputs.last().fill('Unlisted Promo Card');
+  await rows.last().locator('select').first().selectOption('Pokemon');
   await rows.last().locator('input[placeholder="Price"]').fill('10');
 
   await expect(page.getByText('Total quoted value')).toBeVisible();
@@ -80,6 +81,7 @@ test('misc. add-on items are excluded from the tier total but can be added to th
   await page.getByRole('button', { name: '+ Add card manually' }).click();
   const rows = page.locator('.scan-row');
   await page.getByPlaceholder('Card name').fill('Charizard');
+  await rows.first().locator('select').first().selectOption('Pokemon');
   await rows.first().locator('input[placeholder="Price"]').fill('40');
 
   // A flat $5 add-on (e.g. two binders the shop wants to buy) — distinct

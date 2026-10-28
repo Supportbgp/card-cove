@@ -154,6 +154,12 @@ export default function QuoteSection() {
         one exception — they're pricing-only and never move to Sorting or
         become a Catalog row at all.
       </DocsCallout>
+      <p>
+        Every card and Bulk lot needs a <strong>Game</strong> before the
+        quote can be saved as Accepted. Save stays disabled and the message
+        names the cards that are missing one (their Game box is outlined in
+        red). An in-progress quote can still be saved without one.
+      </p>
 
       <h3>Release form info</h3>
       <p>

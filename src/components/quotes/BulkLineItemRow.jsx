@@ -21,7 +21,7 @@ import { flatItemAmount } from '../../lib/quoteUtils.js';
 // same mechanic and reasoning as AddOnLineItemRow's own: enter the lot's
 // full assessed value, check the box, and let the app work out "60% of
 // this" instead of doing it by hand.
-export default function BulkLineItemRow({ item, onChange, onRemove }) {
+export default function BulkLineItemRow({ item, onChange, onRemove, flagMissingGame = false }) {
   function patch(p) {
     onChange({ ...item, ...p });
   }
@@ -41,7 +41,12 @@ export default function BulkLineItemRow({ item, onChange, onRemove }) {
           </div>
           <div className="scan-field sf">
             <label className="scan-field-label">Game</label>
-            <select value={item.game} onChange={(e) => patch({ game: e.target.value })}>
+            <select
+              value={item.game}
+              className={flagMissingGame && !item.game ? 'field-missing' : undefined}
+              aria-invalid={flagMissingGame && !item.game ? true : undefined}
+              onChange={(e) => patch({ game: e.target.value })}
+            >
               <option value="">— Game —</option>
               {GAMES.map(g => <option key={g} value={g}>{g}</option>)}
             </select>

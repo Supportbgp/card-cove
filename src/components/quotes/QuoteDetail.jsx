@@ -87,6 +87,7 @@ export default function QuoteDetail({ quote, catalog, locations, multipliers, ti
   }
 
   async function handleSave() {
+    if (missingGameBlocks) return;
     setSaving(true);
     await onSave(draft);
     setSaving(false);
@@ -101,6 +102,14 @@ export default function QuoteDetail({ quote, catalog, locations, multipliers, ti
 
   const { qty, total, addOnsTotal, bulkTotal } = computeQuoteTotals(draft.items);
   const realItemCount = draft.items.filter(i => !i.isAddOn).length;
+  // Accepting sends every card and Bulk lot to Sorting, and a card with no
+  // Game ended up in Catalog as "Other" (canonicalizeGame turns a blank game
+  // into "Other"), where nothing searches or price-checks it. So a quote
+  // can't be accepted until each one has a Game; an in-progress save is
+  // still fine.
+  const acceptingNow = (draft.offerStatus === 'accepted_cash' || draft.offerStatus === 'accepted_store_credit') && !draft.movedToSorting;
+  const missingGame = draft.items.filter(i => !i.isAddOn && !(i.game || '').trim());
+  const missingGameBlocks = acceptingNow && missingGame.length > 0;
   const tiers = computeOfferTiers(draft.items, tierSettings);
   // Bulk items get pulled into their own section below (per explicit
   // request) — everything else (real cards and misc. add-ons alike) stays
@@ -187,6 +196,7 @@ export default function QuoteDetail({ quote, catalog, locations, multipliers, ti
                   <QuoteLineItemRow
                     key={item.id}
                     item={item}
+                    flagMissingGame={missingGameBlocks}
                     catalog={catalog}
                     multipliers={multipliers}
                     onChange={(next) => updateItem(item.id, next)}
@@ -215,6 +225,7 @@ export default function QuoteDetail({ quote, catalog, locations, multipliers, ti
                 <BulkLineItemRow
                   key={item.id}
                   item={item}
+                  flagMissingGame={missingGameBlocks}
                   onChange={(next) => updateItem(item.id, next)}
                   onRemove={() => removeItem(item.id)}
                 />
@@ -318,7 +329,15 @@ export default function QuoteDetail({ quote, catalog, locations, multipliers, ti
               <input type="checkbox" id="q_paidOut" checked={draft.paidOut} onChange={(e) => set('paidOut', e.target.checked)} />
               <label htmlFor="q_paidOut" style={{ margin: 0, fontFamily: "'Inter',sans-serif", textTransform: 'none', letterSpacing: 'normal' }}>Paid out</label>
             </div>
-            {(draft.offerStatus === 'accepted_cash' || draft.offerStatus === 'accepted_store_credit') && !draft.movedToSorting && (
+            {missingGameBlocks && (
+              <div className="status-line err" style={{ marginTop: '8px' }}>
+                Pick a Game for {missingGame.length} card(s) before accepting:{' '}
+                {missingGame.slice(0, 5).map(i => i.name || '(no name)').join(', ')}
+                {missingGame.length > 5 ? `, and ${missingGame.length - 5} more` : ''}.
+                Without one they'd land in Catalog as "Other".
+              </div>
+            )}
+            {acceptingNow && !missingGameBlocks && (
               <div className="status-line ok" style={{ marginTop: '8px' }}>
                 Saving with this status will move {realItemCount} item(s) to Sorting, to be placed individually.
                 {draft.items.length !== realItemCount && ' Misc. add-on items are pricing-only and won\'t be moved.'}
@@ -331,7 +350,7 @@ export default function QuoteDetail({ quote, catalog, locations, multipliers, ti
           {quote.id ? <button className="btn ghost" onClick={handleDelete}>Delete</button> : <span />}
           <div style={{ flex: 1 }} />
           <button className="btn secondary" onClick={onClose}>Cancel</button>
-          <button className="btn" disabled={saving} onClick={handleSave}>{saving ? 'Saving…' : 'Save'}</button>
+          <button className="btn" disabled={saving || missingGameBlocks} onClick={handleSave}>{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
 

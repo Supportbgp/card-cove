@@ -5810,6 +5810,47 @@ needed a second public repo.
   `--project-ref` and set its `ANTHROPIC_API_KEY` secret, then run
   `npm run deploy-staging` once in a terminal to save the credentials.
 
+## Quote cards landing in Catalog as game "Other" (fixed)
+
+The Backlog's "some Quote-tab-converted items land in `"Other"`" bug,
+investigated by tracing the code path (quote item → `sorting_queue` →
+catalog row). Nothing was ever wrong with how the game is carried; the
+game was simply never required:
+
+- A card added by hand (`QuoteLineItemRow`) and a Bulk lot
+  (`BulkLineItemRow`) both start with Game on "— Game —", and nothing
+  stopped a quote being accepted that way. `buildSortingItemsFromQuoteItems`
+  then wrote `game: null` to `sorting_queue`, the Sort window never showed
+  or asked for it, and placing the card ran it through `normalizeCard`,
+  whose `canonicalizeGame` turns a blank game into `"Other"` (a Bulk lot
+  went into a `"Bulk — Other"` pile via `findBulkRow`/
+  `buildBulkCatalogItem`). "Other" items are never searched or
+  price-checked (`price-check` only covers games in `PRICE_LOOKUPS`), so
+  this also hid them from price alerts.
+- Not a cause: Scan/Import into a quote (their rows always carry a
+  canonical game, "Other" only when that's what was picked) and the
+  spreadsheet quote import (a game is required per quote).
+- **Fix, at both ends**: (1) `QuoteDetail` won't save a quote as Accepted
+  (not yet moved) while any card or Bulk lot has no Game. Save is
+  disabled, an error names the cards (first five, then "and N more"), and
+  each one's Game select gets `.field-missing` (a red outline) with
+  `aria-invalid`. Saving an in-progress quote without a game is still
+  allowed. (2) `SortItemModal` shows a required Game select when any card
+  in the batch has none (cards accepted before this fix), applied only to
+  those cards (`destination.game`, filled in at the top of `App.jsx`'s
+  `handleSortItems`); cards that have a game keep their own.
+- **Existing rows aren't changed automatically**: catalog rows already
+  made this way stay "Other" until someone edits their Game. To find them,
+  in the SQL Editor: `select sku, name, location from catalog where game =
+  'Other' and (sku like 'quote-%' or item_type = 'bulk');` (quote-made rows
+  have a `quote-<timestamp>-<n>` sku).
+- Covered by `e2e/quote-game-required.spec.js` (Desktop + Mobile): accepting
+  is blocked with the card named and flagged, works once a Game is picked,
+  and the Sorting row gets that game; a Sorting row with no game can't be
+  confirmed until a Game is picked, and the catalog row gets it. Two
+  existing `quotes.spec.js` tests accepted a card with no Game and now pick
+  one. Staff docs: a line in `QuoteSection.jsx` and `SortingSection.jsx`.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -5830,11 +5871,6 @@ than repeated.
     found for Collectr; stays manual-entry-aid only unless one surfaces.
   - TCGPlayer's own Pricing API — frozen to new applicants since late
     2024; parked unless a real seller API key for this shop turns up.
-- **Confirmed real bug, not yet investigated**: some Quote-tab-converted
-  items land in `"Other"` as their game in Catalog — flagged as a side
-  effect of the price-tracking failure-rate investigation (see "Price
-  tracking: reduced the failed-lookup count" above) but never chased down
-  on its own, since it was outside that fix's scope.
 - **Parked pending more real-world data — revisit if new evidence shows
   up, don't guess in the meantime**:
   - Mobile multi-sheet `.xlsx` import silently loads the first sheet

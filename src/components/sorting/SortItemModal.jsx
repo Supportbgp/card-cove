@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { channelDefaultsForLocation } from '../../lib/cardUtils.js';
+import { channelDefaultsForLocation, GAMES } from '../../lib/cardUtils.js';
 import LocationPicker from '../LocationPicker.jsx';
 
 // One placement decision for `items` — either a single Sorting-queue row
@@ -53,9 +53,17 @@ export default function SortItemModal({ items, catalog, locations, onConfirm, on
     setChannels(c => ({ ...c, [field]: value }));
   }
 
+  // Cards accepted before a quote required a Game can still be sitting here
+  // without one; placing them as-is would make them "Other" in Catalog. So
+  // the game has to be picked here first (it applies to the cards in this
+  // batch that have none; the others keep their own).
+  const missingGame = items.filter(i => !(i.game || '').trim());
+  const [fillGame, setFillGame] = useState('');
+
   const hasLocation = location.trim().length > 0;
   const hasChannel = channels.posChannel || channels.tcgplayerChannel || channels.collectrChannel;
-  const canSave = mode === 'bulk' ? hasLocation : (hasLocation && hasChannel);
+  const hasGame = missingGame.length === 0 || !!fillGame;
+  const canSave = hasGame && (mode === 'bulk' ? hasLocation : (hasLocation && hasChannel));
 
   async function handleConfirm() {
     setSaving(true);
@@ -63,6 +71,7 @@ export default function SortItemModal({ items, catalog, locations, onConfirm, on
       await onConfirm({
         mode,
         location: location.trim(),
+        game: missingGame.length ? fillGame : '',
         posChannel: channels.posChannel,
         tcgplayerChannel: channels.tcgplayerChannel,
         collectrChannel: channels.collectrChannel,
@@ -108,6 +117,21 @@ export default function SortItemModal({ items, catalog, locations, onConfirm, on
               </div>
             )}
           </div>
+          {missingGame.length > 0 && (
+            <div className="field-group">
+              <label htmlFor="si_game">Game</label>
+              <select id="si_game" value={fillGame} onChange={(e) => setFillGame(e.target.value)}
+                className={fillGame ? undefined : 'field-missing'}>
+                <option value="">— Game —</option>
+                {GAMES.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+              <div className="status-line" style={{ marginTop: '4px' }}>
+                {single
+                  ? 'This card has no game set. Pick one so it doesn\'t land in Catalog as "Other".'
+                  : `${missingGame.length} of these cards have no game set (${missingGame.map(i => i.name).join(', ')}). Pick one for them so they don't land in Catalog as "Other".`}
+              </div>
+            </div>
+          )}
           <div className="field-group">
             <label>Binder / case / collection</label>
             <LocationPicker
