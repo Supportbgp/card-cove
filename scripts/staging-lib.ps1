@@ -17,6 +17,24 @@ $CredsFile = Join-Path $RepoRoot '.staging-db.local'
 $StagingSiteUrl = 'https://supportbgp.github.io/card-cove/staging/'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
+# Give up on a database connection after 20 seconds instead of hanging.
+# Every pg_dump/psql call below reads this from the environment.
+$env:PGCONNECT_TIMEOUT = '20'
+
+# What to try when a database can't be reached. Found in real use: a VPN
+# (Proton VPN) blocked port 5432, which the Session pooler uses, so the
+# connection was cut ("server closed the connection unexpectedly") or
+# just timed out.
+$ConnectionHint = @'
+Couldn't connect to the {0} database (see the error above).
+  - "server closed the connection unexpectedly" or "timeout expired": something is
+    blocking port 5432, most often a VPN. Turn it off (or exclude pg_dump.exe and
+    psql.exe from it with split tunneling) and run this again.
+  - "password authentication failed": a saved password is wrong. Delete
+    .staging-db.local and run this again in a terminal to enter it again.
+Nothing was changed.
+'@
+
 function Write-Step([string]$text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 
 function Assert-Tools {
@@ -101,6 +119,13 @@ function Get-DbUrls([string]$stagingRef, [string]$Need = 'both', [switch]$NoProm
     $result.Prod = Resolve-DbUrl 'Production' $creds['PROD_DB_URL'] $creds['PROD_DB_PASSWORD'] $ProdRef $stagingRef
   }
   return $result
+}
+
+# A quick "can we log in at all?" check before anything is changed, so a
+# blocked port or a wrong password stops the run up front with a hint.
+function Test-DbConnection([string]$label, [string]$url) {
+  & psql -w "--dbname=$url" -At -c "select 1" | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw ($ConnectionHint -f $label) }
 }
 
 # Replaces everything in staging's public schema with a copy of production's

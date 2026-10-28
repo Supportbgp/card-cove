@@ -31,7 +31,7 @@ function resolveImgSrc(url, data) {
 // the same live external search (Scryfall/TCGdex/etc.) EditModal/
 // Scanner already use, scoped locally to this one row (self-contained
 // search state, same pattern as EditModal's own candidates/candidateMode).
-export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers }) {
+export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers, flagMissingGame = false }) {
   const { openLightbox } = useUI();
   const [candidates, setCandidates] = useState([]);
   const [candidateMode, setCandidateMode] = useState('image'); // 'image' | 'price'
@@ -256,7 +256,12 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
           </div>
           <div className="scan-field sf">
             <label className="scan-field-label">Game</label>
-            <select value={item.game} onChange={(e) => patch({ game: e.target.value })}>
+            <select
+              value={item.game}
+              className={flagMissingGame && !item.game ? 'field-missing' : undefined}
+              aria-invalid={flagMissingGame && !item.game ? true : undefined}
+              onChange={(e) => patch({ game: e.target.value })}
+            >
               <option value="">— Game —</option>
               {GAMES.map(g => <option key={g} value={g}>{g}</option>)}
             </select>

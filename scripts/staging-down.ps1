@@ -20,6 +20,10 @@ catch {
   $stagingRef = Get-StagingRef ((git show origin/main:.env.staging) -join "`n")
 }
 $urls = Get-DbUrls $stagingRef -Need 'staging' -NoPrompt:$NoPrompt
+# Checked first, so a blocked connection stops this before the site is taken
+# down: fix it and run it once more, instead of ending up with the site down
+# but the copy of the data still in the staging database.
+Test-DbConnection 'staging' $urls.Staging
 
 Write-Step '1/2 Taking the staging site offline'
 git ls-remote --exit-code --heads origin staging | Out-Null

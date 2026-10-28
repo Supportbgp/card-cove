@@ -558,7 +558,12 @@ export default function App() {
   // running (location, game) count instead of a per-print row). Either way,
   // every sorting_queue row involved is deleted once resolved — the new/
   // updated Catalog row is the durable record from here on, not this table.
-  async function handleSortItems(items, destination) {
+  async function handleSortItems(sortingItems, destination) {
+    // A card with no game gets the one picked in the Sort window (see
+    // SortItemModal), so it doesn't become "Other" in Catalog.
+    const items = destination.game
+      ? sortingItems.map(i => ((i.game || '').trim() ? i : { ...i, game: destination.game }))
+      : sortingItems;
     let resultCards;
     if (destination.mode === 'bulk') {
       // Processed sequentially, folding each result back into `working`

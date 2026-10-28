@@ -170,6 +170,7 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
         printing: mapping.printing ? r[mapping.printing] : "",
         qty: mapping.qty ? r[mapping.qty] : 1,
         price: mapping.price ? r[mapping.price] : null,
+        cost: mapping.cost ? r[mapping.cost] : null,
         notes: mapping.notes ? r[mapping.notes] : "",
         imageUrl: mapping.imageUrl ? r[mapping.imageUrl] : "",
         sourceUrl: mapping.sourceUrl ? r[mapping.sourceUrl] : "",

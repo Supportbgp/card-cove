@@ -37,6 +37,11 @@ export default function SortingSection() {
           all. See below for what this actually does.
         </li>
       </ul>
+      <p>
+        If a card has no game set (cards accepted before quotes required
+        one), the Sort window asks for its <strong>Game</strong> first, so it
+        doesn't land in Catalog as "Other".
+      </p>
       <DocsCallout kind="note">
         Once a card is sorted, it's removed from this queue for good — the
         new Catalog row (or the updated Bulk count) is the record from then

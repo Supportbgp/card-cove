@@ -5810,6 +5810,97 @@ needed a second public repo.
   `--project-ref` and set its `ANTHROPIC_API_KEY` secret, then run
   `npm run deploy-staging` once in a terminal to save the credentials.
 
+## Quote cards landing in Catalog as game "Other" (fixed)
+
+The Backlog's "some Quote-tab-converted items land in `"Other"`" bug,
+investigated by tracing the code path (quote item → `sorting_queue` →
+catalog row). Nothing was ever wrong with how the game is carried; the
+game was simply never required:
+
+- A card added by hand (`QuoteLineItemRow`) and a Bulk lot
+  (`BulkLineItemRow`) both start with Game on "— Game —", and nothing
+  stopped a quote being accepted that way. `buildSortingItemsFromQuoteItems`
+  then wrote `game: null` to `sorting_queue`, the Sort window never showed
+  or asked for it, and placing the card ran it through `normalizeCard`,
+  whose `canonicalizeGame` turns a blank game into `"Other"` (a Bulk lot
+  went into a `"Bulk — Other"` pile via `findBulkRow`/
+  `buildBulkCatalogItem`). "Other" items are never searched or
+  price-checked (`price-check` only covers games in `PRICE_LOOKUPS`), so
+  this also hid them from price alerts.
+- Not a cause: Scan/Import into a quote (their rows always carry a
+  canonical game, "Other" only when that's what was picked) and the
+  spreadsheet quote import (a game is required per quote).
+- **Fix, at both ends**: (1) `QuoteDetail` won't save a quote as Accepted
+  (not yet moved) while any card or Bulk lot has no Game. Save is
+  disabled, an error names the cards (first five, then "and N more"), and
+  each one's Game select gets `.field-missing` (a red outline) with
+  `aria-invalid`. Saving an in-progress quote without a game is still
+  allowed. (2) `SortItemModal` shows a required Game select when any card
+  in the batch has none (cards accepted before this fix), applied only to
+  those cards (`destination.game`, filled in at the top of `App.jsx`'s
+  `handleSortItems`); cards that have a game keep their own.
+- **Existing rows aren't changed automatically**: catalog rows already
+  made this way stay "Other" until someone edits their Game. To find them,
+  in the SQL Editor: `select sku, name, location from catalog where game =
+  'Other' and (sku like 'quote-%' or item_type = 'bulk');` (quote-made rows
+  have a `quote-<timestamp>-<n>` sku).
+- Covered by `e2e/quote-game-required.spec.js` (Desktop + Mobile): accepting
+  is blocked with the card named and flagged, works once a Game is picked,
+  and the Sorting row gets that game; a Sorting row with no game can't be
+  confirmed until a Game is picked, and the catalog row gets it. Two
+  existing `quotes.spec.js` tests accepted a card with no Game and now pick
+  one. Staff docs: a line in `QuoteSection.jsx` and `SortingSection.jsx`.
+
+## Staging scripts: connection timeout and a VPN/password hint
+
+Found on the first real staging deploy: Proton VPN blocked outgoing port
+5432 (the Session pooler's port; confirmed by a neutral port-test site,
+with 6543 and 8080 working fine), so `pg_dump`'s connection was cut
+("server closed the connection unexpectedly") or hung until it timed out.
+The direct `db.<ref>.supabase.co` address isn't a workaround: it's
+IPv6-only and this network has no IPv6. The transaction pooler (6543)
+wasn't used either: `pg_dump` runs its session settings (like an empty
+`search_path`) outside its one transaction, which a transaction pooler
+can hand to a different backend, so the dump could come out with
+unqualified names that fail to restore.
+
+- `scripts/staging-lib.ps1` sets `PGCONNECT_TIMEOUT=20`, so every
+  `pg_dump`/`psql` call gives up after 20 seconds instead of hanging.
+- `Test-DbConnection` (`psql -w ... select 1`, `-w` so it can never sit at
+  a password prompt) runs before anything is changed: both databases in
+  `deploy-staging`, the staging one in `staging-down`. On failure it
+  explains the two real causes: a blocked port 5432 (turn the VPN off, or
+  exclude `pg_dump.exe`/`psql.exe` with split tunneling), or a wrong saved
+  password (delete `.staging-db.local` and enter it again).
+  `staging-down` checks *before* taking the site down, so a blocked
+  connection no longer leaves the site down with the data still in the
+  staging database (what happened on the first real run).
+- Verified against an unreachable address: stops after 20 seconds with the
+  hint.
+
+## CSV/XLSX import: a Cost column
+
+The Backlog item scoped out of Cost tracking's first version ("Cost today
+only supports manual entry and auto-fill from an accepted Quote").
+`FIELD_TARGETS` (`importParse.js`) gained `cost` ("Cost ($)", matched
+automatically from headers like Cost, Unit Cost, Cost Basis, Purchase
+Price, Buy Price), and `ImportPanel` passes it to `normalizeCard`, whose
+`parseMoney` already handles `$`/commas and turns a blank cell into no
+cost. Per copy, same as the Edit screen's Cost field and `price`.
+
+- **Worth knowing, not changed**: Merge imports upsert each matching SKU's
+  whole row (`dbUpsertCards` → `cardToRow`, which always sends `cost`), so
+  a card whose Cost was typed in by hand loses it if the file's Cost cell
+  is blank or the column is skipped. That's how every field on a Merge
+  already worked (photos, base price, rarity too); flagged in the staff
+  docs' Import section and in the Backlog rather than changing Merge's
+  meaning here.
+- Covered by new `importParse.test.js` cases (the header guess, and that a
+  Price/Market Price column isn't mistaken for Cost) and
+  `e2e/import-cost.spec.js` (Desktop + Mobile), the first e2e test of the
+  regular CSV import: the Cost column is auto-matched and `"$20.50"` saves
+  as `cost: 20.5`, a blank cell as none.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -5823,24 +5914,8 @@ than repeated.
   export's actual upload-ready export format (see "Next sprints" above).
   Blocked only on getting TCG Player's real required column layout first —
   never guess it.
-- **Needs the user's decision before any code gets written**:
-  - Cumulus POS SKU import (Phase 4) — needs a go/no-go plus a real
-    Cumulus export/import file sample (see "Known constraints" above).
-  - Collectr bulk-upload export — no bulk-upload/bulk-create API has been
-    found for Collectr; stays manual-entry-aid only unless one surfaces.
-  - TCGPlayer's own Pricing API — frozen to new applicants since late
-    2024; parked unless a real seller API key for this shop turns up.
-- **Confirmed real bug, not yet investigated**: some Quote-tab-converted
-  items land in `"Other"` as their game in Catalog — flagged as a side
-  effect of the price-tracking failure-rate investigation (see "Price
-  tracking: reduced the failed-lookup count" above) but never chased down
-  on its own, since it was outside that fix's scope.
 - **Parked pending more real-world data — revisit if new evidence shows
   up, don't guess in the meantime**:
-  - Mobile multi-sheet `.xlsx` import silently loads the first sheet
-    instead of showing the sheet picker (desktop shows it correctly) — no
-    repro yet with synthetic files; needs a real device repro or the
-    actual file involved.
   - SWU's `"Cad Bane - He Who Needs No Introduction"` still fails price
     lookup for an unexplained reason, after every other cleanup in that
     debugging arc.
@@ -5868,10 +5943,19 @@ than repeated.
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a
   permanent feature either way.
-- **Explicitly scoped out of Cost tracking for a future version**: a
-  Cost ($) column on CSV/XLSX import — Cost today only supports manual
-  entry (EditModal) and auto-fill from an accepted Quote trade-in; bulk
-  import was deliberately left out of v1 (see "Cost tracking" above).
+- **Possible follow-up, needs a decision**: a Merge import overwrites a
+  matching SKU's whole row, so values typed in by hand (Cost, photos, base
+  price, rarity) are lost when the file leaves them blank or a column is
+  skipped (see "CSV/XLSX import: a Cost column" above). Keeping existing
+  values for skipped columns would change what Merge means; confirm with
+  the user first.
+
+**Dropped from this list by the user (2026-10-28), not just parked**:
+Cumulus POS import, a Collectr bulk-upload export, and TCGPlayer's own
+Pricing API ("not relevant for us now"), and the mobile multi-sheet
+`.xlsx` sheet-picker issue ("not important until someone tells us
+otherwise"). Their history stays in the sections above; don't bring them
+back up unless the user or staff do.
 
 Keep this section current: when an item here gets built, or a parked
 question gets a real answer, move/remove it in the same change that

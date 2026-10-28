@@ -37,6 +37,8 @@ if (git status --porcelain --untracked-files=no) {
 }
 
 $urls = Get-DbUrls $stagingRef -NoPrompt:$NoPrompt
+Test-DbConnection 'production' $urls.Prod
+Test-DbConnection 'staging' $urls.Staging
 
 Write-Step "1/4 Copying production's database into staging"
 Copy-ProdToStaging $urls

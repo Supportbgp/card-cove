@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   guessHeader, isLikelyImageUrl, looksNumeric, guessGameFromSheetName,
-  runWithConcurrency, parseCsvFile,
+  runWithConcurrency, parseCsvFile, FIELD_TARGETS,
 } from './importParse.js';
 
 // Note: loadXlsxSheet/loadBinderPageFormat/readWorkbook (the .xlsx-specific
@@ -9,6 +9,21 @@ import {
 // FileReader roundtrip to test meaningfully, and have been exercised via
 // manual testing instead (see CLAUDE.md). Everything below is the part of
 // importParse.js that's pure logic and cheap to verify directly.
+
+describe('FIELD_TARGETS: Cost', () => {
+  const cost = FIELD_TARGETS.find(f => f.key === 'cost');
+  it('is a mappable column', () => {
+    expect(cost.label).toBe('Cost ($)');
+  });
+  it('picks up the usual spellings of a cost column', () => {
+    expect(guessHeader(cost.aliases, ['Name', 'Price', 'Cost'])).toBe('Cost');
+    expect(guessHeader(cost.aliases, ['Name', 'Unit Cost'])).toBe('Unit Cost');
+    expect(guessHeader(cost.aliases, ['Name', 'Purchase Price'])).toBe('Purchase Price');
+  });
+  it("doesn't mistake the Price column for it", () => {
+    expect(guessHeader(cost.aliases, ['Name', 'Price', 'Market Price'])).toBe('');
+  });
+});
 
 describe('guessHeader', () => {
   it('finds a header matching one of the aliases, case-insensitively', () => {
