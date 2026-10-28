@@ -14,8 +14,10 @@ function activePanel(page) {
 
 async function openReport(page, testInfo) {
   if (testInfo.project.name === 'Mobile') {
-    await activePanel(page).getByText(NAME).click();
-    await page.locator('.catalog-card').getByRole('button', { name: 'Edit' }).click();
+    // Tapping the card toggles it open; it may still be open from before.
+    const edit = page.locator('.catalog-card').getByRole('button', { name: 'Edit' });
+    if (!(await edit.isVisible())) await activePanel(page).getByText(NAME).click();
+    await edit.click();
   } else {
     await page.locator('table tbody tr').filter({ hasText: NAME }).getByRole('button', { name: 'Edit' }).click();
   }
@@ -51,6 +53,7 @@ test('a copy missing from stock: qty goes down, a Sync Queue ticket, and the los
   const ticket = activePanel(page).locator('.ticket', { hasText: NAME });
   await expect(ticket.getByText('Lost / stolen')).toBeVisible();
   await expect(ticket.getByRole('button', { name: 'Undo sale' })).toHaveCount(0);
+  await expect(ticket.getByRole('button', { name: 'Undo loss' })).toBeVisible();
 
   // Reports: nothing sold, a $17 loss, so Profit is -$17.
   await page.locator('.tab', { hasText: 'Reports' }).click();
@@ -99,9 +102,9 @@ test('a sold copy lost in shipment, customer refunded, card had no Cost', async 
   await expect(page.locator('.stat-profit')).toContainText('-$17.00');
   await expect(activePanel(page).getByText('1 refunded sale(s) ($25.00) are left out', { exact: false })).toBeVisible();
 
-  // Removing the loss in Reports puts the sale back.
-  await activePanel(page).locator('.losses-table').getByRole('button', { name: 'Remove' }).click();
-  await page.locator('.modal', { hasText: 'Remove loss' }).getByRole('button', { name: 'Confirm' }).click();
+  // Undo in Reports (any time later) puts the sale back.
+  await activePanel(page).locator('.losses-table').getByRole('button', { name: 'Undo' }).click();
+  await page.locator('.modal', { hasText: 'Undo loss' }).getByRole('button', { name: 'Confirm' }).click();
   await expect(page.locator('.stat-revenue')).toContainText('$25.00');
   const final = await db(page);
   expect(final.inventory_losses).toHaveLength(0);
@@ -123,4 +126,36 @@ test('Undo right after reporting puts everything back', async ({ page }, testInf
   const after = await db(page);
   expect(after.inventory_losses).toHaveLength(0);
   expect(after.sync_queue).toHaveLength(0);
+});
+
+test('Undo loss later, from the Sync Queue ticket or the Reports list', async ({ page }, testInfo) => {
+  await seedHarness(page, { seed: catalogSeed([makeCardRow({ sku: 'poca', name: NAME, game: 'Lorcana', qty: 3, price: 25, cost: 17 })]) });
+  await page.goto('./');
+
+  // Report two separate losses of one copy each.
+  for (const reason of ['stolen', 'damaged']) {
+    const modal = await openReport(page, testInfo);
+    await modal.getByLabel('Reason').selectOption(reason);
+    await modal.getByRole('button', { name: 'Report loss' }).click();
+    await expect(modal).toHaveCount(0);
+  }
+  await expect.poll(async () => (await db(page)).catalog.find(r => r.sku === 'poca').qty).toBe(1);
+
+  // From the Sync Queue: the first ticket's Undo loss.
+  await page.locator('.tab', { hasText: 'Sync Queue' }).click();
+  await activePanel(page).getByRole('button', { name: 'Undo loss' }).first().click();
+  await page.locator('.modal', { hasText: 'Undo loss' }).getByRole('button', { name: 'Confirm' }).click();
+  await expect.poll(async () => (await db(page)).catalog.find(r => r.sku === 'poca').qty).toBe(2);
+  let now = await db(page);
+  expect(now.inventory_losses).toHaveLength(1);
+  expect(now.sync_queue).toHaveLength(1);
+
+  // From Reports: the other one; its Sync Queue ticket goes too.
+  await page.locator('.tab', { hasText: 'Reports' }).click();
+  await activePanel(page).locator('.losses-table').getByRole('button', { name: 'Undo' }).click();
+  await page.locator('.modal', { hasText: 'Undo loss' }).getByRole('button', { name: 'Confirm' }).click();
+  await expect.poll(async () => (await db(page)).catalog.find(r => r.sku === 'poca').qty).toBe(3);
+  now = await db(page);
+  expect(now.inventory_losses).toHaveLength(0);
+  expect(now.sync_queue).toHaveLength(0);
 });

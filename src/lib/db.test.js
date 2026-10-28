@@ -50,7 +50,7 @@ const {
   dbDeleteTickets, dbDeleteSaleForTicket,
   rowToPriceAlert, dbLoadPriceAlerts, dbAcknowledgePriceAlerts,
   dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
-  dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, rowToLoss,
+  dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, rowToLoss, dbFindLossForTicket,
 } = await import('./db.js');
 
 beforeEach(() => {
@@ -597,5 +597,20 @@ describe('lost / stolen cards', () => {
     expect(rowToTicket({ kind: 'loss', ts: '2026-10-28T00:00:00Z' }).kind).toBe('loss');
     expect(rowToTicket({ ts: '2026-10-28T00:00:00Z' }).kind).toBe('sale');
     expect(rowToLoss({ id: 'x', loss_amount: null }).lossAmount).toBe(0);
+  });
+});
+
+describe('dbFindLossForTicket', () => {
+  it('finds the loss behind a Lost / stolen ticket by sku and time', async () => {
+    tableResults.inventory_losses = { data: [{ id: 'l1', sku: 'poca', qty: 1, loss_amount: 17, occurred_at: '2026-10-28T10:00:00.000Z' }], error: null };
+    const loss = await dbFindLossForTicket({ sku: 'poca', timestamp: Date.parse('2026-10-28T10:00:00.000Z') }, vi.fn());
+    const b = fromMock.mock.results[0].value;
+    expect(b.eq).toHaveBeenCalledWith('sku', 'poca');
+    expect(b.eq).toHaveBeenCalledWith('occurred_at', '2026-10-28T10:00:00.000Z');
+    expect(loss).toMatchObject({ id: 'l1', lossAmount: 17 });
+  });
+  it('returns null when it was already undone', async () => {
+    tableResults.inventory_losses = { data: [], error: null };
+    expect(await dbFindLossForTicket({ sku: 'poca', timestamp: Date.now() }, vi.fn())).toBe(null);
   });
 });

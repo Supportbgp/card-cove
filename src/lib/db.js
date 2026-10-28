@@ -289,6 +289,16 @@ export async function dbInsertLoss(loss, toast) {
   return rowToLoss(data);
 }
 
+// The loss behind a "Lost / stolen" Sync Queue ticket: handleReportLoss
+// stamps both with the same time, so sku + that time finds it (same idea as
+// dbDeleteSaleForTicket). Null if it's gone (already undone in Reports).
+export async function dbFindLossForTicket(ticket, toast) {
+  const { data, error } = await supabaseClient.from('inventory_losses').select('*')
+    .eq('sku', ticket.sku).eq('occurred_at', new Date(ticket.timestamp).toISOString()).limit(1);
+  if (error) { toast('Failed to find the loss: ' + error.message, true); return null; }
+  return data && data.length ? rowToLoss(data[0]) : null;
+}
+
 export async function dbDeleteLoss(id, toast) {
   const { error } = await supabaseClient.from('inventory_losses').delete().eq('id', id);
   if (error) toast('Removing the loss failed: ' + error.message, true);

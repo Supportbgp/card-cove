@@ -5,7 +5,7 @@ import {
   dbLoadAll, dbUpsertCard, dbUpsertCards, dbDeleteCard, dbDeleteCards, dbClearCatalog,
   dbInsertTickets, dbUpdateTicketStamp, dbClearQueue, dbUpdatePlatformStatus, dbInsertSales, dbLoadSales, dbUpdateSale,
   dbDeleteTickets, dbDeleteSaleForTicket,
-  dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses,
+  dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, dbFindLossForTicket,
   dbLoadSettings, dbSaveSettings,
   dbLoadPriceAlerts, dbAcknowledgePriceAlerts, dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadQuotes, dbUpsertQuote, dbDeleteQuote, dbLoadQuoteSettings, dbSaveQuoteSettings,
@@ -97,6 +97,9 @@ export default function App() {
   // current catalog through this ref instead.
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
+  // Same reason as catalogRef: undoLoss can run from a toast created earlier.
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
   const undoingRef = useRef(new Set());
   // Bumped whenever sales rows are added or removed, so an open Reports tab
   // re-fetches instead of still showing an undone sale.
@@ -480,47 +483,62 @@ export default function App() {
 
     const what = `${report.qty} × ${c.name}`;
     toast(`Reported ${what} as ${lossReasonLabel(report.reason).toLowerCase()}, $${report.lossAmount.toFixed(2)} loss`, false, {
-      action: { label: 'Undo', onClick: () => undoLoss(saved, { snapshot: ticket ? snapshot : null, ticket }) },
+      action: { label: 'Undo', onClick: () => undoLoss({ loss: saved, ticket, snapshot: ticket ? snapshot : null }) },
     });
   }
 
-  // Undo right after reporting (the toast): removes the loss record, puts
-  // the qty and status chips back and drops the ticket (stock), or clears
-  // the refund (sale). A Cost entered while reporting stays on the card.
-  async function undoLoss(loss, { snapshot, ticket }) {
-    if (undoingRef.current.has(loss.id)) return;
-    undoingRef.current.add(loss.id);
+  // Undoes a reported loss, the same way Undo sale undoes a sale. One path
+  // for all three places it's offered: the toast right after reporting
+  // (loss + ticket + the pre-loss snapshot), the Reports Lost / stolen list
+  // (loss only) and a "Lost / stolen" Sync Queue ticket (ticket only). The
+  // missing half is found by sku + timestamp: handleReportLoss stamps the
+  // ticket and the loss with the same occurredAt. A copy missing from stock
+  // gets its qty back and its ticket removed; a sold copy lost in shipment
+  // gets its refund cleared, so the sale counts as revenue again. A Cost
+  // entered while reporting stays on the card.
+  async function undoLoss({ loss = null, ticket = null, snapshot = null }) {
+    const key = loss ? loss.id : ticket.id;
+    if (undoingRef.current.has(key)) return;
+    undoingRef.current.add(key);
     try {
-      await dbDeleteLoss(loss.id, toast);
-      if (ticket) {
-        const base = catalogRef.current.find(x => x.sku === loss.sku);
+      if (!loss && ticket) loss = await dbFindLossForTicket(ticket, toast);
+      if (!ticket && loss && !loss.saleId) {
+        ticket = queueRef.current.find(t => t.kind === 'loss' && t.sku === loss.sku && t.timestamp === loss.occurredAt) || null;
+      }
+      const name = loss ? loss.name : ticket.name;
+      const qty = loss ? loss.qty : ticket.qtySold;
+      const fromStock = loss ? !loss.saleId : true;
+
+      if (loss) await dbDeleteLoss(loss.id, toast);
+      let qtyRestored = !fromStock;
+      if (fromStock) {
+        const base = catalogRef.current.find(x => x.sku === (loss ? loss.sku : ticket.sku));
         if (base) {
           const restored = {
-            ...base, qty: (Number(base.qty) || 0) + loss.qty, lastUpdated: Date.now(),
+            ...base, qty: (Number(base.qty) || 0) + qty, lastUpdated: Date.now(),
             ...(snapshot ? { posSynced: snapshot.posSynced, tcgplayerSynced: snapshot.tcgplayerSynced, collectrSynced: snapshot.collectrSynced } : {}),
           };
-          setCatalog(prev => prev.map(x => (x.sku === loss.sku ? restored : x)));
+          setCatalog(prev => prev.map(x => (x.sku === base.sku ? restored : x)));
           await dbUpsertCard(restored, toast);
+          qtyRestored = true;
         }
+      }
+      if (ticket) {
         setQueue(prev => prev.filter(t => t.id !== ticket.id));
         await dbDeleteTickets([ticket.id], toast);
       }
-      if (loss.saleId && loss.refunded) await dbSetSaleRefunded(loss.saleId, null, toast);
+      if (loss && loss.saleId && loss.refunded) await dbSetSaleRefunded(loss.saleId, null, toast);
       setSalesRevision(v => v + 1);
-      toast(`Undid the loss of ${loss.qty} × ${loss.name}.`);
-    } finally {
-      undoingRef.current.delete(loss.id);
-    }
-  }
 
-  // Reports' "Remove" on a loss: deletes the record and clears the sale's
-  // refund. Quantity isn't put back (it may have been corrected by hand
-  // since); the confirm message says so.
-  async function handleDeleteLoss(loss) {
-    await dbDeleteLoss(loss.id, toast);
-    if (loss.saleId && loss.refunded) await dbSetSaleRefunded(loss.saleId, null, toast);
-    setSalesRevision(v => v + 1);
-    toast(`Removed the loss of ${loss.qty} × ${loss.name}.`);
+      const notes = [];
+      if (!qtyRestored) notes.push("the item is no longer in the catalog, so its quantity couldn't be put back");
+      if (!loss) notes.push("its Reports entry wasn't found (already undone there?)");
+      if (notes.length) toast(`Undid the loss of ${qty} × ${name}, but ${notes.join(', and ')}.`, true);
+      else toast(`Undid the loss of ${qty} × ${name}.`
+        + (fromStock ? ' Quantity is back in the catalog.' : (loss.refunded ? ' The sale counts as revenue again.' : '')));
+    } finally {
+      undoingRef.current.delete(key);
+    }
   }
 
   function handleLoadSalesForSku(sku) {
@@ -785,7 +803,12 @@ export default function App() {
         />
       </div>
       <div className={`panel${tab === 'queue' ? ' active' : ''}`}>
-        <SyncQueueTab queue={queue} onToggleStamp={handleToggleStamp} onUndoSale={(t) => undoSales([t])} />
+        <SyncQueueTab
+          queue={queue}
+          onToggleStamp={handleToggleStamp}
+          onUndoSale={(t) => undoSales([t])}
+          onUndoLoss={(t) => undoLoss({ ticket: t })}
+        />
       </div>
       <div className={`panel${tab === 'import' ? ' active' : ''}`}>
         <ImportExportPanel
@@ -825,7 +848,7 @@ export default function App() {
           onLoadSales={handleLoadSalesReport}
           onLoadLosses={handleLoadLossReport}
           onUpdateSale={handleUpdateSale}
-          onDeleteLoss={handleDeleteLoss}
+          onUndoLoss={(loss) => undoLoss({ loss })}
           refreshKey={salesRevision}
         />
       </div>

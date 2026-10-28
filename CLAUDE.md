@@ -5941,10 +5941,23 @@ ticket** like a sale does, so listings get taken down.
   (sale) marks the sale refunded (`dbSetSaleRefunded`) and, if the sale had
   no cost, gives it the entered one. A Cost entered in the window is saved
   on the card. Toast: "Reported 1 × X as lost in shipment, $17.00 loss"
-  with **Undo** (`undoLoss`: deletes the loss, restores qty and chips and
-  drops the ticket, or clears the refund; an entered Cost stays).
-- **Sync Queue**: a loss ticket shows a "Lost / stolen" tag and no Undo
-  sale button (there was no sale); it's stamped like any other ticket.
+  with **Undo**.
+- **Undo, any time, like Undo sale** (asked for after the first version only
+  had the toast's Undo plus a Reports "Remove" that didn't put the qty
+  back): one `undoLoss({ loss, ticket, snapshot })` behind three buttons:
+  the toast (has all three), Reports' Lost / stolen list (**Undo**, has the
+  loss) and a loss ticket in the Sync Queue (**Undo loss**, has the
+  ticket). The missing half is found by sku + timestamp, since
+  `handleReportLoss` stamps the ticket and the loss with the same
+  `occurredAt` (`dbFindLossForTicket`; the ticket from `queueRef`, a ref
+  like `catalogRef` so a toast created earlier sees the current queue). A
+  stock loss gets its qty back (and, from the toast only, its P/T/C chips)
+  and its ticket removed; a shipment loss gets its refund cleared, so the
+  sale counts as revenue again. A Cost entered while reporting stays. If
+  the card was deleted or the loss was already undone elsewhere, the toast
+  says what couldn't be done.
+- **Sync Queue**: a loss ticket shows a "Lost / stolen" tag and **Undo
+  loss** instead of Undo sale; it's stamped like any other ticket.
 - **Reports** (`computeSalesReport(sales, losses)`): losses in the date
   range (`dbLoadLosses`, by `occurred_at`) are a new **Losses** tile and
   column, and Profit = Revenue − Cost − Losses, overall and per game (a
@@ -5953,8 +5966,7 @@ ticket** like a sale does, so listings get taken down.
   `refundedRevenue` for a caption), because the loss row already carries
   that card's cost; counting both would double it. Refunded sales stay in
   the per-game drill-down, greyed with a "Refunded" tag. A "Lost / stolen"
-  table lists each loss with **Remove** (deletes it and clears its sale's
-  refund; the confirm says the qty isn't put back). Profit now prints a
+  table lists each loss with **Undo** (see above). Profit now prints a
   negative as "-$17.00" instead of "$-17.00".
   - **Not refunded** (the buyer still paid, e.g. a replacement was sent):
     the sale stays as revenue and the loss is added on top, as the user
@@ -5969,8 +5981,10 @@ ticket** like a sale does, so listings get taken down.
   `e2e/lost-stolen.spec.js` (Desktop + Mobile): a stock loss (qty, ticket,
   loss row, Sync Queue tag, Reports Losses/Profit); a sold copy lost in
   shipment with no Cost (window asks for it, refund checkbox, sale
-  refunded and given the cost, Reports drop its revenue, Remove puts it
-  back); and Undo. The harness gained the `inventory_losses` table and
+  refunded and given the cost, Reports drop its revenue, Undo there puts
+  it back); the toast's Undo; and Undo later from a Sync Queue ticket and
+  from Reports (each restores qty and removes both the loss and its
+  ticket). The harness gained the `inventory_losses` table and
   `.limit()`. Checked visually at phone and desktop widths, which caught
   the sale picker's radio buttons and the refund checkbox picking up the
   form's full-width input and uppercase label styles (now scoped).

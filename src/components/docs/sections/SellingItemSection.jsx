@@ -65,10 +65,13 @@ export default function SellingItemSection() {
         saves it on the card too.
       </p>
       <DocsCallout kind="note">
-        Reported the wrong card? Tap <strong>Undo</strong> on the message right
-        after. Later, remove it from the <strong>Lost / stolen</strong> list in
-        Reports. Removing it there puts a refunded sale back into revenue, but
-        doesn't put the quantity back; fix that on the card if needed.
+        Reported the wrong card, or it turned up? A loss can be undone just like
+        a sale: tap <strong>Undo</strong> on the message right after, or any
+        time later use <strong>Undo</strong> on it in the Reports{' '}
+        <strong>Lost / stolen</strong> list (or <strong>Undo loss</strong> on
+        its Sync Queue ticket). A copy missing from stock goes back into the
+        catalog; a sold copy's refund is cleared, so the sale counts as
+        revenue again.
       </DocsCallout>
     </DocsSection>
   );

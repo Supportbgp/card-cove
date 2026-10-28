@@ -22,7 +22,7 @@ const PRESETS = [
 // App.jsx's top-level state the way catalog/quotes/sorting are — sales only
 // ever grows, with no natural cap, so eagerly loading all of it on every
 // sign-in doesn't scale the way it does for those.
-export default function ReportsTab({ onLoadSales, onLoadLosses = async () => [], onUpdateSale, onDeleteLoss = async () => {}, refreshKey }) {
+export default function ReportsTab({ onLoadSales, onLoadLosses = async () => [], onUpdateSale, onUndoLoss = async () => {}, refreshKey }) {
   const { showConfirm } = useUI();
   const [preset, setPreset] = useState('month');
   const [customFrom, setCustomFrom] = useState('');
@@ -61,13 +61,14 @@ export default function ReportsTab({ onLoadSales, onLoadLosses = async () => [],
 
   const report = computeSalesReport(sales, losses);
 
-  async function handleRemoveLoss(loss) {
-    const msg = `Remove this loss record (${loss.qty} × ${loss.name}, $${loss.lossAmount.toFixed(2)})?`
-      + (loss.refunded ? ' Its sale counts as revenue again (no longer refunded).' : '')
-      + (loss.saleId ? '' : " The card's quantity isn't put back; fix it on the card if needed.");
-    if (!(await showConfirm(msg, 'Remove loss'))) return;
+  async function handleUndoLoss(loss) {
+    const msg = `Undo the loss of ${loss.qty} × ${loss.name} ($${loss.lossAmount.toFixed(2)})? `
+      + (loss.saleId
+        ? (loss.refunded ? 'The refund is cleared, so the sale counts as revenue again.' : 'The loss record is removed.')
+        : 'The quantity goes back into the catalog and its Sync Queue ticket is removed.');
+    if (!(await showConfirm(msg, 'Undo loss'))) return;
     setLosses(prev => prev.filter(l => l.id !== loss.id));
-    await onDeleteLoss(loss);
+    await onUndoLoss(loss);
   }
 
   // Patches the local sales array immediately (there's no realtime
@@ -256,7 +257,7 @@ export default function ReportsTab({ onLoadSales, onLoadLosses = async () => [],
                         <td>${l.lossAmount.toFixed(2)}</td>
                         <td>{l.notes || '—'}</td>
                         <td>
-                          <button className="btn ghost small" onClick={() => handleRemoveLoss(l)}>Remove</button>
+                          <button className="btn ghost small" onClick={() => handleUndoLoss(l)}>Undo</button>
                         </td>
                       </tr>
                     ))}
