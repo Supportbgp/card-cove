@@ -4,6 +4,7 @@ import CatalogToolbar from './CatalogToolbar.jsx';
 import BatchBar from './BatchBar.jsx';
 import CatalogTable from './CatalogTable.jsx';
 import EditModal from './EditModal.jsx';
+import ReportLossModal from './ReportLossModal.jsx';
 import SellQuantityModal from './SellQuantityModal.jsx';
 import { useUI } from '../../context/UIContext.jsx';
 
@@ -11,8 +12,11 @@ export default function CatalogPanel({
   catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onSellPartial, onTogglePlatformStatus, multipliers,
   priceAlertsBySku = new Map(), editRequest = null, onEditRequestHandled = () => {},
   quotes = [], onOpenQuote = () => {},
+  onReportLoss = async () => {}, onLoadSalesForSku = async () => [],
 }) {
   const { showConfirm } = useUI();
+  // The card being reported lost/stolen (by sku, so it always shows the live row).
+  const [lossSku, setLossSku] = useState(null);
   const [search, setSearch] = useState("");
   const [gameFilter, setGameFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
@@ -147,6 +151,7 @@ export default function CatalogPanel({
   }, [editRequest]);
 
   const editingCard = editingSku ? catalog.find(c => c.sku === editingSku) : null;
+  const lossCard = lossSku ? catalog.find(c => c.sku === lossSku) || null : null;
   const duplicateTemplate = editingSku === null && duplicateSku ? catalog.find(c => c.sku === duplicateSku) || null : null;
 
   // Duplicate one selected item (sold or not) into a new, prefilled Add item.
@@ -210,6 +215,7 @@ export default function CatalogPanel({
             ? (quotes.find(q => q.id === editingCard.sourceQuoteId) || { missing: true })
             : null}
           onOpenQuote={(id) => { closeEdit(); onOpenQuote(id); }}
+          onReportLoss={(c) => { closeEdit(); setLossSku(c.sku); }}
           catalog={catalog}
           locations={locations}
           multipliers={multipliers}
@@ -217,6 +223,15 @@ export default function CatalogPanel({
           onClose={closeEdit}
           onSave={async (record, prevSku) => { await onSaveCard(record, prevSku); closeEdit(); }}
           onDelete={async (sku) => { await onDeleteCard(sku); closeEdit(); }}
+        />
+      )}
+      {lossCard && (
+        <ReportLossModal
+          key={lossCard.sku}
+          card={lossCard}
+          onLoadSales={onLoadSalesForSku}
+          onConfirm={async (report) => { await onReportLoss(lossCard, report); setLossSku(null); }}
+          onCancel={() => setLossSku(null)}
         />
       )}
       {sellPromptCard && (

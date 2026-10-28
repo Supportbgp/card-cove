@@ -995,6 +995,78 @@
       box-shadow: 0 0 0 1px var(--rust);
     }
 
+    /* Lost / stolen cards: the entry on the Edit screen, the report window,
+       the Sync Queue ticket tag, and the Reports list. */
+    .loss-entry {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      margin-top: 10px;
+    }
+
+    .loss-entry-help {
+      font-size: 11.5px;
+      color: var(--ink-faint);
+    }
+
+    .loss-sales {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* Scoped under .field-group so these beat its own label/input rules
+       (uppercase mono labels, full-width inputs). */
+    .field-group .loss-sale,
+    .field-group .checkbox-label-plain {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      text-transform: none;
+      letter-spacing: normal;
+      font-size: 13px;
+      color: var(--ink);
+    }
+
+    .field-group .loss-sale input {
+      width: auto;
+      flex: 0 0 auto;
+      margin: 0;
+    }
+
+    .loss-cost-missing {
+      background: var(--amber-soft);
+      border: 1px solid #E8C98A;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .loss-summary {
+      background: var(--surface-alt);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .badge.ticket-loss,
+    .badge.refunded-badge {
+      background: var(--rust-soft);
+      color: var(--rust);
+      margin-left: 8px;
+    }
+
+    tr.sale-refunded td {
+      color: var(--ink-faint);
+    }
+
     .toast-action {
       pointer-events: auto;
       flex: 0 0 auto;

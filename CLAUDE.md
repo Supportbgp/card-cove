@@ -5901,6 +5901,98 @@ cost. Per copy, same as the Edit screen's Cost field and `price`.
   regular CSV import: the Cost column is auto-matched and `"$20.50"` saves
   as `cost: 20.5`, a blank cell as none.
 
+## Lost / stolen cards
+
+Staff ask: a "report lost / stolen card" option on a card's details, to keep
+inventory honest, valued at the card's Cost and subtracted in the sales
+report. The user's own example: "Lost in shipment: Pocahontas, Peace Keeper
+(Lorcana) - Customer Refunded, $17 loss". Decided with the user (four
+questions): cover **both** a card missing from stock and a sold card lost in
+shipment; a **"Customer refunded" checkbox** decides whether that sale's
+revenue leaves Reports; with **no Cost, ask for it right in the report
+window** (saved on the card too); and a stock loss **creates a Sync Queue
+ticket** like a sale does, so listings get taken down.
+
+- **`phase17_inventory_losses.sql`**: a new `inventory_losses` table (sku,
+  name, game, condition, qty, `cost_each` and `loss_amount` snapshotted,
+  `reason`, `notes`, `sale_id` → `sales(id)` on delete set null, `refunded`,
+  `occurred_at`), plus `sales.refunded_at` and `sync_queue.kind`
+  (`'sale'` default, or `'loss'`). `ticketToRow` only sends `kind` for a
+  loss and `saleToRow` only sends `refunded_at` when set, so selling keeps
+  working if the code ever ran before the migration (reporting a loss
+  would fail cleanly: the loss insert runs first, and nothing else changes
+  if it fails).
+- **Entry**: a "Report lost / stolen…" button in EditModal's Notes & status
+  (existing cards only). It closes the Edit screen first (`CatalogPanel`'s
+  `lossSku`), since saving the Edit form afterwards would write the old
+  qty back; the help text says unsaved changes there are discarded.
+- **`ReportLossModal.jsx`**: "Missing from stock" (how many, up to qty;
+  disabled at qty 0) or "Lost after a sale" (pick one of this card's
+  unrefunded sales, `dbLoadSalesForSku`, newest first; a "Customer was
+  refunded" checkbox). Reason is one of `LOSS_REASONS` (`reportUtils.js`:
+  Lost in shipment / Lost in store / Stolen / Damaged / Other), required;
+  "Lost after a sale" starts on Lost in shipment. Loss =
+  `computeLossAmount(cost, qty)`, using the sale's own cost snapshot first,
+  then the card's Cost; with neither, an amber note plus a required Cost
+  field. The summary shows the loss and, if refunded, the revenue that
+  leaves Reports. Confirm is guarded against double clicks.
+- **`App.jsx`'s `handleReportLoss`**: inserts the loss first, then (stock)
+  lowers qty, resets the P/T/C chips and adds a `kind: 'loss'` ticket, or
+  (sale) marks the sale refunded (`dbSetSaleRefunded`) and, if the sale had
+  no cost, gives it the entered one. A Cost entered in the window is saved
+  on the card. Toast: "Reported 1 × X as lost in shipment, $17.00 loss"
+  with **Undo**.
+- **Undo, any time, like Undo sale** (asked for after the first version only
+  had the toast's Undo plus a Reports "Remove" that didn't put the qty
+  back): one `undoLoss({ loss, ticket, snapshot })` behind three buttons:
+  the toast (has all three), Reports' Lost / stolen list (**Undo**, has the
+  loss) and a loss ticket in the Sync Queue (**Undo loss**, has the
+  ticket). The missing half is found by sku + timestamp, since
+  `handleReportLoss` stamps the ticket and the loss with the same
+  `occurredAt` (`dbFindLossForTicket`; the ticket from `queueRef`, a ref
+  like `catalogRef` so a toast created earlier sees the current queue). A
+  stock loss gets its qty back (and, from the toast only, its P/T/C chips)
+  and its ticket removed; a shipment loss gets its refund cleared, so the
+  sale counts as revenue again. A Cost entered while reporting stays. If
+  the card was deleted or the loss was already undone elsewhere, the toast
+  says what couldn't be done.
+- **Sync Queue**: a loss ticket shows a "Lost / stolen" tag and **Undo
+  loss** instead of Undo sale; it's stamped like any other ticket.
+- **Reports** (`computeSalesReport(sales, losses)`): losses in the date
+  range (`dbLoadLosses`, by `occurred_at`) are a new **Losses** tile and
+  column, and Profit = Revenue − Cost − Losses, overall and per game (a
+  game with only losses still gets a row). A **refunded sale is left out of
+  revenue, cost and units entirely** (counted in `refundedCount`/
+  `refundedRevenue` for a caption), because the loss row already carries
+  that card's cost; counting both would double it. Refunded sales stay in
+  the per-game drill-down, greyed with a "Refunded" tag. A "Lost / stolen"
+  table lists each loss with **Undo** (see above). Profit now prints a
+  negative as "-$17.00" instead of "$-17.00".
+  - **Not refunded** (the buyer still paid, e.g. a replacement was sent):
+    the sale stays as revenue and the loss is added on top, as the user
+    chose.
+- Staff docs: "Reporting a lost or stolen card" in `SellingItemSection.jsx`
+  and a paragraph in `SyncQueueSection.jsx`.
+- Covered by `reportUtils.test.js` (losses subtracted overall and per game,
+  refunded sales excluded, `computeLossAmount`, reason labels; the existing
+  exact-shape tests gained the new fields), `db.test.js` (loss row mapping
+  both ways, failed save returns null, range load, delete, refund set/clear,
+  a card's sales, `kind`/`refunded_at` only sent when they matter), and
+  `e2e/lost-stolen.spec.js` (Desktop + Mobile): a stock loss (qty, ticket,
+  loss row, Sync Queue tag, Reports Losses/Profit); a sold copy lost in
+  shipment with no Cost (window asks for it, refund checkbox, sale
+  refunded and given the cost, Reports drop its revenue, Undo there puts
+  it back); the toast's Undo; and Undo later from a Sync Queue ticket and
+  from Reports (each restores qty and removes both the loss and its
+  ticket). The harness gained the `inventory_losses` table and
+  `.limit()`. Checked visually at phone and desktop widths, which caught
+  the sale picker's radio buttons and the refund checkbox picking up the
+  form's full-width input and uppercase label styles (now scoped).
+
+**Requires running `phase17_inventory_losses.sql`** in the Supabase SQL
+Editor before this deploys (staging runs it automatically on
+`/deploy-staging`).
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

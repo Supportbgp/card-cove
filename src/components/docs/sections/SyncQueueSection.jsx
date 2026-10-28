@@ -30,6 +30,13 @@ export default function SyncQueueSection() {
         to put the listing back there too, and the item's status chips stay
         unchecked so you can re-check them once it's re-listed.
       </p>
+      <p>
+        A ticket tagged <strong>Lost / stolen</strong> comes from{' '}
+        <a href="#selling-an-item">reporting a card lost or stolen</a>: stamp it
+        the same way once the listing is down. Instead of Undo sale it has{' '}
+        <strong>Undo loss</strong>, which puts the quantity back and removes
+        the ticket and its Reports entry.
+      </p>
     </DocsSection>
   );
 }
