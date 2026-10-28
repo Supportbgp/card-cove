@@ -83,7 +83,7 @@ const QUOTE_STATUS_LABELS = {
   rejected: 'Rejected',
 };
 
-export default function EditModal({ card, template, catalog, locations, multipliers, priceAlert, sourceQuote, onOpenQuote, onClose, onSave, onDelete }) {
+export default function EditModal({ card, template, catalog, locations, multipliers, priceAlert, sourceQuote, onOpenQuote, onReportLoss, onClose, onSave, onDelete }) {
   const { showConfirm, openLightbox } = useUI();
   // `template` only matters for a new item (card == null): the item being
   // duplicated.
@@ -768,6 +768,16 @@ export default function EditModal({ card, template, catalog, locations, multipli
               <input type="checkbox" id="f_sold" checked={form.sold} onChange={(e) => set('sold', e.target.checked)} />
               <label htmlFor="f_sold" style={{ margin: 0, fontFamily: "'Inter',sans-serif", textTransform: 'none', letterSpacing: 'normal' }}>Mark as sold</label>
             </div>
+            {card && onReportLoss && (
+              <div className="loss-entry">
+                <button type="button" className="btn secondary small" onClick={() => onReportLoss(card)}>
+                  Report lost / stolen…
+                </button>
+                <span className="loss-entry-help">
+                  For copies missing from stock, or a sold copy lost in shipment. Opens its own window; unsaved changes here are discarded.
+                </span>
+              </div>
+            )}
           </div>
           <div className="updated-note">
             {card && card.lastUpdated ? ("Last updated: " + new Date(card.lastUpdated).toLocaleString()) : "New item — not saved yet"}

@@ -1,6 +1,14 @@
 import { Fragment, useEffect, useState } from 'react';
-import { computeSalesReport, presetDateRange, customDateRangeToBounds } from '../../lib/reportUtils.js';
+import { computeSalesReport, presetDateRange, customDateRangeToBounds, lossReasonLabel } from '../../lib/reportUtils.js';
+import { useUI } from '../../context/UIContext.jsx';
 import EditSaleModal from './EditSaleModal.jsx';
+
+// "-$17.00" rather than "$-17.00" (Profit can go negative, e.g. a month
+// with only losses).
+function money(n) {
+  const v = Number(n) || 0;
+  return `${v < 0 ? '-' : ''}$${Math.abs(v).toFixed(2)}`;
+}
 
 const PRESETS = [
   { key: 'month', label: 'This month' },
@@ -14,11 +22,15 @@ const PRESETS = [
 // App.jsx's top-level state the way catalog/quotes/sorting are — sales only
 // ever grows, with no natural cap, so eagerly loading all of it on every
 // sign-in doesn't scale the way it does for those.
-export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
+export default function ReportsTab({ onLoadSales, onLoadLosses = async () => [], onUpdateSale, onDeleteLoss = async () => {}, refreshKey }) {
+  const { showConfirm } = useUI();
   const [preset, setPreset] = useState('month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [sales, setSales] = useState([]);
+  // Lost/stolen cards in the same range (inventory_losses), subtracted from
+  // Profit. See CLAUDE.md's "Lost / stolen cards".
+  const [losses, setLosses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [expandedGame, setExpandedGame] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
@@ -26,11 +38,11 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
   const range = preset === 'custom' ? customDateRangeToBounds(customFrom, customTo) : presetDateRange(preset);
 
   useEffect(() => {
-    if (!range) { setSales([]); return; }
+    if (!range) { setSales([]); setLosses([]); return; }
     let cancelled = false;
     setLoading(true);
-    onLoadSales(range.from, range.to).then(rows => {
-      if (!cancelled) { setSales(rows); setLoading(false); }
+    Promise.all([onLoadSales(range.from, range.to), onLoadLosses(range.from, range.to)]).then(([rows, lossRows]) => {
+      if (!cancelled) { setSales(rows); setLosses(lossRows); setLoading(false); }
     });
     return () => { cancelled = true; };
     // onLoadSales is a plain function recreated on every App.jsx render
@@ -47,7 +59,16 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
     setEditingSale(null);
   }, [range?.from, range?.to]);
 
-  const report = computeSalesReport(sales);
+  const report = computeSalesReport(sales, losses);
+
+  async function handleRemoveLoss(loss) {
+    const msg = `Remove this loss record (${loss.qty} × ${loss.name}, $${loss.lossAmount.toFixed(2)})?`
+      + (loss.refunded ? ' Its sale counts as revenue again (no longer refunded).' : '')
+      + (loss.saleId ? '' : " The card's quantity isn't put back; fix it on the card if needed.");
+    if (!(await showConfirm(msg, 'Remove loss'))) return;
+    setLosses(prev => prev.filter(l => l.id !== loss.id));
+    await onDeleteLoss(loss);
+  }
 
   // Patches the local sales array immediately (there's no realtime
   // subscription on this table — see the Reports tab's own on-demand-fetch
@@ -67,7 +88,8 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
         <div style={{ fontSize: '13px', color: 'var(--ink-soft)', maxWidth: '560px' }}>
           Revenue, volume, and cost/profit from Mark Sold events only. Cost only counts items with a Cost entered on
           their catalog row (via the item's detail screen) or auto-filled from an accepted Quote trade-in — a sale
-          with no recorded cost still counts toward Units, just not toward Cost/Profit below.
+          with no recorded cost still counts toward Units, just not toward Cost/Profit below. Lost / stolen cards
+          (reported from a card's detail screen) are subtracted from Profit at their Cost.
         </div>
       </div>
 
@@ -96,7 +118,7 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
         <div className="empty"><span className="mark">Loading…</span></div>
       ) : preset === 'custom' && !range ? (
         <div className="empty"><span className="mark">Pick both dates</span>Choose a From and To date to see that range's report.</div>
-      ) : sales.length === 0 ? (
+      ) : sales.length === 0 && losses.length === 0 ? (
         <div className="empty"><span className="mark">Nothing sold in this range</span></div>
       ) : (
         <>
@@ -113,12 +135,22 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
               <div style={{ fontSize: '11px', color: 'var(--ink-faint)', textTransform: 'uppercase' }}>Cost</div>
               <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '14px' }}>${report.cost.toFixed(2)}</div>
             </div>
+            <div className="stat-tile stat-losses">
+              <div style={{ fontSize: '11px', color: 'var(--ink-faint)', textTransform: 'uppercase' }}>Losses</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '14px' }}>${report.losses.toFixed(2)}</div>
+            </div>
             <div className="stat-tile stat-profit">
               <div style={{ fontSize: '11px', color: 'var(--ink-faint)', textTransform: 'uppercase' }}>Profit</div>
-              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '14px' }}>${report.profit.toFixed(2)}</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '14px' }}>{money(report.profit)}</div>
             </div>
           </div>
 
+          {report.refundedCount > 0 && (
+            <div className="status-line" style={{ marginBottom: '12px' }}>
+              {report.refundedCount} refunded sale(s) (${report.refundedRevenue.toFixed(2)}) are left out of Revenue,
+              Cost and Units; their cards count under Losses instead.
+            </div>
+          )}
           {report.costUnknownCount > 0 && (
             <div className="status-line" style={{ marginBottom: '12px' }}>
               {report.costUnknownCount} sale(s) in this range have no recorded cost — Cost/Profit above only reflect
@@ -139,7 +171,7 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
           <div className="table-scroll">
             <table>
               <thead>
-                <tr><th>Game</th><th>Units</th><th>Revenue</th><th>Cost</th><th>Profit</th></tr>
+                <tr><th>Game</th><th>Units</th><th>Revenue</th><th>Cost</th><th>Losses</th><th>Profit</th></tr>
               </thead>
               <tbody>
                 {report.byGame.map(g => {
@@ -162,11 +194,12 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
                         <td>{g.units}</td>
                         <td>${g.revenue.toFixed(2)}</td>
                         <td>${g.cost.toFixed(2)}</td>
-                        <td>${g.profit.toFixed(2)}</td>
+                        <td>{g.losses ? `$${g.losses.toFixed(2)}` : '—'}</td>
+                        <td>{money(g.profit)}</td>
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={5} style={{ padding: '0 0 12px 24px', background: 'var(--surface-alt)' }}>
+                          <td colSpan={6} style={{ padding: '0 0 12px 24px', background: 'var(--surface-alt)' }}>
                             <div className="table-scroll">
                               <table>
                                 <thead>
@@ -174,8 +207,11 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
                                 </thead>
                                 <tbody>
                                   {items.map(s => (
-                                    <tr key={s.id}>
-                                      <td>{s.name}</td>
+                                    <tr key={s.id} className={s.refundedAt ? 'sale-refunded' : undefined}>
+                                      <td>
+                                        {s.name}
+                                        {s.refundedAt && <span className="badge refunded-badge">Refunded</span>}
+                                      </td>
                                       <td>{s.condition || '—'}</td>
                                       <td>{s.qtySold}</td>
                                       <td>{s.salePrice == null ? '—' : `$${Number(s.salePrice).toFixed(2)}`}</td>
@@ -198,6 +234,37 @@ export default function ReportsTab({ onLoadSales, onUpdateSale, refreshKey }) {
               </tbody>
             </table>
           </div>
+
+          {losses.length > 0 && (
+            <>
+              <div className="section-label" style={{ marginTop: '20px' }}>Lost / stolen</div>
+              <div className="table-scroll">
+                <table className="losses-table">
+                  <thead>
+                    <tr><th>Date</th><th>Card</th><th>Reason</th><th>Qty</th><th>Loss</th><th>Notes</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {losses.slice().sort((a, b) => b.occurredAt - a.occurredAt).map(l => (
+                      <tr key={l.id}>
+                        <td>{new Date(l.occurredAt).toLocaleDateString()}</td>
+                        <td>{l.name}{l.game ? ` (${l.game})` : ''}</td>
+                        <td>
+                          {lossReasonLabel(l.reason)}
+                          {l.refunded && <span className="badge refunded-badge">Customer refunded</span>}
+                        </td>
+                        <td>{l.qty}</td>
+                        <td>${l.lossAmount.toFixed(2)}</td>
+                        <td>{l.notes || '—'}</td>
+                        <td>
+                          <button className="btn ghost small" onClick={() => handleRemoveLoss(l)}>Remove</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
       )}
 

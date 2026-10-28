@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabaseClient } from './lib/supabase.js';
+import { lossReasonLabel } from './lib/reportUtils.js';
 import {
   dbLoadAll, dbUpsertCard, dbUpsertCards, dbDeleteCard, dbDeleteCards, dbClearCatalog,
   dbInsertTickets, dbUpdateTicketStamp, dbClearQueue, dbUpdatePlatformStatus, dbInsertSales, dbLoadSales, dbUpdateSale,
   dbDeleteTickets, dbDeleteSaleForTicket,
+  dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses,
   dbLoadSettings, dbSaveSettings,
   dbLoadPriceAlerts, dbAcknowledgePriceAlerts, dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadQuotes, dbUpsertQuote, dbDeleteQuote, dbLoadQuoteSettings, dbSaveQuoteSettings,
@@ -422,6 +424,113 @@ export default function App() {
     }
   }
 
+  // --- Lost / stolen cards ------------------------------------------------
+  // "Report lost / stolen" on a card's Edit screen (ReportLossModal). See
+  // CLAUDE.md's "Lost / stolen cards". A copy missing from stock: the qty
+  // goes down and a Sync Queue ticket (kind 'loss') reminds staff to take
+  // the listing down. A sold copy lost in shipment: no qty change (it's
+  // already gone); if the customer was refunded, the sale is marked
+  // refunded so Reports drop its revenue. Either way an inventory_losses row
+  // records Cost x qty, which Reports subtract from Profit.
+  async function handleReportLoss(card, report) {
+    const occurredAt = Date.now();
+    const c = catalogRef.current.find(x => x.sku === card.sku) || card;
+    const snapshot = c;
+    let ticket = null;
+
+    // A Cost typed into the report window is saved on the card too.
+    let updated = report.costEntered ? { ...c, cost: report.costEach } : c;
+    if (report.mode === 'stock') {
+      updated = {
+        ...updated, qty: Math.max(0, (Number(c.qty) || 0) - report.qty), lastUpdated: occurredAt,
+        posSynced: false, tcgplayerSynced: false, collectrSynced: false,
+      };
+      ticket = {
+        id: 't' + Date.now() + Math.random().toString(36).slice(2, 7), kind: 'loss',
+        sku: c.sku, name: c.name, set: c.set, condition: c.condition, printing: c.printing, price: c.price,
+        qtySold: report.qty, timestamp: occurredAt, posDone: false, tcgplayerDone: false, collectrDone: false,
+        posChannel: c.posChannel, tcgplayerChannel: c.tcgplayerChannel, collectrChannel: c.collectrChannel,
+      };
+    }
+
+    const saved = await dbInsertLoss({
+      sku: c.sku, name: c.name, game: c.game, condition: report.sale ? report.sale.condition : c.condition,
+      qty: report.qty, costEach: report.costEach, lossAmount: report.lossAmount,
+      reason: report.reason, notes: report.notes,
+      saleId: report.sale ? report.sale.id : null, refunded: !!report.refunded, occurredAt,
+    }, toast);
+    if (!saved) return; // nothing else changed; the toast already says why
+
+    if (updated !== c) {
+      setCatalog(prev => prev.map(x => (x.sku === c.sku ? updated : x)));
+      await dbUpsertCard(updated, toast);
+    }
+    if (ticket) {
+      setQueue(prev => [...prev, ticket]);
+      await dbInsertTickets([ticket], toast);
+    }
+    if (report.sale) {
+      // A sale recorded with no cost gets the one entered here too.
+      if (report.costEntered && report.sale.cost == null) {
+        await dbUpdateSale({ ...report.sale, cost: report.costEach }, toast);
+      }
+      if (report.refunded) await dbSetSaleRefunded(report.sale.id, occurredAt, toast);
+    }
+    setSalesRevision(v => v + 1);
+
+    const what = `${report.qty} × ${c.name}`;
+    toast(`Reported ${what} as ${lossReasonLabel(report.reason).toLowerCase()}, $${report.lossAmount.toFixed(2)} loss`, false, {
+      action: { label: 'Undo', onClick: () => undoLoss(saved, { snapshot: ticket ? snapshot : null, ticket }) },
+    });
+  }
+
+  // Undo right after reporting (the toast): removes the loss record, puts
+  // the qty and status chips back and drops the ticket (stock), or clears
+  // the refund (sale). A Cost entered while reporting stays on the card.
+  async function undoLoss(loss, { snapshot, ticket }) {
+    if (undoingRef.current.has(loss.id)) return;
+    undoingRef.current.add(loss.id);
+    try {
+      await dbDeleteLoss(loss.id, toast);
+      if (ticket) {
+        const base = catalogRef.current.find(x => x.sku === loss.sku);
+        if (base) {
+          const restored = {
+            ...base, qty: (Number(base.qty) || 0) + loss.qty, lastUpdated: Date.now(),
+            ...(snapshot ? { posSynced: snapshot.posSynced, tcgplayerSynced: snapshot.tcgplayerSynced, collectrSynced: snapshot.collectrSynced } : {}),
+          };
+          setCatalog(prev => prev.map(x => (x.sku === loss.sku ? restored : x)));
+          await dbUpsertCard(restored, toast);
+        }
+        setQueue(prev => prev.filter(t => t.id !== ticket.id));
+        await dbDeleteTickets([ticket.id], toast);
+      }
+      if (loss.saleId && loss.refunded) await dbSetSaleRefunded(loss.saleId, null, toast);
+      setSalesRevision(v => v + 1);
+      toast(`Undid the loss of ${loss.qty} × ${loss.name}.`);
+    } finally {
+      undoingRef.current.delete(loss.id);
+    }
+  }
+
+  // Reports' "Remove" on a loss: deletes the record and clears the sale's
+  // refund. Quantity isn't put back (it may have been corrected by hand
+  // since); the confirm message says so.
+  async function handleDeleteLoss(loss) {
+    await dbDeleteLoss(loss.id, toast);
+    if (loss.saleId && loss.refunded) await dbSetSaleRefunded(loss.saleId, null, toast);
+    setSalesRevision(v => v + 1);
+    toast(`Removed the loss of ${loss.qty} × ${loss.name}.`);
+  }
+
+  function handleLoadSalesForSku(sku) {
+    return dbLoadSalesForSku(sku, toast);
+  }
+
+  function handleLoadLossReport(fromISO, toISO) {
+    return dbLoadLosses(fromISO, toISO, toast);
+  }
+
   // Thin passthrough to dbLoadSales — ReportsTab owns the date-range UI and
   // calls this on demand (see ReportsTab.jsx's own comment for why sales
   // isn't eagerly loaded into top-level state like catalog/quotes/sorting).
@@ -670,6 +779,8 @@ export default function App() {
           editRequest={editRequest}
           quotes={quotes}
           onOpenQuote={handleOpenQuote}
+          onReportLoss={handleReportLoss}
+          onLoadSalesForSku={handleLoadSalesForSku}
           onEditRequestHandled={() => setEditRequest(null)}
         />
       </div>
@@ -710,7 +821,13 @@ export default function App() {
       </div>
 
       <div className={`panel${tab === 'reports' ? ' active' : ''}`}>
-        <ReportsTab onLoadSales={handleLoadSalesReport} onUpdateSale={handleUpdateSale} refreshKey={salesRevision} />
+        <ReportsTab
+          onLoadSales={handleLoadSalesReport}
+          onLoadLosses={handleLoadLossReport}
+          onUpdateSale={handleUpdateSale}
+          onDeleteLoss={handleDeleteLoss}
+          refreshKey={salesRevision}
+        />
       </div>
 
       <div className="footnote">

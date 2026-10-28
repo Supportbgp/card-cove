@@ -86,16 +86,21 @@ export function rowToTicket(r) {
     price: r.price, qtySold: r.qty_sold, timestamp: new Date(r.ts).getTime(),
     posDone: r.pos_done, tcgplayerDone: r.tcgplayer_done, collectrDone: r.collectr_done,
     posChannel: r.pos_channel, tcgplayerChannel: r.tcgplayer_channel, collectrChannel: r.collectr_channel,
+    kind: r.kind === 'loss' ? 'loss' : 'sale',
   };
 }
 
 function ticketToRow(t) {
-  return {
+  const row = {
     id: t.id, sku: t.sku, name: t.name, set_name: t.set, condition: t.condition, printing: t.printing,
     price: t.price, qty_sold: t.qtySold, ts: new Date(t.timestamp).toISOString(),
     pos_done: t.posDone, tcgplayer_done: t.tcgplayerDone, collectr_done: t.collectrDone,
     pos_channel: t.posChannel !== false, tcgplayer_channel: t.tcgplayerChannel !== false, collectr_channel: t.collectrChannel !== false,
   };
+  // Only a lost/stolen card's ticket says so (phase17); a sale relies on the
+  // column's 'sale' default, so selling still works before that migration.
+  if (t.kind === 'loss') row.kind = 'loss';
+  return row;
 }
 
 export async function dbLoadAll(toast) {
@@ -180,11 +185,15 @@ export async function dbDeleteSaleForTicket(ticket, toast) {
 // record) and have different lifetimes (a ticket gets deleted once every
 // platform's synced; a sale row never does).
 function saleToRow(s) {
-  return {
+  const row = {
     sku: s.sku, name: s.name, game: s.game, condition: s.condition,
     qty_sold: s.qtySold, sale_price: s.salePrice, cost: s.cost ?? null,
     sold_at: new Date(s.soldAt).toISOString(),
   };
+  // Only sent when set, so an Edit Sale keeps a refund and a new sale needs
+  // no phase17 column; dbSetSaleRefunded is what sets or clears it.
+  if (s.refundedAt) row.refunded_at = new Date(s.refundedAt).toISOString();
+  return row;
 }
 
 export async function dbInsertSales(sales, toast) {
@@ -213,6 +222,7 @@ export function rowToSale(r) {
     id: r.id, sku: r.sku, name: r.name, game: r.game, condition: r.condition,
     qtySold: r.qty_sold, salePrice: r.sale_price, cost: r.cost,
     soldAt: r.sold_at ? new Date(r.sold_at).getTime() : Date.now(),
+    refundedAt: r.refunded_at ? new Date(r.refunded_at).getTime() : null,
   };
 }
 
@@ -232,6 +242,65 @@ export async function dbLoadSales(fromISO, toISO, toast) {
   });
   if (error) { toast('Failed to load sales: ' + error.message, true); return []; }
   return (data || []).map(rowToSale);
+}
+
+// A card's own past sales, newest first, for "Report lost / stolen" on a
+// card that was sold and then lost in shipment (pick which sale).
+export async function dbLoadSalesForSku(sku, toast) {
+  const { data, error } = await supabaseClient.from('sales').select('*')
+    .eq('sku', sku).order('sold_at', { ascending: false }).limit(50);
+  if (error) { toast('Failed to load this card\'s sales: ' + error.message, true); return []; }
+  return (data || []).map(rowToSale);
+}
+
+// Marks a sale refunded (refundedAt = a time) or not (null): a refunded sale
+// drops out of Reports' revenue/cost/units (see computeSalesReport).
+export async function dbSetSaleRefunded(id, refundedAt, toast) {
+  const { error } = await supabaseClient.from('sales')
+    .update({ refunded_at: refundedAt ? new Date(refundedAt).toISOString() : null }).eq('id', id);
+  if (error) toast('Failed to update the sale: ' + error.message, true);
+}
+
+// --- Lost / stolen cards (inventory_losses, phase17) ----------------------
+
+export function rowToLoss(r) {
+  return {
+    id: r.id, sku: r.sku, name: r.name || '', game: r.game || '', condition: r.condition || '',
+    qty: r.qty || 1, costEach: r.cost_each == null ? null : Number(r.cost_each),
+    lossAmount: Number(r.loss_amount) || 0, reason: r.reason || 'other', notes: r.notes || '',
+    saleId: r.sale_id || null, refunded: !!r.refunded,
+    occurredAt: r.occurred_at ? new Date(r.occurred_at).getTime() : Date.now(),
+  };
+}
+
+function lossToRow(l) {
+  return {
+    sku: l.sku, name: l.name, game: l.game, condition: l.condition || '', qty: l.qty,
+    cost_each: l.costEach, loss_amount: l.lossAmount, reason: l.reason, notes: l.notes || '',
+    sale_id: l.saleId || null, refunded: !!l.refunded,
+    occurred_at: new Date(l.occurredAt).toISOString(),
+  };
+}
+
+// Returns the saved loss (with its id, for Undo), or null on failure.
+export async function dbInsertLoss(loss, toast) {
+  const { data, error } = await supabaseClient.from('inventory_losses').insert(lossToRow(loss)).select().single();
+  if (error) { toast('Saving the loss failed: ' + error.message, true); return null; }
+  return rowToLoss(data);
+}
+
+export async function dbDeleteLoss(id, toast) {
+  const { error } = await supabaseClient.from('inventory_losses').delete().eq('id', id);
+  if (error) toast('Removing the loss failed: ' + error.message, true);
+}
+
+// Same on-demand, date-range-only load as dbLoadSales (losses only grow too).
+export async function dbLoadLosses(fromISO, toISO, toast) {
+  const { data, error } = await fetchAllRows('inventory_losses', 'occurred_at', {
+    filter: (q) => q.gte('occurred_at', fromISO).lt('occurred_at', toISO),
+  });
+  if (error) { toast('Failed to load losses: ' + error.message, true); return []; }
+  return (data || []).map(rowToLoss);
 }
 
 const TICKET_STAMP_COLUMNS = { posDone: 'pos_done', tcgplayerDone: 'tcgplayer_done', collectrDone: 'collectr_done' };

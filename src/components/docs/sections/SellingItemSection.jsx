@@ -37,6 +37,39 @@ export default function SellingItemSection() {
         ticket in the <a href="#sync-queue">Sync Queue</a> with{' '}
         <strong>Undo sale</strong>.
       </DocsCallout>
+
+      <h3>Reporting a lost or stolen card</h3>
+      <p>
+        Open the card's <strong>Edit</strong> screen and, under Notes &amp;
+        status, tap <strong>Report lost / stolen…</strong>. Pick what happened:
+      </p>
+      <ul>
+        <li>
+          <strong>Missing from stock</strong>: copies that disappeared from a
+          binder or the store. Say how many; the quantity goes down, and a
+          Sync Queue ticket marked <em>Lost / stolen</em> reminds you to take
+          the listing down everywhere it's listed.
+        </li>
+        <li>
+          <strong>Lost after a sale</strong>: a sold copy that never arrived
+          (lost in shipment). Pick the sale, and tick{' '}
+          <strong>Customer was refunded</strong> if they got their money back;
+          that sale then stops counting as revenue in Reports.
+        </li>
+      </ul>
+      <p>
+        Pick a reason (Lost in shipment, Lost in store, Stolen, Damaged,
+        Other) and add a note if it helps, e.g. the order number. The loss is
+        the card's <strong>Cost</strong> × how many, and Reports subtract it
+        from Profit. If the card has no Cost yet, the window asks for one and
+        saves it on the card too.
+      </p>
+      <DocsCallout kind="note">
+        Reported the wrong card? Tap <strong>Undo</strong> on the message right
+        after. Later, remove it from the <strong>Lost / stolen</strong> list in
+        Reports. Removing it there puts a refunded sale back into revenue, but
+        doesn't put the quantity back; fix that on the card if needed.
+      </DocsCallout>
     </DocsSection>
   );
 }

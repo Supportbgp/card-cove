@@ -22,38 +22,91 @@ function round2(n) {
 // implying `profit` is complete when it isn't. Both `cost` and `salePrice`
 // are per-unit figures (same convention as catalog.price/catalog.cost), so
 // both get multiplied by qty here to reach a sale's real total.
-export function computeSalesReport(sales) {
+// Lost/stolen cards (inventory_losses, see CLAUDE.md's "Lost / stolen
+// cards"): `losses` are whatever dbLoadLosses returns for the same range.
+// Their lossAmount (Cost x qty) is subtracted from Profit, overall and per
+// game. A sale whose customer was refunded after a shipping loss
+// (`refundedAt` set) is left out of revenue, cost and units entirely; the
+// loss row carries that card's cost instead, so it isn't counted twice. It's
+// still counted in refundedCount/refundedRevenue for the caption.
+export function computeSalesReport(sales, losses = []) {
   let revenue = 0;
   let units = 0;
   let cost = 0;
   let costUnknownCount = 0;
+  let refundedCount = 0;
+  let refundedRevenue = 0;
+  let lossTotal = 0;
   const byGameMap = new Map();
+  const entryFor = (game) => {
+    const entry = byGameMap.get(game) || { game, units: 0, revenue: 0, cost: 0, losses: 0 };
+    byGameMap.set(game, entry);
+    return entry;
+  };
 
   for (const s of sales || []) {
     const qty = Number(s.qtySold) || 0;
     const lineRevenue = s.salePrice == null ? 0 : Number(s.salePrice) * qty;
+    if (s.refundedAt) {
+      refundedCount++;
+      refundedRevenue += lineRevenue;
+      continue;
+    }
     const lineCost = s.cost == null ? 0 : Number(s.cost) * qty;
     if (s.cost == null) costUnknownCount++;
     units += qty;
     revenue += lineRevenue;
     cost += lineCost;
 
-    const game = s.game || 'Unknown';
-    const entry = byGameMap.get(game) || { game, units: 0, revenue: 0, cost: 0 };
+    const entry = entryFor(s.game || 'Unknown');
     entry.units += qty;
     entry.revenue += lineRevenue;
     entry.cost += lineCost;
-    byGameMap.set(game, entry);
+  }
+
+  for (const l of losses || []) {
+    const amount = Number(l.lossAmount) || 0;
+    lossTotal += amount;
+    entryFor(l.game || 'Unknown').losses += amount;
   }
 
   const byGame = Array.from(byGameMap.values())
-    .map(g => ({ ...g, revenue: round2(g.revenue), cost: round2(g.cost), profit: round2(g.revenue - g.cost) }))
-    .sort((a, b) => b.revenue - a.revenue);
+    .map(g => ({
+      ...g, revenue: round2(g.revenue), cost: round2(g.cost), losses: round2(g.losses),
+      profit: round2(g.revenue - g.cost - g.losses),
+    }))
+    .sort((a, b) => b.revenue - a.revenue || b.losses - a.losses);
 
   return {
-    revenue: round2(revenue), units, cost: round2(cost), profit: round2(revenue - cost),
-    costUnknownCount, byGame,
+    revenue: round2(revenue), units, cost: round2(cost), losses: round2(lossTotal),
+    profit: round2(revenue - cost - lossTotal),
+    costUnknownCount, refundedCount, refundedRevenue: round2(refundedRevenue), byGame,
   };
+}
+
+// The reasons "Report lost / stolen" offers, in that order. `key` is what's
+// stored (inventory_losses.reason).
+export const LOSS_REASONS = [
+  { key: 'lost_in_shipment', label: 'Lost in shipment' },
+  { key: 'lost_in_store', label: 'Lost in store' },
+  { key: 'stolen', label: 'Stolen' },
+  { key: 'damaged', label: 'Damaged' },
+  { key: 'other', label: 'Other' },
+];
+
+export function lossReasonLabel(key) {
+  const r = LOSS_REASONS.find(x => x.key === key);
+  return r ? r.label : 'Other';
+}
+
+// Loss value: the card's Cost (per copy) x how many copies, in cents-exact
+// dollars. Null when there's no usable cost, so callers can ask for one.
+export function computeLossAmount(costEach, qty) {
+  const c = Number(costEach);
+  const q = Number(qty);
+  if (costEach === null || costEach === undefined || costEach === '' || !Number.isFinite(c) || c < 0) return null;
+  if (!Number.isFinite(q) || q <= 0) return null;
+  return round2(c * q);
 }
 
 // Calendar-month/calendar-year presets, computed from a real Date so this

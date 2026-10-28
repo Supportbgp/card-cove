@@ -15,11 +15,18 @@ function Ticket({ t, onToggleStamp, onUndo, undoing }) {
   return (
     <div className={`ticket ${complete ? 'complete' : ''}`}>
       <div className="ticket-info">
-        <div className="t-name">{t.name} × {t.qtySold}</div>
+        <div className="t-name">
+          {t.name} × {t.qtySold}
+          {t.kind === 'loss' && <span className="badge ticket-loss">Lost / stolen</span>}
+        </div>
         <div className="t-meta">{t.set || ""} · {t.condition || ""} · {t.sku || ""}</div>
-        <button type="button" className="btn ghost small ticket-undo" disabled={undoing} onClick={() => onUndo(t)}>
-          {undoing ? 'Undoing…' : 'Undo sale'}
-        </button>
+        {t.kind === 'loss' ? (
+          <div className="t-meta">Take the listing down. To undo the loss itself, remove it in Reports.</div>
+        ) : (
+          <button type="button" className="btn ghost small ticket-undo" disabled={undoing} onClick={() => onUndo(t)}>
+            {undoing ? 'Undoing…' : 'Undo sale'}
+          </button>
+        )}
       </div>
       <div className="ticket-time">{time}</div>
       <div className="stamps">

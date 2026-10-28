@@ -21,6 +21,7 @@ function makeQueryBuilder(table) {
     lt: vi.fn(() => builder),
     order: vi.fn(() => builder),
     range: vi.fn(() => builder),
+    limit: vi.fn(() => builder),
     maybeSingle: vi.fn(() => builder),
     single: vi.fn(() => builder),
     // A table's configured result can be a single fixed {data,error} object
@@ -49,6 +50,7 @@ const {
   dbDeleteTickets, dbDeleteSaleForTicket,
   rowToPriceAlert, dbLoadPriceAlerts, dbAcknowledgePriceAlerts,
   dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
+  dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, rowToLoss,
 } = await import('./db.js');
 
 beforeEach(() => {
@@ -517,5 +519,83 @@ describe('price tracking settings', () => {
     const builder = fromMock.mock.results[0].value;
     expect(builder.update.mock.calls[0][0]).toMatchObject({ floor_price: 30, spike_pct: 25 });
     expect(builder.eq).toHaveBeenCalledWith('id', 1);
+  });
+});
+
+describe('lost / stolen cards', () => {
+  it('saves a loss with every column, and maps it back', async () => {
+    tableResults.inventory_losses = { data: {
+      id: 'l1', sku: 'sku-1', name: 'Pocahontas', game: 'Lorcana', condition: 'NM', qty: 1, cost_each: 17,
+      loss_amount: 17, reason: 'lost_in_shipment', notes: 'USPS', sale_id: 's1', refunded: true,
+      occurred_at: '2026-10-28T10:00:00.000Z',
+    }, error: null };
+    const saved = await dbInsertLoss({
+      sku: 'sku-1', name: 'Pocahontas', game: 'Lorcana', condition: 'NM', qty: 1, costEach: 17, lossAmount: 17,
+      reason: 'lost_in_shipment', notes: 'USPS', saleId: 's1', refunded: true, occurredAt: Date.parse('2026-10-28T10:00:00.000Z'),
+    }, vi.fn());
+    const row = fromMock.mock.results[0].value.insert.mock.calls[0][0];
+    expect(fromMock).toHaveBeenCalledWith('inventory_losses');
+    expect(row).toEqual({
+      sku: 'sku-1', name: 'Pocahontas', game: 'Lorcana', condition: 'NM', qty: 1, cost_each: 17, loss_amount: 17,
+      reason: 'lost_in_shipment', notes: 'USPS', sale_id: 's1', refunded: true, occurred_at: '2026-10-28T10:00:00.000Z',
+    });
+    expect(saved).toMatchObject({ id: 'l1', costEach: 17, lossAmount: 17, saleId: 's1', refunded: true });
+  });
+
+  it('reports a failed save and returns null, so nothing else changes', async () => {
+    tableResults.inventory_losses = { data: null, error: { message: 'relation does not exist' } };
+    const toast = vi.fn();
+    expect(await dbInsertLoss({ sku: 'a', name: 'n', qty: 1, costEach: 1, lossAmount: 1, reason: 'other', occurredAt: Date.now() }, toast)).toBe(null);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('relation does not exist'), true);
+  });
+
+  it('loads losses for a date range and deletes one by id', async () => {
+    tableResults.inventory_losses = { data: [{ id: 'l1', sku: 'a', qty: 2, cost_each: '5', loss_amount: '10', reason: 'stolen', occurred_at: '2026-10-01T00:00:00Z' }], error: null };
+    const rows = await dbLoadLosses('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z', vi.fn());
+    expect(rows[0]).toMatchObject({ id: 'l1', qty: 2, costEach: 5, lossAmount: 10, reason: 'stolen', saleId: null, refunded: false });
+    const b = fromMock.mock.results[0].value;
+    expect(b.gte).toHaveBeenCalledWith('occurred_at', '2026-10-01T00:00:00Z');
+    expect(b.lt).toHaveBeenCalledWith('occurred_at', '2026-11-01T00:00:00Z');
+
+    tableResults.inventory_losses = { data: null, error: null };
+    await dbDeleteLoss('l1', vi.fn());
+    expect(fromMock.mock.results[1].value.eq).toHaveBeenCalledWith('id', 'l1');
+  });
+
+  it('marks a sale refunded, and clears it', async () => {
+    tableResults.sales = { data: null, error: null };
+    await dbSetSaleRefunded('s1', Date.parse('2026-10-28T10:00:00.000Z'), vi.fn());
+    await dbSetSaleRefunded('s1', null, vi.fn());
+    expect(fromMock.mock.results[0].value.update.mock.calls[0][0]).toEqual({ refunded_at: '2026-10-28T10:00:00.000Z' });
+    expect(fromMock.mock.results[1].value.update.mock.calls[0][0]).toEqual({ refunded_at: null });
+    expect(fromMock.mock.results[1].value.eq).toHaveBeenCalledWith('id', 's1');
+  });
+
+  it("loads one card's sales, newest first", async () => {
+    tableResults.sales = { data: [{ id: 's1', sku: 'sku-1', qty_sold: 1, sale_price: 25, sold_at: '2026-10-01T00:00:00Z', refunded_at: null }], error: null };
+    const rows = await dbLoadSalesForSku('sku-1', vi.fn());
+    const b = fromMock.mock.results[0].value;
+    expect(b.eq).toHaveBeenCalledWith('sku', 'sku-1');
+    expect(b.order).toHaveBeenCalledWith('sold_at', { ascending: false });
+    expect(rows[0]).toMatchObject({ id: 's1', salePrice: 25, refundedAt: null });
+  });
+
+  it('only sends refunded_at on a sale, and kind on a ticket, when they matter', async () => {
+    tableResults.sales = { data: null, error: null };
+    await dbInsertSales([{ sku: 'a', name: 'n', game: 'g', condition: '', qtySold: 1, salePrice: 1, soldAt: Date.now() }], vi.fn());
+    expect('refunded_at' in fromMock.mock.results[0].value.insert.mock.calls[0][0][0]).toBe(false);
+    await dbUpdateSale({ id: 's1', sku: 'a', name: 'n', game: 'g', condition: '', qtySold: 1, salePrice: 1, soldAt: Date.now(), refundedAt: Date.parse('2026-10-28T10:00:00.000Z') }, vi.fn());
+    expect(fromMock.mock.results[1].value.update.mock.calls[0][0].refunded_at).toBe('2026-10-28T10:00:00.000Z');
+    expect(rowToSale({ id: 's', refunded_at: '2026-10-28T10:00:00.000Z' }).refundedAt).toBe(Date.parse('2026-10-28T10:00:00.000Z'));
+
+    tableResults.sync_queue = { data: null, error: null };
+    const base = { id: 't', sku: 'a', name: 'n', qtySold: 1, timestamp: Date.now() };
+    await dbInsertTicket(base, vi.fn());
+    await dbInsertTicket({ ...base, kind: 'loss' }, vi.fn());
+    expect('kind' in fromMock.mock.results[2].value.insert.mock.calls[0][0]).toBe(false);
+    expect(fromMock.mock.results[3].value.insert.mock.calls[0][0].kind).toBe('loss');
+    expect(rowToTicket({ kind: 'loss', ts: '2026-10-28T00:00:00Z' }).kind).toBe('loss');
+    expect(rowToTicket({ ts: '2026-10-28T00:00:00Z' }).kind).toBe('sale');
+    expect(rowToLoss({ id: 'x', loss_amount: null }).lossAmount).toBe(0);
   });
 });
