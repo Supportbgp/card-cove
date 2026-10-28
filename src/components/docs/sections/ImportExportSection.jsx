@@ -22,11 +22,23 @@ export default function ImportExportSection() {
         the same Channels checkboxes as the Edit modal.
       </p>
       <p>
+        Map a <strong>Cost ($)</strong> column to fill in what the shop paid
+        per copy, the same Cost field the Edit screen has. It's what the
+        Reports tab uses for Cost and Profit. A blank Cost cell just leaves
+        that card without one.
+      </p>
+      <p>
         <strong>Import mode</strong> matters: <strong>Merge</strong> updates
         matching SKUs and adds anything new, leaving the rest of the catalog
         untouched. <strong>Replace</strong> wipes the entire catalog first —
         only use it if you actually mean to start over.
       </p>
+      <DocsCallout kind="warn">
+        Merge replaces a matching SKU's whole row with what's in the file. A
+        card whose Cost was typed in by hand loses it if its Cost cell is
+        blank or the Cost column is skipped, so include Cost when re-importing
+        cards that already have one.
+      </DocsCallout>
       <DocsCallout kind="note">
         Rows with no image already found get one searched automatically in
         the background — there's no review step here (unlike the Scanner),

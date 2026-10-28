@@ -21,6 +21,9 @@ export const FIELD_TARGETS = [
   { key: "rarity", label: "Rarity", aliases: ["rarity"] },
   { key: "qty", label: "Quantity", aliases: ["qty", "quantity", "stock", "on hand", "onhand"] },
   { key: "price", label: "Price", aliases: ["price", "market price", "list price"] },
+  // What the shop paid per copy, for the Reports tab's Cost/Profit (same
+  // per-unit figure as the Edit screen's Cost field).
+  { key: "cost", label: "Cost ($)", aliases: ["cost", "cost ($)", "unit cost", "cost basis", "purchase price", "buy price"] },
   { key: "notes", label: "Notes", aliases: ["notes", "note", "comment", "comments"] },
   { key: "imageUrl", label: "Image URL", aliases: ["image", "image url", "imageurl", "photo", "img", "image url (detected)"] },
   { key: "itemType", label: "Type (single/slab)", aliases: ["type", "item type", "itemtype"] },
