@@ -5914,19 +5914,8 @@ than repeated.
   export's actual upload-ready export format (see "Next sprints" above).
   Blocked only on getting TCG Player's real required column layout first —
   never guess it.
-- **Needs the user's decision before any code gets written**:
-  - Cumulus POS SKU import (Phase 4) — needs a go/no-go plus a real
-    Cumulus export/import file sample (see "Known constraints" above).
-  - Collectr bulk-upload export — no bulk-upload/bulk-create API has been
-    found for Collectr; stays manual-entry-aid only unless one surfaces.
-  - TCGPlayer's own Pricing API — frozen to new applicants since late
-    2024; parked unless a real seller API key for this shop turns up.
 - **Parked pending more real-world data — revisit if new evidence shows
   up, don't guess in the meantime**:
-  - Mobile multi-sheet `.xlsx` import silently loads the first sheet
-    instead of showing the sheet picker (desktop shows it correctly) — no
-    repro yet with synthetic files; needs a real device repro or the
-    actual file involved.
   - SWU's `"Cad Bane - He Who Needs No Introduction"` still fails price
     lookup for an unexplained reason, after every other cleanup in that
     debugging arc.
@@ -5960,6 +5949,13 @@ than repeated.
   skipped (see "CSV/XLSX import: a Cost column" above). Keeping existing
   values for skipped columns would change what Merge means; confirm with
   the user first.
+
+**Dropped from this list by the user (2026-10-28), not just parked**:
+Cumulus POS import, a Collectr bulk-upload export, and TCGPlayer's own
+Pricing API ("not relevant for us now"), and the mobile multi-sheet
+`.xlsx` sheet-picker issue ("not important until someone tells us
+otherwise"). Their history stays in the sections above; don't bring them
+back up unless the user or staff do.
 
 Keep this section current: when an item here gets built, or a parked
 question gets a real answer, move/remove it in the same change that
