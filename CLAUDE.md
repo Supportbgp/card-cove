@@ -5901,6 +5901,76 @@ cost. Per copy, same as the Edit screen's Cost field and `price`.
   regular CSV import: the Cost column is auto-matched and `"$20.50"` saves
   as `cost: 20.5`, a blank cell as none.
 
+## Staff-only access (bounties Phase 0)
+
+First step of the public bounty section (planned with the user: members
+sign in with Discord, only BGP server members post, fulfilled through the
+shop, Discord channel posts; see the conversation's plan, phases 0-4).
+Until now every table's rule was "authenticated full access", which was
+fine while the only login was the shop's own. Once members can sign in,
+that rule would hand any member the whole catalog, quotes and sales, so
+it had to change first.
+
+- **Who's staff**: a `staff: true` flag in the login's `app_metadata`
+  (only an admin can set it; a user can't change their own) and
+  `public.is_staff()`, which reads it from the login token
+  (`auth.jwt()`), so checking it costs no extra query. Chosen over a
+  staff table because nothing has to be seeded in a separate place and
+  the check works the same in both projects.
+- **`phase18_staff_only_access.sql`**: creates `is_staff()`, marks the
+  shop login (`rafaelromero.dev@gmail.com`, the app's
+  `SHARED_LOGIN_EMAIL`) as staff, then loops over **every** table in
+  `public`: turns RLS on, drops every existing rule, and adds one
+  `"staff full access"` rule for `authenticated` using `is_staff()`. A
+  loop rather than a list, so tables made by hand (`catalog`,
+  `sync_queue`) and anything not in this repo's migrations are covered
+  too. Re-runnable. The public binder page is unaffected (it reads
+  `catalog_public_view` through the view owner's access), and
+  `price-check` uses the service role, which bypasses RLS.
+- **Rule for every future table**: a migration that creates a table
+  must add `create policy "staff full access" ... using
+  (public.is_staff()) with check (public.is_staff())`, never "authenticated
+  full access" again. Re-running phase18 also fixes a table that was missed.
+- **Edge Functions**: `scan-binder-page` and `card-lookup-proxy` only
+  checked "has a valid login", so any member could have run scans on the
+  shop's Anthropic key. Both now look the caller up on the auth server
+  (`callerIsStaff`, with the auto-provided service-role key, so removing
+  the flag takes effect at once rather than at token expiry) and answer
+  403 "Staff only" otherwise. Duplicated in each, per the no-shared-code
+  convention. `card-lookup-proxy` will need to open up to members later
+  (bounty card picker, Phase 3).
+- **App**: `staffAccess.js`'s `loadSession` refreshes the login on load,
+  so a flag set since the last sign-in reaches the token without asking
+  staff to sign out, and `isStaffUser` reads the flag from the session.
+  A non-staff login gets `NoStaffAccess.jsx` ("No staff access", Sign
+  out) instead of the app, whose tabs would otherwise just come up empty
+  and read as lost data. Data and realtime only load for staff. The
+  database is what actually enforces this; the screen is only so the app
+  explains itself.
+- **Verified** against a throwaway local Postgres set up like Supabase
+  (`auth.users`, `auth.jwt()`, the `authenticated`/`anon` roles, tables
+  with the old rule, one with an extra anon rule, one with no RLS):
+  after the migration (run twice) every table has exactly the one staff
+  rule; the staff login reads and writes everything; a member login
+  (no flag) reads nothing and can't write ("violates row-level security
+  policy"); anon reads nothing from tables but still reads
+  `catalog_public_view`. Plus `e2e/staff-access.spec.js` (Desktop +
+  Mobile) for the "No staff access" screen; the harness login carries
+  the flag unless a test sets `staff: false` in `seedHarness`.
+- **Order with PR #79** (lost/stolen cards): its `phase17_inventory_losses.sql`
+  was written before this and still creates "authenticated full access".
+  Run phase17 before phase18 (or re-run phase18 after it), so
+  `inventory_losses` ends up staff-only too.
+- Staff docs: a "No staff access" entry in `KnownQuirksSection.jsx`.
+
+**Requires, in order, on staging first and then production**: running
+`phase18_staff_only_access.sql`, then redeploying both functions
+(`supabase functions deploy scan-binder-page` and `card-lookup-proxy`,
+with `--project-ref` for staging). Functions deployed before the
+migration would refuse the shop login, since it isn't flagged yet. Also
+confirm Authentication → "Allow new users to sign up" is off in both
+projects until Discord sign-in is set up deliberately.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
