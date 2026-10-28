@@ -15,6 +15,8 @@
 // behalf of a signed-in user's browser if a token ever leaked (e.g. via an
 // unrelated XSS elsewhere). localhost stays allowed for dev/preview testing
 // against the same deployed function.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const ALLOWED_ORIGINS = [
   "https://supportbgp.github.io",
   "http://localhost:5173",
@@ -362,10 +364,28 @@ const PROMPT_TEXT = "This is a photo of one page of a trading card binder — cl
   "above. When uncertain, err toward a slightly larger box rather than a tight one: a little " +
   "extra background in the crop is fine, clipping part of the card is not.";
 
+// Staff only (CLAUDE.md "Staff-only access"). Supabase already rejects a
+// call without a valid login, but once members can sign in with Discord a
+// valid login no longer means staff. The caller is looked up on the auth
+// server (not just read from the token), so removing someone's staff flag
+// takes effect right away. The service-role key is auto-provided to every
+// Edge Function; it's only used here to look the user up.
+async function callerIsStaff(req) {
+  const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!token || !url || !key) return false;
+  const { data, error } = await createClient(url, key).auth.getUser(token);
+  return !error && data?.user?.app_metadata?.staff === true;
+}
+
 Deno.serve(async (req) => {
   const headers = corsHeaders(req.headers.get("origin") || "");
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers });
+  }
+  if (!(await callerIsStaff(req))) {
+    return json({ error: "Staff only" }, 403, headers);
   }
 
   try {
