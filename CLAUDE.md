@@ -6244,6 +6244,29 @@ than repeated.
   - The review rows are tall on a phone (one field per line) — fine for a
     handful of cards, long for a 50-card stack; consider a compact
     collapsed row once real stacks show whether it's a problem.
+- **Planned follow-up to the bounty phases: one login per staff member**
+  (asked 2026-10-28: "see which staff are signed in"; today all staff
+  share `SHARED_LOGIN_EMAIL`, so nothing can tell people apart). Plan:
+  - Each staff member gets their own Supabase login, marked staff the same
+    way as today (`app_metadata.staff`, set by an admin in the SQL Editor
+    or a small staff-only "Staff accounts" screen backed by an Edge
+    Function, since only the service role can write app_metadata).
+    `is_staff()`, RLS and the functions' `callerIsStaff` need no change.
+  - `Login.jsx` gains an email field (today it only asks a password for
+    the hardcoded email). The shared login keeps working during the switch,
+    then loses its staff mark.
+  - Who did what: record the acting user on the writes that matter (sales,
+    losses, quotes' employee, Sorting placements, price-alert dismissals),
+    e.g. a `created_by uuid default auth.uid()` column, plus a "Signed in
+    as" line in the topbar. Who's signed in right now: a staff-only list
+    of logins with last sign-in (`auth.users.last_sign_in_at`, read
+    through an Edge Function or a security-definer function).
+  - `ConfirmModal`'s password re-check (Reset all data) must use the
+    signed-in user's own email, not `SHARED_LOGIN_EMAIL`.
+  - Open questions for the user before building: can staff sign in with
+    Discord instead of a password (one identity for both)? Do all staff get
+    full access, or is a lower "employee" role needed (e.g. no Reset all
+    data, no Pricing settings)?
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a
