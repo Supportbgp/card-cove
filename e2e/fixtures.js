@@ -3,14 +3,24 @@
 // harness's getSession()/getDb() calls see this state from their very first
 // invocation.
 
-export async function seedHarness(page, { signedIn = true, seed, staff = true } = {}) {
+// session / refreshedSession / verify stand in a whole session, what the
+// next refresh returns, and verify-discord-member's answer (Discord member
+// tests). Init scripts run on every navigation, so only use them for a
+// single page load.
+export async function seedHarness(page, { signedIn = true, seed, staff = true, session, refreshedSession, verify } = {}) {
+  // Only keys a test actually passed (undefined doesn't survive the trip).
+  const extras = {};
+  if (session !== undefined) extras.__HARNESS_SESSION__ = session;
+  if (refreshedSession !== undefined) extras.__HARNESS_REFRESHED_SESSION__ = refreshedSession;
+  if (verify !== undefined) extras.__HARNESS_VERIFY__ = verify;
   await page.addInitScript(
-    ({ signedIn, seed, staff }) => {
+    ({ signedIn, seed, staff, extras }) => {
       window.__HARNESS_SIGNED_IN__ = signedIn;
       window.__HARNESS_STAFF__ = staff;
       if (seed) window.__HARNESS_SEED__ = seed;
+      Object.assign(window, extras);
     },
-    { signedIn, seed, staff }
+    { signedIn, seed, staff, extras }
   );
 }
 

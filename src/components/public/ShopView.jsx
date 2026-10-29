@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbLoadPublicStock, dbLoadPublicBinderList, dbLoadPublicImages, publicItemKey } from '../../lib/db.js';
 import PublicCard from './PublicCard.jsx';
+import MemberBar from './MemberBar.jsx';
 import Lightbox from '../Lightbox.jsx';
 import logoIcon from '../../assets/logo-icon.png';
 
@@ -75,6 +76,8 @@ export default function ShopView() {
           <span className="sub">In stock</span>
         </div>
       </div>
+
+      <MemberBar />
 
       {error && (
         <div className="empty"><span className="mark">Couldn't load our stock</span>{error}</div>
