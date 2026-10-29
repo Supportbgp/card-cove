@@ -39,5 +39,7 @@ export function catalogSeed(rows) {
     price_alerts: [],
     price_tracking_settings: [{ id: 1, floor_price: 25, spike_pct: 20 }],
     inventory_losses: [],
+    public_binders: [],
+    public_binder_list: [],
   };
 }

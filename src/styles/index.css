@@ -1674,6 +1674,22 @@
       margin-top: 1px;
     }
 
+    .binder-card-location {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+    }
+
+    /* Public stock page (ShopView) filters. min-width: 0 so a long option
+       can't push the row past the screen (Mobile polish round 2). */
+    .shop-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .shop-filters input { flex: 2 1 220px; min-width: 0; }
+    .shop-filters select { flex: 1 1 140px; min-width: 0; }
+
     .binder-card-row {
       display: flex;
       justify-content: space-between;

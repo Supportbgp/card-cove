@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { buildBinderUrl, generateQrDataUrl } from '../../lib/qr.js';
 
-export default function BinderQrModal({ locations, onClose }) {
+export default function BinderQrModal({ locations, publicBinders = [], onClose }) {
   const [location, setLocation] = useState(locations[0] || '');
   const [qrUrl, setQrUrl] = useState('');
   const [link, setLink] = useState('');
@@ -29,11 +29,16 @@ export default function BinderQrModal({ locations, onClose }) {
         </div>
         <div className="modal-body">
           <div className="field-group">
-            <label>Binder / case</label>
-            <select value={location} onChange={(e) => { setLocation(e.target.value); setQrUrl(''); }}>
+            <label htmlFor="qr_location">Binder / case</label>
+            <select id="qr_location" value={location} onChange={(e) => { setLocation(e.target.value); setQrUrl(''); }}>
               {locations.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
+          {location && !publicBinders.includes(location) && (
+            <div className="warn-line" style={{ margin: '0 0 10px', fontSize: '12.5px', color: 'var(--amber)' }}>
+              This binder isn't public, so its QR page says it isn't shared online. Make it public in Public binders… first.
+            </div>
+          )}
           {qrUrl && (
             <div className="qr-preview">
               <img src={qrUrl} alt="Binder QR code" />

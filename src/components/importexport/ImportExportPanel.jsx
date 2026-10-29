@@ -8,7 +8,7 @@ import ExportPanel from './ExportPanel.jsx';
 // ImportPanel alone, without Export/Binder-QR/Reset-all-data). The Cards /
 // Quotes toggle picks what's being imported: catalog rows (ImportPanel,
 // unchanged) or the old Excel quote sheets (QuoteImportPanel).
-export default function ImportExportPanel({ catalog, queue, locations, quotes = [], onImport, onSaveQuote, onClearAll }) {
+export default function ImportExportPanel({ catalog, queue, locations, quotes = [], publicBinders, onSavePublicBinders, onImport, onSaveQuote, onClearAll }) {
   const [mode, setMode] = useState('cards');
   return (
     <div>
@@ -21,7 +21,8 @@ export default function ImportExportPanel({ catalog, queue, locations, quotes = 
       {mode === 'cards'
         ? <ImportPanel catalog={catalog} locations={locations} onImport={onImport} />
         : <QuoteImportPanel quotes={quotes} onSaveQuote={onSaveQuote} />}
-      <ExportPanel catalog={catalog} queue={queue} locations={locations} onClearAll={onClearAll} />
+      <ExportPanel catalog={catalog} queue={queue} locations={locations} publicBinders={publicBinders}
+        onSavePublicBinders={onSavePublicBinders} onClearAll={onClearAll} />
     </div>
   );
 }
