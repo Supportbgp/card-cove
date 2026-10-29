@@ -6263,10 +6263,14 @@ than repeated.
     through an Edge Function or a security-definer function).
   - `ConfirmModal`'s password re-check (Reset all data) must use the
     signed-in user's own email, not `SHARED_LOGIN_EMAIL`.
-  - Open questions for the user before building: can staff sign in with
-    Discord instead of a password (one identity for both)? Do all staff get
-    full access, or is a lower "employee" role needed (e.g. no Reset all
-    data, no Pricing settings)?
+  - Decided with the user (2026-10-28): **staff sign in with email and
+    password only, never Discord** (Discord is for customers, keeping the
+    two cleanly apart). **Every staff member gets full access, except
+    Reset all data, which only `rafaelromero.dev@gmail.com` may use**:
+    hide/disable the button for everyone else, and enforce it on the
+    database side too, not just in the UI (e.g. an owner flag in
+    app_metadata checked by the delete rules, or the reset done through an
+    owner-only Edge Function), since a hidden button alone isn't a lock.
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a
