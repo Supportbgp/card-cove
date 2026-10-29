@@ -12,7 +12,7 @@ function publicRow(overrides = {}) {
 
 test('shows the binder\'s items on the public, no-login page', async ({ page }) => {
   await seedHarness(page, {
-    seed: { catalog: [], sync_queue: [], store_settings: [], catalog_public_view: [publicRow()] },
+    seed: { catalog: [], sync_queue: [], store_settings: [], catalog_public_view: [publicRow()], public_binder_list: [{ location: 'Binder A' }] },
   });
   await page.goto('./?binder=Binder%20A');
 
@@ -26,8 +26,18 @@ test('shows the binder\'s items on the public, no-login page', async ({ page }) 
 
 test('shows an empty-binder message when nothing matches the location', async ({ page }) => {
   await seedHarness(page, {
-    seed: { catalog: [], sync_queue: [], store_settings: [], catalog_public_view: [] },
+    seed: { catalog: [], sync_queue: [], store_settings: [], catalog_public_view: [], public_binder_list: [{ location: 'Empty Binder' }] },
   });
   await page.goto('./?binder=Empty%20Binder');
   await expect(page.getByText('Nothing here right now')).toBeVisible();
+});
+
+test("a binder that isn't public says so instead of looking empty", async ({ page }) => {
+  await seedHarness(page, {
+    seed: { catalog: [], sync_queue: [], store_settings: [], catalog_public_view: [], public_binder_list: [] },
+  });
+  await page.goto('./?binder=Private%20Case');
+  await expect(page.getByText("This binder isn't shared online")).toBeVisible();
+  await expect(page.getByText('Nothing here right now')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Search all stock' })).toBeVisible();
 });

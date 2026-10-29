@@ -22,6 +22,8 @@ const PRIMARY_KEY = {
   price_alerts: 'id',
   price_tracking_settings: 'id',
   inventory_losses: 'id',
+  public_binders: 'location',
+  public_binder_list: 'location',
 };
 
 function defaultSeed() {
@@ -37,6 +39,8 @@ function defaultSeed() {
     price_alerts: [],
     price_tracking_settings: [{ id: 1, floor_price: 25, spike_pct: 20 }],
     inventory_losses: [],
+    public_binders: [],
+    public_binder_list: [],
   };
 }
 
