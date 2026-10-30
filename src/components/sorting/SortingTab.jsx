@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { activeImageSrc } from '../../lib/cardUtils.js';
 import { useUI } from '../../context/UIContext.jsx';
 import SortItemModal from './SortItemModal.jsx';
+import { bountiesWantingCard } from '../../lib/bounties.js';
 
 // "Needs to process" queue — every accepted quote's line items land here
 // (see App.jsx's handleSaveQuote/buildSortingItemsFromQuoteItems) before
@@ -10,7 +11,9 @@ import SortItemModal from './SortItemModal.jsx';
 // it's placed — the resulting Catalog row is the durable record from
 // then on, not this queue (see CLAUDE.md's "Sorting stage" section for
 // why history isn't kept here).
-export default function SortingTab({ sorting, catalog, locations, onSortItems }) {
+// A card an open bounty is asking for gets a "Wanted" tag, so it's placed
+// individually (not into Bulk) and can be offered from the Bounties tab.
+export default function SortingTab({ sorting, catalog, locations, bounties = [], onSortItems }) {
   const { openLightbox } = useUI();
   // `sortingItems` holds whichever item(s) the open SortItemModal is
   // currently deciding a destination for — a single-item array from a
@@ -81,6 +84,7 @@ export default function SortingTab({ sorting, catalog, locations, onSortItems })
             {sorting.map(item => {
               const displaySrc = activeImageSrc(item);
               const isChecked = selectedIds.has(item.id);
+              const wanted = bountiesWantingCard(item, bounties);
               return (
                 <div className={`scan-row${isChecked ? ' row-selected' : ''}`} key={item.id}>
                   <input
@@ -100,7 +104,14 @@ export default function SortingTab({ sorting, catalog, locations, onSortItems })
                     </div>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600 }}>{item.name}{item.qty > 1 ? ` × ${item.qty}` : ''}</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {item.name}{item.qty > 1 ? ` × ${item.qty}` : ''}
+                      {wanted.length > 0 && (
+                        <span className="badge held" title={`Open bounties for this card: ${wanted.map(b => b.discordName || 'a member').join(', ')}. Place it individually, then offer it from the Bounties tab.`}>
+                          Wanted ×{wanted.length}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>
                       {[item.game, item.set, item.rarity, item.condition].filter(Boolean).join(' · ')}
                     </div>

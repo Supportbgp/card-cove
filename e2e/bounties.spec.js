@@ -145,3 +145,121 @@ test('staff can remove a bounty without posting it', async ({ page }) => {
   expect(db.rows[0].status).toBe('removed');
   expect(db.posts || []).toHaveLength(0);
 });
+
+// ---- Offers (Phase 4) ----
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function offeredRow(over = {}) {
+  return bountyRow({
+    user_id: 'member-1', offer_status: 'pending', offer_sku: 'mew-1', offer_name: 'Mew', offer_set: '151',
+    offer_condition: 'Near Mint', offer_price: 30, offer_note: 'Mint copy', offer_location: 'Binder B',
+    offered_at: new Date().toISOString(), offer_expires_at: new Date(Date.now() + 7 * DAY_MS).toISOString(),
+    ...over,
+  });
+}
+
+function heldMew(over = {}) {
+  return makeCardRow({
+    sku: 'mew-1', name: 'Mew', qty: 2, price: 35, location: 'Binder B',
+    hold_bounty_id: 'b1', hold_until: new Date(Date.now() + 7 * DAY_MS).toISOString(), ...over,
+  });
+}
+
+test('staff make an offer: the card is held and the member is pinged', async ({ page }) => {
+  await seedHarness(page, {
+    seed: seedWith([bountyRow()], [makeCardRow({ sku: 'mew-1', name: 'Mew', qty: 2, price: 35, location: 'Binder B' })]),
+  });
+  await page.goto('./');
+  await page.locator('.tab', { hasText: 'Bounties' }).click();
+  await page.locator('.bounties-table tbody tr', { hasText: 'Mew' }).getByRole('button', { name: 'Make offer' }).click();
+  await page.locator('.offer-card-row', { hasText: 'Binder B' }).locator('input').check();
+  await expect(page.getByLabel('Price ($)')).toHaveValue('35');
+  await page.getByLabel('Price ($)').fill('30');
+  await page.getByLabel('Note to the member (optional)').fill('Mint copy');
+  await page.getByRole('button', { name: 'Send offer' }).click();
+  await expect(page.getByText('Offer sent, SecretJake was pinged in Discord')).toBeVisible();
+
+  const row = page.locator('.bounties-table tbody tr', { hasText: 'Mew' });
+  await expect(row).toHaveCount(0); // left the Open filter
+  await page.getByRole('button', { name: /^Offer sent/ }).click();
+  await expect(page.locator('.bounties-table tbody tr', { hasText: 'Mew' })).toContainText('$30.00');
+
+  const db = await page.evaluate(() => ({ b: window.__HARNESS_DB__.bounties[0], c: window.__HARNESS_DB__.catalog[0], posts: window.__HARNESS_BOUNTY_POSTS__ }));
+  expect(db.b).toMatchObject({ offer_status: 'pending', offer_sku: 'mew-1', offer_price: 30, offer_note: 'Mint copy' });
+  expect(db.c.hold_bounty_id).toBe('b1');
+  expect(db.posts).toEqual([expect.objectContaining({ kind: 'offered' })]);
+
+  await page.locator('.tab', { hasText: 'Catalog' }).click();
+  await expect(page.locator('.badge.held', { hasText: 'Held' }).first()).toBeVisible();
+});
+
+test('a member accepts an offer; it leaves the public Wanted list', async ({ page }) => {
+  await seedHarness(page, { seed: seedWith([offeredRow()], [heldMew()]), session: memberSession() });
+  await page.goto('./?shop=1&view=wanted');
+  const mine = page.locator('.my-bounty', { hasText: 'Mew' });
+  await expect(mine).toContainText('Offer for you');
+  await expect(mine).toContainText('$30.00');
+  await expect(mine).toContainText('Mint copy');
+  await mine.getByRole('button', { name: 'Accept' }).click();
+  await expect(page.getByText('Accepted! The shop is holding Mew for you')).toBeVisible();
+  await expect(page.locator('.my-bounty', { hasText: 'Mew' })).toContainText('Pay and pick it up at the shop by');
+  await expect(page.locator('.bounty-card')).toHaveCount(0);
+  const b = await page.evaluate(() => window.__HARNESS_DB__.bounties[0]);
+  expect(b.offer_status).toBe('accepted');
+});
+
+test('a member declines an offer: the hold is released and the bounty stays open', async ({ page }) => {
+  page.on('dialog', (d) => d.accept());
+  await seedHarness(page, { seed: seedWith([offeredRow()], [heldMew()]), session: memberSession() });
+  await page.goto('./?shop=1&view=wanted');
+  await page.locator('.my-bounty', { hasText: 'Mew' }).getByRole('button', { name: 'Decline' }).click();
+  await expect(page.getByText('Declined the offer. Your bounty stays open.')).toBeVisible();
+  await expect(page.locator('.my-bounty', { hasText: 'Mew' })).toContainText('Open');
+  const db = await page.evaluate(() => ({ b: window.__HARNESS_DB__.bounties[0], c: window.__HARNESS_DB__.catalog[0] }));
+  expect(db.b.offer_status).toBe('declined');
+  expect(db.c.hold_bounty_id).toBeNull();
+});
+
+test('accepted: staff mark it fulfilled after the sale, which releases the hold', async ({ page }) => {
+  await seedHarness(page, { seed: seedWith([offeredRow({ offer_status: 'accepted' })], [heldMew()]) });
+  await page.goto('./');
+  await page.locator('.tab', { hasText: 'Bounties' }).click();
+  await page.getByRole('button', { name: /^Accepted/ }).click();
+  const row = page.locator('.bounties-table tbody tr', { hasText: 'Mew' });
+  await expect(row).toContainText('Pick up by');
+  await row.getByRole('button', { name: 'Mark fulfilled' }).click();
+  await page.locator('.modal-foot').getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByText('Marked Mew fulfilled, SecretJake was pinged in Discord')).toBeVisible();
+  const db = await page.evaluate(() => ({ b: window.__HARNESS_DB__.bounties[0], c: window.__HARNESS_DB__.catalog[0] }));
+  expect(db.b.status).toBe('fulfilled');
+  expect(db.c.hold_bounty_id).toBeNull();
+});
+
+test('selling a held card asks first', async ({ page }, testInfo) => {
+  await seedHarness(page, { seed: seedWith([offeredRow()], [heldMew({ qty: 1 })]) });
+  await page.goto('./');
+  if (testInfo.project.name === 'Mobile') {
+    await page.locator('.catalog-card').first().locator('input[type="checkbox"]').check();
+  } else {
+    await page.locator('tbody tr', { hasText: 'Mew' }).locator('input[type="checkbox"]').check();
+  }
+  await page.getByRole('button', { name: 'Mark sold' }).click();
+  await expect(page.getByText('has a copy held for a bounty offer')).toBeVisible();
+  await page.locator('.modal-foot').getByRole('button', { name: 'Cancel' }).click();
+  const c = await page.evaluate(() => window.__HARNESS_DB__.catalog[0]);
+  expect(c.sold).toBe(false);
+});
+
+test('a walk-in card in Sorting is flagged when a bounty wants it', async ({ page }) => {
+  const seed = seedWith([bountyRow()]);
+  seed.sorting_queue = [{
+    id: 'sq-1', quote_id: null, quote_collection_name: 'Walk-in', name: 'Mew', game: 'Pokemon', set: '151',
+    number: '', rarity: '', printing: '', condition: 'Near Mint', price: 30, base_price: null, qty: 1,
+    notes: '', image_url: '', image_data: '', photo_url: '', photo_data: '', active_image: 'photo', source_url: '',
+  }];
+  await seedHarness(page, { seed });
+  await page.goto('./');
+  await page.locator('.tab', { hasText: 'Sorting' }).click();
+  await expect(page.locator('.badge.held', { hasText: 'Wanted ×1' })).toBeVisible();
+});

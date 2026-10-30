@@ -2,10 +2,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { dbLoadPublicBounties, dbLoadMyBounties } from '../../lib/db.js';
 import {
   MAX_OPEN_BOUNTIES, BOUNTY_EXPIRY_DAYS, BOUNTY_STATE_LABELS, bountyState, bountyDaysLeft, countOpenBounties,
-  bountyDetailLine, bountyPriceLabel, callBounties,
+  bountyDetailLine, bountyPriceLabel, callBounties, offerDetailLine, offerLapsed,
 } from '../../lib/bounties.js';
 import { memberStatus } from '../../lib/memberAuth.js';
 import BountyFormModal from './BountyFormModal.jsx';
+
+const ACTIVE = ['open', 'expired', 'offered', 'accepted'];
+// The member's own view of the states (an offer is for them, not "sent").
+const MY_LABELS = { ...BOUNTY_STATE_LABELS, offered: 'Offer for you' };
+
+const ACT_MESSAGES = {
+  cancel: (b) => `Cancelled your bounty for ${b.name}.`,
+  renew: (b) => `Renewed your bounty for ${b.name} for another ${BOUNTY_EXPIRY_DAYS} days.`,
+  accept: (b) => `Accepted! The shop is holding ${b.offerName || b.name} for you: pay and pick it up in store.`,
+  decline: () => "Declined the offer. Your bounty stays open.",
+};
+
+function formatDate(iso) {
+  return iso ? new Date(iso).toLocaleDateString() : '';
+}
 
 function BountyCard({ b, onZoom }) {
   const [broken, setBroken] = useState(false);
@@ -73,8 +88,8 @@ export default function WantedPanel({ session, onZoom }) {
   const openMine = countOpenBounties(mine);
   // Closed ones are only kept around briefly: the list shows open, expired
   // (renewable) and the last few closed.
-  const visibleMine = mine.filter(b => ['open', 'expired'].includes(bountyState(b)))
-    .concat(mine.filter(b => !['open', 'expired'].includes(bountyState(b))).slice(0, 5));
+  const visibleMine = mine.filter(b => ACTIVE.includes(bountyState(b)))
+    .concat(mine.filter(b => !ACTIVE.includes(bountyState(b))).slice(0, 5));
 
   async function handlePost(form) {
     const { posted } = await callBounties('create', { bounty: form });
@@ -85,11 +100,12 @@ export default function WantedPanel({ session, onZoom }) {
 
   async function act(b, action) {
     if (action === 'cancel' && !window.confirm(`Cancel your bounty for ${b.name}?`)) return;
+    if (action === 'decline' && !window.confirm(`Decline the shop's offer for ${b.name}? Your bounty stays open.`)) return;
     setBusyId(b.id);
     setMessage(null);
     try {
       await callBounties(action, { id: b.id });
-      setMessage({ err: false, text: action === 'cancel' ? `Cancelled your bounty for ${b.name}.` : `Renewed your bounty for ${b.name} for another ${BOUNTY_EXPIRY_DAYS} days.` });
+      setMessage({ err: false, text: ACT_MESSAGES[action](b) });
       await Promise.all([reloadPublic(), reloadMine()]);
     } catch (err) {
       setMessage({ err: true, text: err.message || String(err) });
@@ -128,15 +144,37 @@ export default function WantedPanel({ session, onZoom }) {
                 return (
                   <div className={`my-bounty my-bounty-${state}`} key={b.id}>
                     <div className="my-bounty-info">
-                      <div className="my-bounty-name">{b.name} <span className={`badge bounty-state-${state}`}>{BOUNTY_STATE_LABELS[state]}</span></div>
+                      <div className="my-bounty-name">{b.name} <span className={`badge bounty-state-${state}`}>{MY_LABELS[state]}</span></div>
                       <div className="binder-card-sub">
                         {[b.game, bountyDetailLine(b), bountyPriceLabel(b)].filter(Boolean).join(' · ')}
                         {state === 'open' && days != null && ` · ${days === 0 ? 'expires today' : `${days} days left`}`}
                       </div>
+                      {offerLapsed(b) && <div className="binder-card-sub">The shop's offer ran out without an answer.</div>}
+                      {(state === 'offered' || state === 'accepted') && (
+                        <div className="my-bounty-offer">
+                          {b.offerImage && <img src={b.offerImage} alt="" onClick={() => onZoom(b.offerImage)} />}
+                          <div>
+                            <div><strong>{b.offerName}</strong>{offerDetailLine(b) && ` · ${offerDetailLine(b)}`}</div>
+                            <div className="mono">{b.offerPrice == null ? 'Price at the shop' : `$${b.offerPrice.toFixed(2)}`}</div>
+                            {b.offerNote && <div className="binder-card-sub">“{b.offerNote}”</div>}
+                            <div className="binder-card-sub">
+                              {state === 'offered'
+                                ? `Held for you until ${formatDate(b.offerExpiresAt)}. Accept to keep it.`
+                                : `Accepted. Pay and pick it up at the shop by ${formatDate(b.offerExpiresAt)}.`}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {(state === 'open' || state === 'expired') && (
+                    {ACTIVE.includes(state) && (
                       <div className="row-actions">
-                        {(state === 'expired' || (days != null && days <= 7)) && (
+                        {state === 'offered' && (
+                          <>
+                            <button className="btn small" disabled={busyId === b.id} onClick={() => act(b, 'accept')}>Accept</button>
+                            <button className="btn secondary small" disabled={busyId === b.id} onClick={() => act(b, 'decline')}>Decline</button>
+                          </>
+                        )}
+                        {(state === 'expired' || (state === 'open' && days != null && days <= 7)) && (
                           <button className="btn secondary small" disabled={busyId === b.id} onClick={() => act(b, 'renew')}>Renew</button>
                         )}
                         <button className="btn ghost small" disabled={busyId === b.id} onClick={() => act(b, 'cancel')}>Cancel</button>

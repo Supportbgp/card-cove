@@ -1761,6 +1761,24 @@
     .bounty-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .bounty-thumb { width: 40px; border-radius: 3px; display: block; }
     .bounty-in-stock { color: var(--green); font-weight: 600; white-space: nowrap; }
+    /* Bounty offers (Phase 4) */
+    .badge.bounty-state-offered { background: var(--purple-soft); color: var(--purple); }
+    .badge.bounty-state-accepted { background: var(--teal-soft); color: var(--teal); }
+    .badge.held { background: var(--purple-soft); color: var(--purple); margin-left: 6px; }
+    .bounty-offer-line { white-space: normal; min-width: 180px; }
+    .my-bounty-offer {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-top: 6px;
+      padding: 8px;
+      border-radius: 8px;
+      background: var(--purple-soft);
+      font-size: 13px;
+    }
+    .my-bounty-offer img { width: 56px; border-radius: 4px; cursor: zoom-in; flex-shrink: 0; }
+    .my-bounty-offer > div { min-width: 0; }
+    .offer-card-row label { min-width: 0; }
     .bounties-table td { white-space: nowrap; vertical-align: top; }
     .bounties-table td:nth-child(2) { white-space: normal; min-width: 200px; }
     .bounties-table .n-name { font-weight: 600; }

@@ -7,6 +7,7 @@ import EditModal from './EditModal.jsx';
 import ReportLossModal from './ReportLossModal.jsx';
 import SellQuantityModal from './SellQuantityModal.jsx';
 import { useUI } from '../../context/UIContext.jsx';
+import { isHeld } from '../../lib/bounties.js';
 
 export default function CatalogPanel({
   catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onSellPartial, onTogglePlatformStatus, multipliers,
@@ -126,6 +127,14 @@ export default function CatalogPanel({
   async function handleBatchSell() {
     const count = selectedSkus.size;
     if (!count) return;
+    // A copy held for a bounty offer is set aside for that member; selling it
+    // is fine when it's their pickup, but worth a second look otherwise.
+    const held = catalog.filter(c => selectedSkus.has(c.sku) && isHeld(c));
+    if (held.length && !(await showConfirm(
+      `${held.map(c => c.name).join(', ')} ${held.length === 1 ? 'has' : 'have'} a copy held for a bounty offer. ` +
+      'If this is that member picking it up, go ahead, then mark the bounty fulfilled in the Bounties tab. Otherwise, withdraw the offer first.',
+      'Held for a bounty'
+    ))) return;
     if (count === 1) {
       const sku = selectedSkus.values().next().value;
       const card = catalog.find(c => c.sku === sku);

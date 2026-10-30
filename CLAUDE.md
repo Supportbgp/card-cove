@@ -6296,6 +6296,68 @@ settings → Integrations → Webhooks → New Webhook → Copy URL, and set it 
 the `DISCORD_BOUNTY_WEBHOOK_URL` secret (a separate test channel for
 staging); optionally set `PUBLIC_SHOP_URL`.
 
+## Bounty offers (bounties Phase 4)
+
+Last step of the bounty plan: the shop answers a bounty with an actual
+card. Decided with the user: the card comes from **shop stock or a
+walk-in** (a walk-in reaches the catalog through Quote and Sorting first);
+the member **accepts or declines on the website**; the offered copy is
+**held for a few days** (7); payment and pickup are **in store only**.
+
+- **`phase21_bounty_offers.sql`**: one offer at a time, stored on the
+  bounty (`offer_status` pending|accepted|declined, plus a snapshot of the
+  offered card: `offer_sku`/`offer_name`/`offer_set`/`offer_condition`/
+  `offer_printing`/`offer_image`/`offer_location`/`offer_price`/
+  `offer_note`, `offered_at`/`offer_expires_at`/`offer_answered_at`). A
+  snapshot because members can't read the catalog. The hold lives on the
+  catalog row (`hold_bounty_id` → bounties, `hold_until`) and covers **one
+  copy**: `catalog_public_view` now shows `qty - 1` for a held row (and
+  drops it at 0). `public_bounties` leaves out bounties with an accepted
+  offer. Nothing expires by a job: a hold past `hold_until` no longer
+  counts, and a pending offer past `offer_expires_at` lapses (`bountyState`
+  treats the bounty as open again; `offerLapsed` for the note).
+- **`bounties` Edge Function, new actions**: `offer` (staff: card must be
+  in stock, not Bulk, not held for another bounty; price defaults to the
+  card's; releases any earlier hold for this bounty; posts to Discord
+  mentioning the member), `accept` (owner, live offer only: hold extended
+  7 days for pickup), `decline` (owner: releases the hold), `withdraw`
+  (staff: releases the hold). `cancel`/`fulfill`/`remove` now release the
+  hold too. An offer or acceptance pushes the bounty's own `expires_at` out
+  so it can't expire mid-offer. Fulfilled-post text differs when an offer
+  was accepted ("picked up their card").
+- **Staff**: Bounties tab filters gained Offer sent / Accepted; the status
+  cell shows the offer (card, price, binder, answer-by or pick-up-by date);
+  actions are Make offer (`OfferModal.jsx`: same-name in-stock copies
+  first, search for any other card of that game, price, note, warning
+  above the member's max) / Withdraw offer / Mark fulfilled / Remove. The
+  tab count is now open + accepted (`countBountiesNeedingStaff`, what staff
+  must act on). `App.jsx`'s `handleBountyAction` mirrors the hold onto the
+  local catalog right away (realtime brings the same change). Catalog rows
+  with a live hold show a purple **Held** tag (desktop and the collapsed
+  mobile card), and Mark sold asks first when a selected item is held.
+  Sorting shows **Wanted ×N** on a card an open bounty asks for
+  (`bountiesWantingCard`), so a walk-in gets placed individually.
+- **Member**: Your bounties shows the offer (image, card, price, note,
+  held-until) with Accept / Decline; Accepted shows the pick-up-by date.
+  Offered/accepted still count toward the 10-open limit.
+- `normalizeCard`/`rowToCard` carry `holdBountyId`/`holdUntil` read-only;
+  `cardToRow` never sends them, so edits/imports can't clear a hold.
+- Accepted limitation: selling the held copy doesn't fulfill the bounty by
+  itself; staff mark it fulfilled after the sale (the Mark sold prompt says
+  so). The "N in stock" hint still counts a held copy.
+- Covered by new `bounties.test.js` cases (offer mapping, offered/accepted/
+  lapsed states, the two counts, `isHeld`, `bountiesWantingCard`) and six
+  new `e2e/bounties.spec.js` tests (Desktop + Mobile): staff make an offer
+  (hold set, Discord post, Held tag); member accepts (leaves the public
+  list); member declines (hold released); fulfilling an accepted offer
+  releases the hold; selling a held card asks first; Sorting's Wanted tag.
+  The harness's `bounties` stand-in applies the same offer/hold rules.
+  Checked at phone and desktop widths via throwaway screenshots, which
+  moved the mobile Held tag out of the expanded-only details.
+
+**Setup, staging first, then production**: run `phase21_bounty_offers.sql`
+(after phase20), then redeploy `bounties`.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

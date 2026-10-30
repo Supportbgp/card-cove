@@ -11,6 +11,15 @@
 //   renew   { id }      the member who posted it: another EXPIRY_DAYS from now.
 //   fulfill { id }      staff only. Posted to Discord, mentioning the member.
 //   remove  { id }      staff only. Not posted.
+//   offer   { id, sku, price, note }  staff only (Phase 4): offers a catalog
+//                       card; one copy is held for the member for
+//                       HOLD_DAYS. Posted to Discord, mentioning the member.
+//   accept  { id }      the member: keeps the hold for HOLD_DAYS more, to
+//                       pick it up and pay in store.
+//   decline { id }      the member: releases the hold.
+//   withdraw { id }     staff only: takes the offer back, releases the hold.
+//
+// Closing a bounty (cancel/fulfill/remove) always releases its hold.
 //
 // Who the caller is comes from the auth server (not the token's claims), so
 // a member flag or staff flag removed a moment ago already counts.
@@ -56,6 +65,7 @@ function json(body, status, headers) {
 // Same values as src/lib/bounties.js (no code is shared with the app).
 const MAX_OPEN = 10;
 const EXPIRY_DAYS = 60;
+const HOLD_DAYS = 7;
 const GAMES = ["Magic", "Pokemon", "Yugioh", "Lorcana", "One Piece", "Sports Singles", "SWU", "Riftbound", "Gundam", "Other"];
 
 function text(v, max) {
@@ -95,8 +105,16 @@ function cleanBounty(input) {
   };
 }
 
+function daysFromNow(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function expiresFromNow() {
-  return new Date(Date.now() + EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  return daysFromNow(EXPIRY_DAYS);
+}
+
+function laterOf(a, b) {
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
 function money(n) {
@@ -115,18 +133,35 @@ async function postToDiscord(kind, bounty) {
   if (!webhook) return false;
   const shopUrl = Deno.env.get("PUBLIC_SHOP_URL") || "";
   const mention = bounty.discord_id ? `<@${bounty.discord_id}>` : (bounty.discord_name || "A member");
-  const content = kind === "created"
-    ? `New bounty from ${mention}`
-    : `Bounty fulfilled: ${mention}, your card is in! Come by the shop to pick it up.`;
-  const description = [
-    bounty.game,
-    cardLine(bounty),
-    bounty.max_price != null ? `Up to ${money(bounty.max_price)}` : "",
-    kind === "created" && bounty.notes ? `“${bounty.notes}”` : "",
-  ].filter(Boolean).join("\n");
-  const embed = { title: bounty.name, description };
+  let content, embed;
+  if (kind === "offered") {
+    content = `${mention} the shop has a card for your bounty! Accept or decline it on the website within ${HOLD_DAYS} days.`;
+    embed = {
+      title: bounty.offer_name || bounty.name,
+      description: [
+        [bounty.offer_set, bounty.offer_condition, bounty.offer_printing].filter(Boolean).join(" · "),
+        bounty.offer_price != null ? `Offered at ${money(bounty.offer_price)}` : "",
+        bounty.offer_note ? `“${bounty.offer_note}”` : "",
+      ].filter(Boolean).join("\n"),
+    };
+    const image = bounty.offer_image || bounty.image_url;
+    if (image) embed.thumbnail = { url: image };
+  } else {
+    if (kind === "created") content = `New bounty from ${mention}`;
+    else if (bounty.offer_status === "accepted") content = `Bounty fulfilled: ${mention} picked up their card. Enjoy!`;
+    else content = `Bounty fulfilled: ${mention}, your card is in! Come by the shop to pick it up.`;
+    embed = {
+      title: bounty.name,
+      description: [
+        bounty.game,
+        cardLine(bounty),
+        bounty.max_price != null ? `Up to ${money(bounty.max_price)}` : "",
+        kind === "created" && bounty.notes ? `“${bounty.notes}”` : "",
+      ].filter(Boolean).join("\n"),
+    };
+    if (bounty.image_url) embed.thumbnail = { url: bounty.image_url };
+  }
   if (shopUrl) embed.url = shopUrl;
-  if (bounty.image_url) embed.thumbnail = { url: bounty.image_url };
   try {
     const res = await fetch(webhook, {
       method: "POST",
@@ -211,10 +246,94 @@ Deno.serve(async (req) => {
       return data;
     }
 
+    // Frees whatever catalog copy is held for this bounty.
+    async function releaseHold() {
+      const { error } = await admin.from("catalog").update({ hold_bounty_id: null, hold_until: null }).eq("hold_bounty_id", id);
+      if (error) throw error;
+    }
+
+    const offerLive = bounty.offer_status === "pending" && bounty.offer_expires_at
+      && new Date(bounty.offer_expires_at).getTime() > Date.now();
+
     if (action === "cancel") {
       if (!isOwner && !isStaff) return json({ error: "Not your bounty" }, 403, headers);
       if (bounty.status !== "open") return json({ error: "That bounty is already closed" }, 409, headers);
+      await releaseHold();
       return json({ bounty: await update({ status: "cancelled", closed_at: nowIso }) }, 200, headers);
+    }
+
+    if (action === "offer") {
+      if (!isStaff) return json({ error: "Staff only" }, 403, headers);
+      if (bounty.status !== "open") return json({ error: "That bounty is already closed" }, 409, headers);
+      const sku = text(body.sku, 120);
+      if (!sku) return json({ error: "Pick a card to offer" }, 400, headers);
+      const { data: card, error: cardError } = await admin.from("catalog")
+        .select("sku,name,set_name,condition,printing,image_url,photo_url,location,qty,sold,item_type,price,hold_bounty_id,hold_until")
+        .eq("sku", sku).maybeSingle();
+      if (cardError) return json({ error: cardError.message }, 500, headers);
+      if (!card) return json({ error: "That card isn't in the catalog" }, 404, headers);
+      if (card.sold || !(Number(card.qty) > 0)) return json({ error: "That card isn't in stock" }, 409, headers);
+      if (card.item_type === "bulk") return json({ error: "A Bulk lot can't be offered" }, 400, headers);
+      const heldElsewhere = card.hold_bounty_id && card.hold_bounty_id !== id
+        && card.hold_until && new Date(card.hold_until).getTime() > Date.now();
+      if (heldElsewhere) return json({ error: "That card is already held for another bounty" }, 409, headers);
+      let price = card.price == null ? null : Number(card.price);
+      if (body.price !== undefined && body.price !== null && String(body.price).trim() !== "") {
+        price = Math.round(Number(body.price) * 100) / 100;
+        if (!Number.isFinite(price) || price < 0 || price > 100000) return json({ error: "Price must be a dollar amount" }, 400, headers);
+      }
+      const offerExpires = daysFromNow(HOLD_DAYS);
+      await releaseHold();
+      const { error: holdError } = await admin.from("catalog")
+        .update({ hold_bounty_id: id, hold_until: offerExpires }).eq("sku", sku);
+      if (holdError) return json({ error: `Couldn't hold the card: ${holdError.message}` }, 500, headers);
+      const updated = await update({
+        offer_status: "pending",
+        offer_sku: sku,
+        offer_name: card.name || "",
+        offer_set: card.set_name || "",
+        offer_condition: card.condition || "",
+        offer_printing: card.printing || "",
+        offer_image: httpsUrl(card.image_url) || httpsUrl(card.photo_url) || bounty.image_url || "",
+        offer_location: card.location || "",
+        offer_price: price,
+        offer_note: text(body.note, 500),
+        offered_at: nowIso,
+        offer_expires_at: offerExpires,
+        offer_answered_at: null,
+        expires_at: laterOf(bounty.expires_at, offerExpires),
+      });
+      const posted = await postToDiscord("offered", updated);
+      return json({ bounty: updated, posted }, 200, headers);
+    }
+
+    if (action === "accept" || action === "decline") {
+      if (!isOwner) return json({ error: "Not your bounty" }, 403, headers);
+      if (bounty.status !== "open" || !offerLive) return json({ error: "That offer has expired or was withdrawn" }, 409, headers);
+      if (action === "decline") {
+        await releaseHold();
+        return json({ bounty: await update({ offer_status: "declined", offer_answered_at: nowIso }) }, 200, headers);
+      }
+      // Accepted: the copy stays held while they come in to pay and pick it up.
+      const pickupBy = daysFromNow(HOLD_DAYS);
+      const { error: holdError } = await admin.from("catalog")
+        .update({ hold_until: pickupBy }).eq("hold_bounty_id", id);
+      if (holdError) return json({ error: holdError.message }, 500, headers);
+      return json({
+        bounty: await update({
+          offer_status: "accepted",
+          offer_answered_at: nowIso,
+          offer_expires_at: pickupBy,
+          expires_at: laterOf(bounty.expires_at, pickupBy),
+        }),
+      }, 200, headers);
+    }
+
+    if (action === "withdraw") {
+      if (!isStaff) return json({ error: "Staff only" }, 403, headers);
+      if (!["pending", "accepted"].includes(bounty.offer_status)) return json({ error: "There's no offer to withdraw" }, 409, headers);
+      await releaseHold();
+      return json({ bounty: await update({ offer_status: null, offer_answered_at: null }) }, 200, headers);
     }
 
     if (action === "renew") {
@@ -230,6 +349,7 @@ Deno.serve(async (req) => {
     if (action === "fulfill" || action === "remove") {
       if (!isStaff) return json({ error: "Staff only" }, 403, headers);
       if (bounty.status !== "open") return json({ error: "That bounty is already closed" }, 409, headers);
+      await releaseHold();
       const updated = await update({ status: action === "fulfill" ? "fulfilled" : "removed", closed_at: nowIso });
       const posted = action === "fulfill" ? await postToDiscord("fulfilled", updated) : false;
       return json({ bounty: updated, posted }, 200, headers);
