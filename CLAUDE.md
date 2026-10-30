@@ -6170,6 +6170,16 @@ shop's password login; nothing about the staff app changes.
   the shop page shares the staff app's stored session, so a Discord sign-in
   there would replace the staff login. `NoStaffAccess` (a member opening the
   staff app) now links to the stock page.
+- **A failed sign-in says why** (asked after the first staging test hit
+  `bad_oauth_state` and landed on the project's default Site URL,
+  `localhost:3000`): Supabase sends the visitor back with `error`/
+  `error_description` in the query or the hash; `MemberBar` shows "Sign-in
+  didn't complete: <reason>. Try again." and removes those parameters from
+  the address (`readSignInError`/`urlWithoutSignInError` in
+  `memberAuth.js`). The Site URL must point at the stock page too (setup
+  step 3), or a failure lands on `localhost:3000` before the app can show
+  anything. The invite link only appears right after the check (it comes
+  back from the function), not after a later reload.
 - **Harness gotcha found while testing this**: `vite.config.js` swaps
   `supabase.js` only for the exact import paths `./supabase.js`,
   `./lib/supabase.js` and `../lib/supabase.js`. A component two folders
@@ -6194,10 +6204,11 @@ shop's password login; nothing about the staff app changes.
    `https://<project-ref>.supabase.co/auth/v1/callback`.
 2. Supabase → Authentication → Sign In / Providers → Discord: enable,
    paste both.
-3. Authentication → URL Configuration → Redirect URLs: add the stock page
+3. Authentication → URL Configuration: add the stock page to Redirect URLs
    (`https://supportbgp.github.io/card-cove/staging/?shop=1` for staging,
-   `.../card-cove/?shop=1` for production). Otherwise Supabase sends the
-   visitor to the Site URL instead.
+   `.../card-cove/?shop=1` for production), and set the **Site URL** to it
+   too. A new project's Site URL is `http://localhost:3000`, which is where
+   a failed sign-in lands otherwise.
 4. **Turn "Allow new users to sign up" on**: with it off "only existing
    users can sign in" (Supabase's docs), so no new Discord member could.
    Safe since Phase 0: a new login of any kind gets no shop data.

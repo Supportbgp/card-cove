@@ -26,6 +26,28 @@ export function onSessionChange(callback) {
   return () => data.subscription.unsubscribe();
 }
 
+// When a sign-in fails, Supabase sends the visitor back with error /
+// error_description in the query string or the hash. Returns the
+// description (or the code), or '' when there's none.
+export function readSignInError(search, hash) {
+  for (const raw of [search, (hash || '').replace(/^#/, '')]) {
+    const p = new URLSearchParams(raw || '');
+    const desc = p.get('error_description') || p.get('error');
+    if (desc) return desc;
+  }
+  return '';
+}
+
+// The same address without those error parameters (kept: everything else,
+// e.g. ?shop=1), so a reload doesn't show the error again.
+export function urlWithoutSignInError(href) {
+  const url = new URL(href);
+  for (const key of ['error', 'error_code', 'error_description']) url.searchParams.delete(key);
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+  if (hash.has('error') || hash.has('error_description')) url.hash = '';
+  return url.toString();
+}
+
 export function signOutMember() {
   return supabaseClient.auth.signOut();
 }

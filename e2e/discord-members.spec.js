@@ -73,3 +73,11 @@ test('a Discord member opening the staff app gets No staff access, with a link t
   await expect(page.getByText('No staff access')).toBeVisible();
   await expect(page.getByRole('link', { name: 'public stock page' })).toBeVisible();
 });
+
+test('a failed sign-in shows the reason and cleans the address', async ({ page }) => {
+  await seedHarness(page, { signedIn: false, seed: stock });
+  await page.goto('./?shop=1&error=invalid_request&error_code=bad_oauth_state&error_description=OAuth+state+not+found+or+expired');
+  await expect(page.getByText("Sign-in didn't complete: OAuth state not found or expired. Try again.")).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in with Discord' })).toBeVisible();
+  expect(new URL(page.url()).search).toBe('?shop=1');
+});

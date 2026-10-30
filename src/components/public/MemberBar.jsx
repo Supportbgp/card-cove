@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { isStaffUser } from '../../lib/staffAccess.js';
 import {
   signInWithDiscord, signOutMember, isDiscordUser, memberStatus, memberName, verifyMembership,
-  getCurrentSession, onSessionChange,
+  getCurrentSession, onSessionChange, readSignInError, urlWithoutSignInError,
 } from '../../lib/memberAuth.js';
 
 // The sign-in strip on the public stock page (CLAUDE.md "Discord sign-in
@@ -34,6 +34,12 @@ export default function MemberBar() {
 
   useEffect(() => {
     let active = true;
+    // A failed sign-in comes back with Supabase's reason in the address.
+    const failed = readSignInError(window.location.search, window.location.hash);
+    if (failed) {
+      setError(`Sign-in didn't complete: ${failed}. Try again.`);
+      window.history.replaceState(null, '', urlWithoutSignInError(window.location.href));
+    }
     getCurrentSession().then((s) => {
       if (!active) return;
       setSession(s);

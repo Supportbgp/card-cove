@@ -7,7 +7,7 @@ vi.mock('./supabase.js', () => ({
   supabaseClient: { functions: { invoke }, auth: { refreshSession, signInWithOAuth } },
 }));
 
-const { memberStatus, memberName, isDiscordUser, verifyMembership, signInWithDiscord } = await import('./memberAuth.js');
+const { memberStatus, memberName, isDiscordUser, verifyMembership, signInWithDiscord, readSignInError, urlWithoutSignInError } = await import('./memberAuth.js');
 
 const discordUser = (meta = {}) => ({ app_metadata: { provider: 'discord', providers: ['discord'], ...meta }, user_metadata: { full_name: 'Jake' } });
 
@@ -62,5 +62,20 @@ describe('verifyMembership', () => {
     invoke.mockResolvedValue({ data: null, error: { message: 'Edge Function returned a non-2xx status code', context: { json: async () => ({ error: 'Discord sign-in expired, sign in again' }) } } });
     await expect(verifyMembership('tok')).rejects.toThrow('Discord sign-in expired, sign in again');
     expect(refreshSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('sign-in errors in the address', () => {
+  it('reads the reason from the query string or the hash', () => {
+    expect(readSignInError('?shop=1&error=invalid_request&error_description=OAuth+state+not+found+or+expired', ''))
+      .toBe('OAuth state not found or expired');
+    expect(readSignInError('?shop=1', '#error=access_denied&error_description=The+user+denied'))
+      .toBe('The user denied');
+    expect(readSignInError('?shop=1', '')).toBe('');
+  });
+  it('drops only the error parameters', () => {
+    expect(urlWithoutSignInError('https://x.io/card-cove/?shop=1&error=a&error_code=b&error_description=c'))
+      .toBe('https://x.io/card-cove/?shop=1');
+    expect(urlWithoutSignInError('https://x.io/?shop=1#error=a')).toBe('https://x.io/?shop=1');
   });
 });
