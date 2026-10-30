@@ -25,6 +25,20 @@ export default function PublicBinderSection() {
         ("Search all stock"), and its address is shown in the Public binders
         window.
       </p>
+      <h3>Discord sign-in for members</h3>
+      <p>
+        The stock page has a <strong>Sign in with Discord</strong> button for
+        customers. After signing in, Card Cove checks with Discord that they're
+        in the BGP Discord server and shows "BGP Discord member", or tells them
+        to join the server first. Signing in doesn't give a customer anything
+        from the staff side of Card Cove. It's the first step toward letting
+        members post bounties (cards they're looking for).
+      </p>
+      <DocsCallout kind="note">
+        If you're signed in to Card Cove as staff on the same browser, the
+        stock page just says "Signed in as staff" and doesn't offer Discord
+        sign-in, so it can't sign you out of the staff app.
+      </DocsCallout>
       <DocsCallout kind="note">
         It's a live lookup, not a snapshot — as soon as an item sells or its
         price changes in Card Cove, the page reflects it immediately. You can

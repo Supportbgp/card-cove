@@ -15,6 +15,7 @@ export default function NoStaffAccess({ onSignOut }) {
         <div className="modal-body" style={{ fontSize: '13.5px', color: 'var(--ink-soft)' }}>
           If this is the shop's own login, sign out and sign back in. If it still shows this, ask whoever manages
           Card Cove to check that the login is marked as staff.
+          {' '}Looking for our stock? See the <a href="?shop=1">public stock page</a>.
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onSignOut}>Sign out</button>

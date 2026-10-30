@@ -6126,6 +6126,97 @@ Open bounties join this page in Phase 3.
 SQL Editor; staging runs both on `npm run deploy-staging`. Right after it,
 every QR page and the stock page show nothing until staff tick binders.
 
+## Discord sign-in for members (bounties Phase 2)
+
+Third step of the bounty plan: customers sign in with Discord on the public
+stock page, and Card Cove records whether they're in the BGP Discord server
+(only members will be able to post bounties, Phase 3). Staff keep the
+shop's password login; nothing about the staff app changes.
+
+- **How membership is checked, and why this way**: with the visitor's own
+  Discord token, not a bot. Supabase's Discord sign-in asks for
+  `identify guilds.members.read` (`memberAuth.js`'s `signInWithDiscord`,
+  `options.scopes`, space-separated per the supabase-js docs), and right
+  after the redirect the session carries Discord's token once
+  (`session.provider_token`; Supabase documents that it never stores
+  provider tokens). `MemberBar.jsx` sends it to the new
+  **`verify-discord-member`** Edge Function, which calls Discord's
+  `GET /users/@me` (to confirm the token belongs to the same Discord
+  account as this login: compared with the login's Discord identity) and
+  `GET /users/@me/guilds/{DISCORD_GUILD_ID}/member` (needs
+  `guilds.members.read`, confirmed in Discord's docs). `guilds.members.read`
+  was picked over the broader `guilds` scope, which would reveal every
+  server the person is in. A bot would allow re-checking at any time but
+  needs a bot account in the server; not needed yet. Phase 3's channel
+  posts can use a plain webhook.
+- **What's recorded**: the function writes `app_metadata.member`
+  (true/false), `discord_id`, `discord_name`, `member_checked_at` with the
+  service-role key, spreading the existing app_metadata so `staff` is never
+  touched. A visitor can't write app_metadata themselves. The app then
+  refreshes the login so the flag is in the token (Phase 3's RLS will read
+  it from `auth.jwt()`, like `is_staff()`). Re-checked on every sign-in
+  only, since the Discord token exists only then: someone who leaves the
+  server stays "member" until their next sign-in. Accepted for now.
+- **Not-member status**: Discord's docs don't name the status code for
+  "not in this server", so only 404 is read as "not a member"; 401/403
+  (scope/token problems) and anything else are returned as errors rather
+  than guessed into a "no".
+- **`MemberBar.jsx`** (top of `ShopView`): signed out → "Sign in with
+  Discord"; checking → spinner; member → "Signed in as X · BGP Discord
+  member" + Sign out; not a member → "isn't in the BGP Discord server",
+  the `DISCORD_INVITE_URL` link if set, Sign in again; a Discord login
+  never checked (e.g. the check failed) → Sign in again. **A staff session
+  in the same browser shows "Signed in as staff" and no Discord button**:
+  the shop page shares the staff app's stored session, so a Discord sign-in
+  there would replace the staff login. `NoStaffAccess` (a member opening the
+  staff app) now links to the stock page.
+- **A failed sign-in says why** (asked after the first staging test hit
+  `bad_oauth_state` and landed on the project's default Site URL,
+  `localhost:3000`): Supabase sends the visitor back with `error`/
+  `error_description` in the query or the hash; `MemberBar` shows "Sign-in
+  didn't complete: <reason>. Try again." and removes those parameters from
+  the address (`readSignInError`/`urlWithoutSignInError` in
+  `memberAuth.js`). The Site URL must point at the stock page too (setup
+  step 3), or a failure lands on `localhost:3000` before the app can show
+  anything. The invite link only appears right after the check (it comes
+  back from the function), not after a later reload.
+- **Harness gotcha found while testing this**: `vite.config.js` swaps
+  `supabase.js` only for the exact import paths `./supabase.js`,
+  `./lib/supabase.js` and `../lib/supabase.js`. A component two folders
+  deep importing `../../lib/supabase.js` silently got the *real* client in
+  e2e. Components under `src/components/public/` go through
+  `memberAuth.js`'s `getCurrentSession`/`onSessionChange` instead.
+- Harness: `getSession`/`refreshSession` can be given a whole session
+  (`__HARNESS_SESSION__`/`__HARNESS_REFRESHED_SESSION__`, via
+  `seedHarness`'s `session`/`refreshedSession`), `signInWithOAuth` records
+  its arguments (`__HARNESS_OAUTH__`), and `verify-discord-member` returns
+  `__HARNESS_VERIFY__` and records its body.
+- Covered by `memberAuth.test.js` (statuses, names, scope, the verify call
+  and its error message) and `e2e/discord-members.spec.js` (Desktop +
+  Mobile: the sign-in request; a member checked and shown, then signed
+  out; a non-member with the invite link; a staff session left alone; a
+  member opening the staff app). The Edge Function has no automated tests
+  (same accepted gap as the others), syntax-checked with esbuild.
+
+**Setup, staging first, then production** (none of it is in the repo):
+1. Discord Developer Portal → an application → OAuth2: copy Client ID and
+   Client Secret; under Redirects add the project's callback,
+   `https://<project-ref>.supabase.co/auth/v1/callback`.
+2. Supabase → Authentication → Sign In / Providers → Discord: enable,
+   paste both.
+3. Authentication → URL Configuration: add the stock page to Redirect URLs
+   (`https://supportbgp.github.io/card-cove/staging/?shop=1` for staging,
+   `.../card-cove/?shop=1` for production), and set the **Site URL** to it
+   too. A new project's Site URL is `http://localhost:3000`, which is where
+   a failed sign-in lands otherwise.
+4. **Turn "Allow new users to sign up" on**: with it off "only existing
+   users can sign in" (Supabase's docs), so no new Discord member could.
+   Safe since Phase 0: a new login of any kind gets no shop data.
+5. Edge Functions → Secrets: `DISCORD_GUILD_ID` (Discord: Developer Mode
+   on, right-click the server, Copy Server ID) and optionally
+   `DISCORD_INVITE_URL`.
+6. Deploy `verify-discord-member`.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -6164,6 +6255,33 @@ than repeated.
   - The review rows are tall on a phone (one field per line) — fine for a
     handful of cards, long for a 50-card stack; consider a compact
     collapsed row once real stacks show whether it's a problem.
+- **Planned follow-up to the bounty phases: one login per staff member**
+  (asked 2026-10-28: "see which staff are signed in"; today all staff
+  share `SHARED_LOGIN_EMAIL`, so nothing can tell people apart). Plan:
+  - Each staff member gets their own Supabase login, marked staff the same
+    way as today (`app_metadata.staff`, set by an admin in the SQL Editor
+    or a small staff-only "Staff accounts" screen backed by an Edge
+    Function, since only the service role can write app_metadata).
+    `is_staff()`, RLS and the functions' `callerIsStaff` need no change.
+  - `Login.jsx` gains an email field (today it only asks a password for
+    the hardcoded email). The shared login keeps working during the switch,
+    then loses its staff mark.
+  - Who did what: record the acting user on the writes that matter (sales,
+    losses, quotes' employee, Sorting placements, price-alert dismissals),
+    e.g. a `created_by uuid default auth.uid()` column, plus a "Signed in
+    as" line in the topbar. Who's signed in right now: a staff-only list
+    of logins with last sign-in (`auth.users.last_sign_in_at`, read
+    through an Edge Function or a security-definer function).
+  - `ConfirmModal`'s password re-check (Reset all data) must use the
+    signed-in user's own email, not `SHARED_LOGIN_EMAIL`.
+  - Decided with the user (2026-10-28): **staff sign in with email and
+    password only, never Discord** (Discord is for customers, keeping the
+    two cleanly apart). **Every staff member gets full access, except
+    Reset all data, which only `rafaelromero.dev@gmail.com` may use**:
+    hide/disable the button for everyone else, and enforce it on the
+    database side too, not just in the UI (e.g. an owner flag in
+    app_metadata checked by the delete rules, or the reset done through an
+    owner-only Edge Function), since a hidden button alone isn't a lock.
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a

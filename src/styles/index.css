@@ -1690,6 +1690,22 @@
     .shop-filters input { flex: 2 1 220px; min-width: 0; }
     .shop-filters select { flex: 1 1 140px; min-width: 0; }
 
+    /* Public stock page: the Discord sign-in strip (MemberBar). */
+    .member-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 13.5px;
+    }
+    .member-bar-text { flex: 1 1 220px; min-width: 0; }
+    .member-bar-error { flex-basis: 100%; color: var(--rust); font-size: 12.5px; }
+
     .binder-card-row {
       display: flex;
       justify-content: space-between;

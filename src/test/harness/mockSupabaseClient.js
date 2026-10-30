@@ -194,13 +194,27 @@ function harnessSession() {
 
 export const supabaseClient = {
   auth: {
+    // A test can stand in a whole session (e.g. a Discord member's, with a
+    // provider_token) via window.__HARNESS_SESSION__, and what the next
+    // refresh returns via window.__HARNESS_REFRESHED_SESSION__.
     async getSession() {
+      if (window.__HARNESS_SESSION__ !== undefined) return { data: { session: window.__HARNESS_SESSION__ } };
       const signedIn = window.__HARNESS_SIGNED_IN__ !== false;
       return { data: { session: signedIn ? harnessSession() : null } };
     },
     async refreshSession() {
+      if (window.__HARNESS_REFRESHED_SESSION__ !== undefined) {
+        window.__HARNESS_SESSION__ = window.__HARNESS_REFRESHED_SESSION__;
+        return { data: { session: window.__HARNESS_SESSION__ }, error: null };
+      }
+      if (window.__HARNESS_SESSION__ !== undefined) return { data: { session: window.__HARNESS_SESSION__ }, error: null };
       const signedIn = window.__HARNESS_SIGNED_IN__ !== false;
       return { data: { session: signedIn ? harnessSession() : null }, error: null };
+    },
+    // Records the request instead of leaving the page.
+    async signInWithOAuth(args) {
+      window.__HARNESS_OAUTH__ = args;
+      return { data: {}, error: null };
     },
     async signInWithPassword({ password }) {
       if (password === HARNESS_PASSWORD) {
@@ -211,6 +225,7 @@ export const supabaseClient = {
     },
     async signOut() {
       window.__HARNESS_SIGNED_IN__ = false;
+      if (window.__HARNESS_SESSION__ !== undefined) window.__HARNESS_SESSION__ = null;
       return { error: null };
     },
     onAuthStateChange() {
@@ -228,7 +243,13 @@ export const supabaseClient = {
     // entry (an array of detected cards) off window.__HARNESS_SCAN_QUEUE__,
     // and returns no cards once it's empty. window.__HARNESS_SCAN_CALLS__
     // counts the calls (e.g. to prove "+1 same card" makes none).
-    async invoke(name) {
+    async invoke(name, opts) {
+      // verify-discord-member returns window.__HARNESS_VERIFY__ and records
+      // the body it was sent.
+      if (name === 'verify-discord-member') {
+        window.__HARNESS_VERIFY_BODY__ = opts && opts.body;
+        return { data: window.__HARNESS_VERIFY__ || { member: true, name: '' }, error: null };
+      }
       if (name === 'scan-binder-page') {
         window.__HARNESS_SCAN_CALLS__ = (window.__HARNESS_SCAN_CALLS__ || 0) + 1;
         const queue = window.__HARNESS_SCAN_QUEUE__;
