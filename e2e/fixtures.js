@@ -51,5 +51,6 @@ export function catalogSeed(rows) {
     inventory_losses: [],
     public_binders: [],
     public_binder_list: [],
+    bounties: [],
   };
 }

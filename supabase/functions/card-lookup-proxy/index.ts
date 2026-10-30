@@ -218,19 +218,21 @@ const PROVIDERS = {
   },
 };
 
-// Staff only (CLAUDE.md "Staff-only access"). Supabase already rejects a
-// call without a valid login, but once members can sign in with Discord a
-// valid login no longer means staff. The caller is looked up on the auth
-// server (not just read from the token), so removing someone's staff flag
-// takes effect right away. The service-role key is auto-provided to every
-// Edge Function; it's only used here to look the user up.
-async function callerIsStaff(req) {
+// Staff and BGP Discord members only (CLAUDE.md "Staff-only access" and
+// "Bounties": members use it from the bounty card picker). Supabase already
+// rejects a call without a valid login, but a valid login alone could be any
+// Discord account. The caller is looked up on the auth server (not just read
+// from the token), so removing a flag takes effect right away. The
+// service-role key is auto-provided to every Edge Function; it's only used
+// here to look the user up.
+async function callerMayLookUp(req) {
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!token || !url || !key) return false;
   const { data, error } = await createClient(url, key).auth.getUser(token);
-  return !error && data?.user?.app_metadata?.staff === true;
+  const meta = data?.user?.app_metadata || {};
+  return !error && (meta.staff === true || meta.member === true);
 }
 
 Deno.serve(async (req) => {
@@ -238,8 +240,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers });
   }
-  if (!(await callerIsStaff(req))) {
-    return json({ error: "Staff only" }, 403, headers);
+  if (!(await callerMayLookUp(req))) {
+    return json({ error: "Staff and BGP Discord members only" }, 403, headers);
   }
 
   try {

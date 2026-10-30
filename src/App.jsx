@@ -10,7 +10,7 @@ import {
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, dbFindLossForTicket,
   dbLoadSettings, dbSaveSettings,
   dbLoadPriceAlerts, dbAcknowledgePriceAlerts, dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
-  dbLoadPublicBinders, dbSetPublicBinders,
+  dbLoadPublicBinders, dbSetPublicBinders, dbLoadAllBounties,
   dbLoadQuotes, dbUpsertQuote, dbDeleteQuote, dbLoadQuoteSettings, dbSaveQuoteSettings,
   dbLoadSortingQueue, dbInsertSortingItems, dbDeleteSortingItem,
 } from './lib/db.js';
@@ -33,6 +33,8 @@ import { DEFAULT_PRICE_TRACKING, alertsBySku } from './lib/priceAlertUtils.js';
 import QuotesTab from './components/quotes/QuotesTab.jsx';
 import SortingTab from './components/sorting/SortingTab.jsx';
 import ReportsTab from './components/reports/ReportsTab.jsx';
+import BountiesTab from './components/bounties/BountiesTab.jsx';
+import { callBounties, countOpenBounties } from './lib/bounties.js';
 
 const TABS = [
   { key: 'catalog', label: 'Catalog' },
@@ -42,6 +44,7 @@ const TABS = [
   { key: 'quote', label: 'Quote' },
   { key: 'sorting', label: 'Sorting' },
   { key: 'reports', label: 'Reports' },
+  { key: 'bounties', label: 'Bounties' },
 ];
 
 const CONDITION_RANK = { NM: 0, LP: 1, MP: 2, HP: 3, DMG: 4 };
@@ -132,6 +135,7 @@ export default function App() {
   const [priceTracking, setPriceTracking] = useState(DEFAULT_PRICE_TRACKING);
   // Binders shown on the public stock page and their QR pages.
   const [publicBinders, setPublicBinders] = useState([]);
+  const [bounties, setBounties] = useState([]);
   // A request for Catalog to open one item's Edit screen (from a price
   // alert's "Find card"). A fresh object each time, so asking for the
   // same sku twice still opens it twice.
@@ -162,6 +166,7 @@ export default function App() {
     dbLoadPriceAlerts(toast).then(setPriceAlerts);
     dbLoadPriceTrackingSettings(toast).then(setPriceTracking).catch(() => setPriceTracking(DEFAULT_PRICE_TRACKING));
     dbLoadPublicBinders(toast).then(setPublicBinders);
+    dbLoadAllBounties(toast).then(setBounties);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn, isStaff]);
 
@@ -218,6 +223,27 @@ export default function App() {
       toast(next.length === 1 ? '1 binder is public' : `${next.length} binders are public`);
     }
     return ok;
+  }
+
+  // Bounties (CLAUDE.md "Bounties"): Mark fulfilled / Remove go through the
+  // bounties Edge Function, which also posts the fulfilled ones to Discord.
+  async function handleBountyAction(bounty, action) {
+    try {
+      const { bounty: updated, posted } = await callBounties(action, { id: bounty.id });
+      if (updated) setBounties(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
+      if (action === 'fulfill') {
+        toast(posted ? `Marked ${bounty.name} fulfilled, ${bounty.discordName || 'the member'} was pinged in Discord`
+          : `Marked ${bounty.name} fulfilled (not posted to Discord)`);
+      } else {
+        toast(`Removed the bounty for ${bounty.name}`);
+      }
+    } catch (err) {
+      toast(err.message || String(err), true);
+    }
+  }
+
+  async function handleRefreshBounties() {
+    setBounties(await dbLoadAllBounties(toast));
   }
 
   async function handleSaveCard(record, prevSku) {
@@ -800,6 +826,7 @@ export default function App() {
             {t.key === 'queue' && <span className="count">{pendingCount}</span>}
             {t.key === 'quote' && <span className="count">{quotes.filter(q => !q.offerStatus).length}</span>}
             {t.key === 'sorting' && <span className="count">{sorting.length}</span>}
+            {t.key === 'bounties' && <span className="count">{countOpenBounties(bounties)}</span>}
           </div>
         ))}
       </div>
@@ -874,6 +901,10 @@ export default function App() {
           onUndoLoss={(loss) => undoLoss({ loss })}
           refreshKey={salesRevision}
         />
+      </div>
+
+      <div className={`panel${tab === 'bounties' ? ' active' : ''}`}>
+        <BountiesTab bounties={bounties} catalog={catalog} onAction={handleBountyAction} onRefresh={handleRefreshBounties} />
       </div>
 
       <div className="footnote">

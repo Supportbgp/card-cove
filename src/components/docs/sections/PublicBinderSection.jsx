@@ -31,8 +31,8 @@ export default function PublicBinderSection() {
         customers. After signing in, Card Cove checks with Discord that they're
         in the BGP Discord server and shows "BGP Discord member", or tells them
         to join the server first. Signing in doesn't give a customer anything
-        from the staff side of Card Cove. It's the first step toward letting
-        members post bounties (cards they're looking for).
+        from the staff side of Card Cove. Members can then post bounties, see{' '}
+        <a href="#bounties">Bounties</a>.
       </p>
       <DocsCallout kind="note">
         If you're signed in to Card Cove as staff on the same browser, the
