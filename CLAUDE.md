@@ -6217,6 +6217,85 @@ shop's password login; nothing about the staff app changes.
    `DISCORD_INVITE_URL`.
 6. Deploy `verify-discord-member`.
 
+## Bounties (bounties Phase 3)
+
+Fourth step of the bounty plan: BGP Discord members post the cards they're
+looking for; staff fulfill them. Decided with the user: the card is picked
+from a **search with a free-text fallback**; **10 open bounties per member,
+each open 60 days** (renewable); the Discord post **mentions the member**;
+staff mark fulfilled from a **new Bounties tab**, and a member can cancel
+their own. Visitors see the card and price, never who asked (decided in
+Phase 1's planning).
+
+- **`phase20_bounties.sql`**: a `bounties` table (member's `user_id`,
+  `discord_id`/`discord_name` snapshotted from app_metadata, game/name/set/
+  number/rarity/printing/condition, `image_url`, optional `max_price`,
+  `notes`, `status` open|fulfilled|cancelled|removed, `created_at`,
+  `expires_at`, `closed_at`), `is_member()` (reads `app_metadata.member`
+  from the token, like `is_staff()`), and a `public_bounties` view (open
+  and unexpired, no user/Discord columns) for anon/authenticated. RLS:
+  staff full access, members **read their own rows only**. Expiry needs no
+  job: an open bounty past `expires_at` simply counts as expired
+  (`bountyState`) and drops out of the view.
+  - **Re-running phase18 drops the "members read own" rule** (phase18
+    replaces every policy on every table with the staff one). Re-run
+    phase20 after it.
+- **Every change goes through the `bounties` Edge Function** (service
+  role): `create` (members only, 10-open limit, 60-day expiry, Discord
+  fields taken from the login, never from the request), `cancel` (owner or
+  staff), `renew` (owner, limit re-checked), `fulfill`/`remove` (staff).
+  Chosen over member insert/update RLS so the limits, the "can only cancel
+  or renew" restriction and the Discord post live in one place, and a
+  member can't edit `expires_at` or someone else's row directly. Who the
+  caller is comes from the auth server, same as the other functions.
+  - **Discord post**: a webhook (`DISCORD_BOUNTY_WEBHOOK_URL` secret,
+    optional: without it nothing is posted and the app says so). New
+    bounty and fulfilled are posted with `<@discord_id>` and
+    `allowed_mentions` limited to that one user; cancel/remove/renew are
+    not. `PUBLIC_SHOP_URL` (optional) becomes the embed's link, e.g.
+    `.../card-cove/?shop=1&view=wanted`. A failed post never fails the
+    action (`posted: false`).
+  - Limits are duplicated in `src/lib/bounties.js` (`MAX_OPEN_BOUNTIES`/
+    `BOUNTY_EXPIRY_DAYS`) for the UI, per the no-shared-code convention.
+- **`card-lookup-proxy` now also allows members** (`callerMayLookUp`), for
+  the bounty card search on One Piece/Riftbound/Gundam/SWU; the other games
+  are searched directly from the browser as before.
+- **Public side** (`ShopView` gained an **In stock / Wanted** toggle;
+  `&view=wanted` opens Wanted): `WantedPanel.jsx` shows every open bounty
+  (search + game filter) and, for a member, "Your bounties" (N of 10 open,
+  Renew when expired or in its last 7 days, Cancel) and **+ Post a bounty**
+  (`BountyFormModal.jsx`: game, name, optional set/number, "Search for the
+  card" via `searchCardImage` — picking a result fills image/set/number/
+  rarity — then condition, printing, max price, notes). `MemberBar` now
+  reports the session up (`onSession`). The Discord redirect still lands on
+  `?shop=1` (the allowlisted URL), not on Wanted.
+- **Staff side**: a **Bounties** tab (`BountiesTab.jsx`, count = open
+  bounties) with status filters, search by card or member, the member's
+  Discord name, and an "N in stock" hint (`bountyStockMatches`: same game
+  and name, unsold, not bulk). Mark fulfilled / Remove (confirm first)
+  through `callBounties`. Loaded at sign-in, with a Refresh button (no
+  realtime: would need the manual publication step, and bounties don't
+  need to be live). Fulfilling doesn't touch the catalog.
+- Harness: the `bounties` table, `public_bounties` derived from it like the
+  real view, and a `bounties` function stand-in applying the same rules
+  (records `__HARNESS_BOUNTY_CALLS__`/`__HARNESS_BOUNTY_POSTS__`).
+- Covered by `bounties.test.js` (row mapping, states/expiry, limit count,
+  labels, stock matches, the call and its error message) and
+  `e2e/bounties.spec.js` (Desktop + Mobile: visitors see open bounties
+  without names; a member posts (search unavailable for Sports Singles),
+  it's posted to Discord and listed, then cancels it; the 10-open limit
+  incl. on renew; renewing an expired one; staff see the member and the
+  in-stock hint, mark fulfilled (posted) and remove (not posted)). The
+  Edge Function has no automated tests (same accepted gap), syntax-checked
+  with esbuild. Staff docs: new `BountiesSection.jsx`. Checked at phone and
+  desktop widths via throwaway screenshots.
+
+**Setup, staging first, then production**: run `phase20_bounties.sql`;
+redeploy `card-lookup-proxy`; deploy `bounties`; in Discord, channel
+settings → Integrations → Webhooks → New Webhook → Copy URL, and set it as
+the `DISCORD_BOUNTY_WEBHOOK_URL` secret (a separate test channel for
+staging); optionally set `PUBLIC_SHOP_URL`.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

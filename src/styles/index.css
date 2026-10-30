@@ -1706,6 +1706,66 @@
     .member-bar-text { flex: 1 1 220px; min-width: 0; }
     .member-bar-error { flex-basis: 100%; color: var(--rust); font-size: 12.5px; }
 
+    /* Bounties (CLAUDE.md "Bounties") */
+    .shop-view-toggle { margin-bottom: 12px; }
+    .my-bounties {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .my-bounties-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .my-bounty-list { display: flex; flex-direction: column; gap: 6px; }
+    .my-bounty {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 6px;
+    }
+    .my-bounty-info { flex: 1 1 220px; min-width: 0; }
+    .my-bounty-name { font-weight: 600; font-size: 13.5px; }
+    .my-bounty-cancelled .my-bounty-name,
+    .my-bounty-removed .my-bounty-name { color: var(--ink-faint); }
+    .badge.bounty-state-open { background: var(--blue-soft); color: var(--blue); }
+    .badge.bounty-state-expired { background: var(--amber-soft); color: var(--amber); }
+    .badge.bounty-state-fulfilled { background: var(--green-soft); color: var(--green); }
+    .badge.bounty-state-cancelled,
+    .badge.bounty-state-removed { background: var(--surface-alt); color: var(--ink-soft); }
+    .bounty-search-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 8px;
+    }
+    .bounty-picked {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .bounty-picked img { width: 60px; border-radius: 4px; }
+    .bounty-picked > div { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .bounty-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .bounty-thumb { width: 40px; border-radius: 3px; display: block; }
+    .bounty-in-stock { color: var(--green); font-weight: 600; white-space: nowrap; }
+    .bounties-table td { white-space: nowrap; vertical-align: top; }
+    .bounties-table td:nth-child(2) { white-space: normal; min-width: 200px; }
+    .bounties-table .n-name { font-weight: 600; }
+    .bounties-table .n-sub { color: var(--ink-soft); font-size: 12.5px; }
+
     .binder-card-row {
       display: flex;
       justify-content: space-between;

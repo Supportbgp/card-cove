@@ -1,3 +1,4 @@
+import { rowToBounty } from './bounties.js';
 import { supabaseClient } from './supabase.js';
 import { normalizeCard, DEFAULT_CONDITION_MULTIPLIERS } from './cardUtils.js';
 import { DEFAULT_QUOTE_TIER_PCTS } from './quoteUtils.js';
@@ -732,4 +733,36 @@ export async function dbSetPublicBinders(locations, previous, toast) {
     if (error) { toast('Saving public binders failed: ' + error.message, true); return false; }
   }
   return true;
+}
+
+// Bounties (CLAUDE.md "Bounties"). Reads only: every change goes through
+// the bounties Edge Function (callBounties in bounties.js).
+
+// Open, unexpired bounties, without who asked (public_bounties view,
+// readable without a login).
+export async function dbLoadPublicBounties() {
+  const { data, error } = await fetchAllRows('public_bounties', 'created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(rowToBounty);
+}
+
+// A member's own bounties, every status (RLS only lets a member read their
+// own rows anyway).
+export async function dbLoadMyBounties(userId) {
+  const { data, error } = await fetchAllRows('bounties', 'created_at', {
+    ascending: false,
+    filter: q => q.eq('user_id', userId),
+  });
+  if (error) throw error;
+  return (data || []).map(rowToBounty);
+}
+
+// Staff: every bounty.
+export async function dbLoadAllBounties(toast) {
+  const { data, error } = await fetchAllRows('bounties', 'created_at', { ascending: false });
+  if (error) {
+    toast('Failed to load bounties: ' + error.message, true);
+    return [];
+  }
+  return (data || []).map(rowToBounty);
 }

@@ -9,7 +9,9 @@ import {
 // for members"). Right after a Discord sign-in the session carries
 // Discord's token (once, never stored), so that's when the BGP server
 // check runs.
-export default function MemberBar() {
+// onSession(session) reports the current login up to the page (the Wanted
+// section needs it to show a member's own bounties).
+export default function MemberBar({ onSession }) {
   const [session, setSession] = useState(undefined);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState('');
@@ -53,6 +55,11 @@ export default function MemberBar() {
     return () => { active = false; unsubscribe(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (session !== undefined && onSession) onSession(session);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}?shop=1`;
   function signIn() {

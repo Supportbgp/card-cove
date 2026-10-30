@@ -24,6 +24,8 @@ const PRIMARY_KEY = {
   inventory_losses: 'id',
   public_binders: 'location',
   public_binder_list: 'location',
+  bounties: 'id',
+  public_bounties: 'id',
 };
 
 function defaultSeed() {
@@ -41,6 +43,7 @@ function defaultSeed() {
     inventory_losses: [],
     public_binders: [],
     public_binder_list: [],
+    bounties: [],
   };
 }
 
@@ -69,10 +72,21 @@ function matchesFilters(row, filters) {
 
 let harnessQuoteNumberCounter = 0;
 
+// public_bounties is a view in the real database (phase20_bounties.sql):
+// open, unexpired bounties without who asked. Derived from `bounties` here
+// the same way, so a bounty posted in a test shows up in it.
+function publicBounties(db) {
+  const now = new Date().toISOString();
+  return (db.bounties || [])
+    .filter((b) => b.status === 'open' && b.expires_at > now)
+    .map(({ id, game, name, set_name, number, rarity, printing, condition, image_url, max_price, created_at, expires_at }) =>
+      ({ id, game, name, set_name, number, rarity, printing, condition, image_url, max_price, created_at, expires_at }));
+}
+
 function execute(table, op, filters, single, order, range) {
   const db = getDb();
   const key = PRIMARY_KEY[table];
-  const rows = db[table] || (db[table] = []);
+  const rows = table === 'public_bounties' ? publicBounties(db) : (db[table] || (db[table] = []));
 
   if (op.type === 'select') {
     let matched = rows.filter((r) => matchesFilters(r, filters));
@@ -192,6 +206,67 @@ function harnessSession() {
   return { user: { id: 'harness-user', app_metadata: { staff: window.__HARNESS_STAFF__ !== false } } };
 }
 
+// Stands in for the bounties Edge Function (CLAUDE.md "Bounties"): the same
+// rules, applied to the in-memory `bounties` table, as the current harness
+// login. Calls are recorded in window.__HARNESS_BOUNTY_CALLS__ and what
+// would have been posted to Discord in window.__HARNESS_BOUNTY_POSTS__.
+function bountyError(message) {
+  return { data: null, error: { message: 'Edge Function returned a non-2xx status code', context: { json: async () => ({ error: message }) } } };
+}
+
+async function harnessBounties(body) {
+  window.__HARNESS_BOUNTY_CALLS__ = (window.__HARNESS_BOUNTY_CALLS__ || []).concat([body]);
+  const posts = () => (window.__HARNESS_BOUNTY_POSTS__ = window.__HARNESS_BOUNTY_POSTS__ || []);
+  const { data } = await supabaseClient.auth.getSession();
+  const user = data.session && data.session.user;
+  if (!user) return bountyError('Sign in first');
+  const meta = user.app_metadata || {};
+  const db = getDb();
+  const list = db.bounties || (db.bounties = []);
+  const now = new Date();
+  const openCount = (excludeId) => list.filter((b) => b.user_id === user.id && b.status === 'open'
+    && b.expires_at > now.toISOString() && b.id !== excludeId).length;
+  const in60Days = () => new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+
+  if (body.action === 'create') {
+    if (meta.member !== true) return bountyError('Only BGP Discord members can post bounties');
+    const b = body.bounty || {};
+    if (!b.game) return bountyError('Pick a game');
+    if (!String(b.name || '').trim()) return bountyError("Enter the card's name");
+    if (openCount(null) >= 10) return bountyError('You already have 10 open bounties. Cancel one to post another.');
+    const row = {
+      id: `harness-bounty-${list.length}-${Math.random().toString(36).slice(2, 8)}`,
+      user_id: user.id, discord_id: String(meta.discord_id || ''), discord_name: String(meta.discord_name || ''),
+      game: b.game, name: String(b.name).trim(), set_name: b.set || '', number: b.number || '', rarity: b.rarity || '',
+      printing: b.printing || '', condition: b.condition || '', image_url: b.imageUrl || '',
+      max_price: b.maxPrice === '' || b.maxPrice == null ? null : Number(b.maxPrice), notes: b.notes || '',
+      status: 'open', created_at: now.toISOString(), expires_at: in60Days(), closed_at: null,
+    };
+    list.push(row);
+    posts().push({ kind: 'created', bounty: row });
+    return { data: { bounty: row, posted: true }, error: null };
+  }
+  const bounty = list.find((b) => b.id === body.id);
+  if (!bounty) return bountyError("That bounty doesn't exist");
+  if (bounty.status !== 'open') return bountyError('That bounty is already closed');
+  const isOwner = bounty.user_id === user.id;
+  if (body.action === 'cancel') {
+    if (!isOwner && meta.staff !== true) return bountyError('Not your bounty');
+    Object.assign(bounty, { status: 'cancelled', closed_at: now.toISOString() });
+  } else if (body.action === 'renew') {
+    if (!isOwner) return bountyError('Not your bounty');
+    if (openCount(bounty.id) >= 10) return bountyError('You already have 10 open bounties. Cancel one to renew this one.');
+    Object.assign(bounty, { expires_at: in60Days() });
+  } else if (body.action === 'fulfill' || body.action === 'remove') {
+    if (meta.staff !== true) return bountyError('Staff only');
+    Object.assign(bounty, { status: body.action === 'fulfill' ? 'fulfilled' : 'removed', closed_at: now.toISOString() });
+    if (body.action === 'fulfill') posts().push({ kind: 'fulfilled', bounty: { ...bounty } });
+  } else {
+    return bountyError(`Unknown action: ${body.action}`);
+  }
+  return { data: { bounty: { ...bounty }, posted: body.action === 'fulfill' }, error: null };
+}
+
 export const supabaseClient = {
   auth: {
     // A test can stand in a whole session (e.g. a Discord member's, with a
@@ -250,6 +325,7 @@ export const supabaseClient = {
         window.__HARNESS_VERIFY_BODY__ = opts && opts.body;
         return { data: window.__HARNESS_VERIFY__ || { member: true, name: '' }, error: null };
       }
+      if (name === 'bounties') return harnessBounties((opts && opts.body) || {});
       if (name === 'scan-binder-page') {
         window.__HARNESS_SCAN_CALLS__ = (window.__HARNESS_SCAN_CALLS__ || 0) + 1;
         const queue = window.__HARNESS_SCAN_QUEUE__;

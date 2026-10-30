@@ -11,6 +11,7 @@ import QuoteSection from './sections/QuoteSection.jsx';
 import SortingSection from './sections/SortingSection.jsx';
 import PricingSettingsSection from './sections/PricingSettingsSection.jsx';
 import PublicBinderSection from './sections/PublicBinderSection.jsx';
+import BountiesSection from './sections/BountiesSection.jsx';
 import GlossarySection from './sections/GlossarySection.jsx';
 import KnownQuirksSection from './sections/KnownQuirksSection.jsx';
 
@@ -28,6 +29,7 @@ const SECTIONS = [
   { id: 'sorting', label: 'Sorting', Component: SortingSection },
   { id: 'pricing-settings', label: 'Pricing settings', Component: PricingSettingsSection },
   { id: 'public-binder-page', label: 'The public binder page', Component: PublicBinderSection },
+  { id: 'bounties', label: 'Bounties', Component: BountiesSection },
   { id: 'glossary', label: 'Concepts & glossary', Component: GlossarySection },
   { id: 'known-quirks', label: 'Known quirks', Component: KnownQuirksSection },
 ];
