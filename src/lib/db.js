@@ -50,6 +50,8 @@ export function rowToCard(r) {
     basePrice: r.base_price,
     cost: r.cost,
     sourceQuoteId: r.source_quote_id || null,
+    holdBountyId: r.hold_bounty_id || null,
+    holdUntil: r.hold_until || null,
     photoUrl: r.photo_data ? "local" : (r.photo_url || ""),
     photoData: r.photo_data || "",
     activeImage: r.active_image,

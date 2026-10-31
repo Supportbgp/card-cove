@@ -5,7 +5,8 @@ vi.mock('./supabase.js', () => ({ supabaseClient: { functions: { invoke } } }));
 
 const {
   rowToBounty, bountyState, bountyDaysLeft, countOpenBounties, bountyDetailLine, bountyPriceLabel,
-  bountyStockMatches, callBounties,
+  bountyStockMatches, callBounties, offerLapsed, isHeld, countBountiesNeedingStaff, bountiesWantingCard,
+  offerDetailLine,
 } = await import('./bounties.js');
 
 const NOW = new Date('2026-10-29T12:00:00Z').getTime();
@@ -30,7 +31,19 @@ describe('rowToBounty', () => {
       set: 'Alpha', number: '269', rarity: 'Uncommon', printing: 'Nonfoil', condition: 'Near Mint',
       imageUrl: 'https://img', maxPrice: 12.5, notes: 'pls', status: 'fulfilled',
       createdAt: 'c', expiresAt: 'e', closedAt: 'z',
+      offerStatus: null, offerSku: '', offerName: '', offerSet: '', offerCondition: '', offerPrinting: '',
+      offerImage: '', offerLocation: '', offerPrice: null, offerNote: '', offeredAt: null,
+      offerExpiresAt: null, offerAnsweredAt: null,
     });
+  });
+
+  it('maps the offer snapshot', () => {
+    const b = rowToBounty({
+      id: 'x', name: 'Mew', status: 'open', offer_status: 'pending', offer_sku: 's1', offer_name: 'Mew',
+      offer_set: '151', offer_condition: 'Near Mint', offer_price: '35', offer_expires_at: 'e2', offer_location: 'Binder A',
+    });
+    expect(b).toMatchObject({ offerStatus: 'pending', offerSku: 's1', offerPrice: 35, offerExpiresAt: 'e2', offerLocation: 'Binder A' });
+    expect(offerDetailLine(b)).toBe('151 · Near Mint');
   });
 
   it('a public view row (no status, no member) reads as open, with no max price', () => {
@@ -61,6 +74,48 @@ describe('bountyState / bountyDaysLeft / countOpenBounties', () => {
       bounty({ id: 'b4', status: 'cancelled' }),
     ];
     expect(countOpenBounties(list, NOW)).toBe(2);
+  });
+});
+
+describe('offers', () => {
+  const soon = new Date(NOW + DAY).toISOString();
+  const past = new Date(NOW - 1).toISOString();
+  it('a live pending offer reads as offered, an accepted one as accepted', () => {
+    expect(bountyState(bounty({ offerStatus: 'pending', offerExpiresAt: soon }), NOW)).toBe('offered');
+    expect(bountyState(bounty({ offerStatus: 'accepted', offerExpiresAt: past }), NOW)).toBe('accepted');
+    expect(bountyState(bounty({ offerStatus: 'accepted', status: 'fulfilled' }), NOW)).toBe('fulfilled');
+  });
+
+  it('a pending offer past its date lapses back to open', () => {
+    const b = bounty({ offerStatus: 'pending', offerExpiresAt: past });
+    expect(bountyState(b, NOW)).toBe('open');
+    expect(offerLapsed(b, NOW)).toBe(true);
+    expect(offerLapsed(bounty({ offerStatus: 'pending', offerExpiresAt: soon }), NOW)).toBe(false);
+    expect(offerLapsed(bounty({ offerStatus: 'declined', offerExpiresAt: past }), NOW)).toBe(false);
+  });
+
+  it('offered and accepted still count toward the member limit; staff count open + accepted', () => {
+    const list = [
+      bounty(), bounty({ id: 'o', offerStatus: 'pending', offerExpiresAt: soon }),
+      bounty({ id: 'a', offerStatus: 'accepted', offerExpiresAt: soon }), bounty({ id: 'f', status: 'fulfilled' }),
+    ];
+    expect(countOpenBounties(list, NOW)).toBe(3);
+    expect(countBountiesNeedingStaff(list, NOW)).toBe(2);
+  });
+
+  it('isHeld: only a hold that has not run out', () => {
+    expect(isHeld({ holdBountyId: 'b', holdUntil: soon }, NOW)).toBe(true);
+    expect(isHeld({ holdBountyId: 'b', holdUntil: past }, NOW)).toBe(false);
+    expect(isHeld({ holdBountyId: null, holdUntil: soon }, NOW)).toBe(false);
+  });
+
+  it('bountiesWantingCard: open or offered bounties with the same game and name', () => {
+    const list = [
+      bounty({ id: '1' }), bounty({ id: '2', name: 'charizard ' }),
+      bounty({ id: '3', offerStatus: 'accepted', offerExpiresAt: soon }),
+      bounty({ id: '4', game: 'Magic' }), bounty({ id: '5', status: 'cancelled' }),
+    ];
+    expect(bountiesWantingCard({ name: 'Charizard', game: 'Pokemon' }, list, NOW).map(b => b.id)).toEqual(['1', '2']);
   });
 });
 

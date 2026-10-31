@@ -78,7 +78,7 @@ let harnessQuoteNumberCounter = 0;
 function publicBounties(db) {
   const now = new Date().toISOString();
   return (db.bounties || [])
-    .filter((b) => b.status === 'open' && b.expires_at > now)
+    .filter((b) => b.status === 'open' && b.expires_at > now && b.offer_status !== 'accepted')
     .map(({ id, game, name, set_name, number, rarity, printing, condition, image_url, max_price, created_at, expires_at }) =>
       ({ id, game, name, set_name, number, rarity, printing, condition, image_url, max_price, created_at, expires_at }));
 }
@@ -227,6 +227,12 @@ async function harnessBounties(body) {
   const openCount = (excludeId) => list.filter((b) => b.user_id === user.id && b.status === 'open'
     && b.expires_at > now.toISOString() && b.id !== excludeId).length;
   const in60Days = () => new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+  const in7Days = () => new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const releaseHold = (bountyId) => {
+    for (const c of db.catalog || []) {
+      if (c.hold_bounty_id === bountyId) { c.hold_bounty_id = null; c.hold_until = null; }
+    }
+  };
 
   if (body.action === 'create') {
     if (meta.member !== true) return bountyError('Only BGP Discord members can post bounties');
@@ -250,8 +256,49 @@ async function harnessBounties(body) {
   if (!bounty) return bountyError("That bounty doesn't exist");
   if (bounty.status !== 'open') return bountyError('That bounty is already closed');
   const isOwner = bounty.user_id === user.id;
+  const offerLive = bounty.offer_status === 'pending' && bounty.offer_expires_at > now.toISOString();
+  if (body.action === 'offer') {
+    if (meta.staff !== true) return bountyError('Staff only');
+    const card = (db.catalog || []).find((c) => c.sku === body.sku);
+    if (!card || card.sold || !(card.qty > 0)) return bountyError("That card isn't in stock");
+    if (card.hold_bounty_id && card.hold_bounty_id !== bounty.id && card.hold_until > now.toISOString()) {
+      return bountyError('That card is already held for another bounty');
+    }
+    releaseHold(bounty.id);
+    const until = in7Days();
+    Object.assign(card, { hold_bounty_id: bounty.id, hold_until: until });
+    Object.assign(bounty, {
+      offer_status: 'pending', offer_sku: card.sku, offer_name: card.name, offer_set: card.set_name || '',
+      offer_condition: card.condition || '', offer_printing: card.printing || '', offer_image: card.image_url || '',
+      offer_location: card.location || '',
+      offer_price: body.price === '' || body.price == null ? card.price : Number(body.price),
+      offer_note: body.note || '', offered_at: now.toISOString(), offer_expires_at: until, offer_answered_at: null,
+    });
+    posts().push({ kind: 'offered', bounty: { ...bounty } });
+    return { data: { bounty: { ...bounty }, posted: true }, error: null };
+  }
+  if (body.action === 'accept' || body.action === 'decline') {
+    if (!isOwner) return bountyError('Not your bounty');
+    if (!offerLive) return bountyError('That offer has expired or was withdrawn');
+    if (body.action === 'decline') {
+      releaseHold(bounty.id);
+      Object.assign(bounty, { offer_status: 'declined', offer_answered_at: now.toISOString() });
+    } else {
+      const until = in7Days();
+      for (const c of db.catalog || []) if (c.hold_bounty_id === bounty.id) c.hold_until = until;
+      Object.assign(bounty, { offer_status: 'accepted', offer_answered_at: now.toISOString(), offer_expires_at: until });
+    }
+    return { data: { bounty: { ...bounty }, posted: false }, error: null };
+  }
+  if (body.action === 'withdraw') {
+    if (meta.staff !== true) return bountyError('Staff only');
+    releaseHold(bounty.id);
+    Object.assign(bounty, { offer_status: null, offer_answered_at: null });
+    return { data: { bounty: { ...bounty }, posted: false }, error: null };
+  }
   if (body.action === 'cancel') {
     if (!isOwner && meta.staff !== true) return bountyError('Not your bounty');
+    releaseHold(bounty.id);
     Object.assign(bounty, { status: 'cancelled', closed_at: now.toISOString() });
   } else if (body.action === 'renew') {
     if (!isOwner) return bountyError('Not your bounty');
@@ -259,6 +306,7 @@ async function harnessBounties(body) {
     Object.assign(bounty, { expires_at: in60Days() });
   } else if (body.action === 'fulfill' || body.action === 'remove') {
     if (meta.staff !== true) return bountyError('Staff only');
+    releaseHold(bounty.id);
     Object.assign(bounty, { status: body.action === 'fulfill' ? 'fulfilled' : 'removed', closed_at: now.toISOString() });
     if (body.action === 'fulfill') posts().push({ kind: 'fulfilled', bounty: { ...bounty } });
   } else {

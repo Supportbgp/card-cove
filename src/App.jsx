@@ -34,7 +34,7 @@ import QuotesTab from './components/quotes/QuotesTab.jsx';
 import SortingTab from './components/sorting/SortingTab.jsx';
 import ReportsTab from './components/reports/ReportsTab.jsx';
 import BountiesTab from './components/bounties/BountiesTab.jsx';
-import { callBounties, countOpenBounties } from './lib/bounties.js';
+import { callBounties, countBountiesNeedingStaff } from './lib/bounties.js';
 
 const TABS = [
   { key: 'catalog', label: 'Catalog' },
@@ -225,26 +225,51 @@ export default function App() {
     return ok;
   }
 
-  // Bounties (CLAUDE.md "Bounties"): Mark fulfilled / Remove go through the
-  // bounties Edge Function, which also posts the fulfilled ones to Discord.
-  async function handleBountyAction(bounty, action) {
+  // Bounties (CLAUDE.md "Bounties"/"Bounty offers"): every action goes
+  // through the bounties Edge Function, which also posts new offers and
+  // fulfilled bounties to Discord and sets/clears the held catalog copy.
+  // Returns whether it worked.
+  async function handleBountyAction(bounty, action, payload = {}) {
     try {
-      const { bounty: updated, posted } = await callBounties(action, { id: bounty.id });
+      const { bounty: updated, posted } = await callBounties(action, { id: bounty.id, ...payload });
       if (updated) setBounties(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
-      if (action === 'fulfill') {
-        toast(posted ? `Marked ${bounty.name} fulfilled, ${bounty.discordName || 'the member'} was pinged in Discord`
-          : `Marked ${bounty.name} fulfilled (not posted to Discord)`);
+      // Mirror the hold locally; realtime brings the same change a moment later.
+      setCatalog(prev => prev.map(c => {
+        if (action === 'offer' && c.sku === payload.sku) return { ...c, holdBountyId: bounty.id, holdUntil: updated && updated.offerExpiresAt };
+        if (c.holdBountyId === bounty.id) return { ...c, holdBountyId: null, holdUntil: null };
+        return c;
+      }));
+      const who = bounty.discordName || 'the member';
+      if (action === 'offer') {
+        toast(posted ? `Offer sent, ${who} was pinged in Discord` : 'Offer saved (not posted to Discord)');
+      } else if (action === 'fulfill') {
+        toast(posted ? `Marked ${bounty.name} fulfilled, ${who} was pinged in Discord` : `Marked ${bounty.name} fulfilled (not posted to Discord)`);
+      } else if (action === 'withdraw') {
+        toast(`Withdrew the offer for ${bounty.name}`);
       } else {
         toast(`Removed the bounty for ${bounty.name}`);
       }
+      return true;
     } catch (err) {
       toast(err.message || String(err), true);
+      return false;
     }
   }
 
   async function handleRefreshBounties() {
     setBounties(await dbLoadAllBounties(toast));
   }
+
+  // Bounties aren't on the realtime channel, so a member's answer (Accept/
+  // Decline) only shows after a reload: reload on opening the tab, and every
+  // minute while it stays open.
+  useEffect(() => {
+    if (tab !== 'bounties' || !signedIn || !isStaff) return undefined;
+    handleRefreshBounties();
+    const timer = setInterval(handleRefreshBounties, 60000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, signedIn, isStaff]);
 
   async function handleSaveCard(record, prevSku) {
     const idx = catalog.findIndex(c => c.sku === prevSku);
@@ -826,7 +851,7 @@ export default function App() {
             {t.key === 'queue' && <span className="count">{pendingCount}</span>}
             {t.key === 'quote' && <span className="count">{quotes.filter(q => !q.offerStatus).length}</span>}
             {t.key === 'sorting' && <span className="count">{sorting.length}</span>}
-            {t.key === 'bounties' && <span className="count">{countOpenBounties(bounties)}</span>}
+            {t.key === 'bounties' && <span className="count">{countBountiesNeedingStaff(bounties)}</span>}
           </div>
         ))}
       </div>
@@ -890,7 +915,7 @@ export default function App() {
       </div>
 
       <div className={`panel${tab === 'sorting' ? ' active' : ''}`}>
-        <SortingTab sorting={sorting} catalog={catalog} locations={locations} onSortItems={handleSortItems} />
+        <SortingTab sorting={sorting} catalog={catalog} locations={locations} bounties={bounties} onSortItems={handleSortItems} />
       </div>
 
       <div className={`panel${tab === 'reports' ? ' active' : ''}`}>

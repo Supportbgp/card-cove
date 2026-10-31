@@ -1,3 +1,4 @@
+import { isHeld } from '../../lib/bounties.js';
 import { useState } from 'react';
 import { useUI } from '../../context/UIContext.jsx';
 import { timeAgo, activeImageSrc, GAME_TAG_CLASS } from '../../lib/cardUtils.js';
@@ -175,6 +176,7 @@ export default function CatalogTable({
                     <div className="n-name">
                       {c.name}
                       {isSold && <span className="badge sold">Sold</span>}
+                      {isHeld(c) && <span className="badge held" title={`One copy held for a bounty offer until ${new Date(c.holdUntil).toLocaleDateString()}`}>Held</span>}
                     </div>
                     <div className="catalog-card-row2">
                       <span className={`badge ${tagClass}`}>{c.game}</span>
@@ -274,6 +276,7 @@ export default function CatalogTable({
                       <span className={`badge ${tagClass}`}>{c.game}</span>
                       {c.itemType === "slab" && <span className="badge slab">Slab</span>}
                       {c.itemType === "bulk" && <span className="badge bulk">Bulk</span>}
+                      {isHeld(c) && <span className="badge held" title={`One copy held for a bounty offer until ${new Date(c.holdUntil).toLocaleDateString()}`}>Held</span>}
                       {isSold && <span className="badge sold">Sold</span>}
                       {c.notes && <span className="notes-pin" title={c.notes}>note</span>}
                       {c.sourceUrl && (
