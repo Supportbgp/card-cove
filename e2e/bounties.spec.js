@@ -263,3 +263,33 @@ test('a walk-in card in Sorting is flagged when a bounty wants it', async ({ pag
   await page.locator('.tab', { hasText: 'Sorting' }).click();
   await expect(page.locator('.badge.held', { hasText: 'Wanted ×1' })).toBeVisible();
 });
+
+test('marking a held card sold from its Edit screen asks first', async ({ page }, testInfo) => {
+  await seedHarness(page, { seed: seedWith([offeredRow()], [heldMew({ qty: 1 })]) });
+  await page.goto('./');
+  if (testInfo.project.name === 'Mobile') {
+    await page.locator('.catalog-card').first().getByText('Mew').click();
+    await page.locator('.catalog-card').getByRole('button', { name: 'Edit' }).click();
+  } else {
+    await page.locator('table tbody tr', { hasText: 'Mew' }).getByRole('button', { name: 'Edit' }).click();
+  }
+  await page.locator('#f_sold').check();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('has a copy held for a bounty offer')).toBeVisible();
+  // Cancel: nothing is sold, and the Edit screen is still open.
+  await page.locator('.modal', { hasText: 'Held for a bounty' }).getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#f_sold')).toBeVisible();
+  expect((await page.evaluate(() => window.__HARNESS_DB__.catalog[0])).sold).toBe(false);
+});
+
+test('the Bounties tab reloads when opened, so a member’s answer shows up', async ({ page }) => {
+  await seedHarness(page, { seed: seedWith([offeredRow()], [heldMew()]) });
+  await page.goto('./');
+  await page.locator('.tab', { hasText: 'Bounties' }).click();
+  await expect(page.getByRole('button', { name: /^Offer sent \(1\)/ })).toBeVisible();
+  // The member accepts in another browser.
+  await page.evaluate(() => { window.__HARNESS_DB__.bounties[0].offer_status = 'accepted'; });
+  await page.locator('.tab', { hasText: 'Catalog' }).click();
+  await page.locator('.tab', { hasText: 'Bounties' }).click();
+  await expect(page.getByRole('button', { name: /^Accepted \(1\)/ })).toBeVisible();
+});

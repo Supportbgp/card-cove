@@ -260,6 +260,17 @@ export default function App() {
     setBounties(await dbLoadAllBounties(toast));
   }
 
+  // Bounties aren't on the realtime channel, so a member's answer (Accept/
+  // Decline) only shows after a reload: reload on opening the tab, and every
+  // minute while it stays open.
+  useEffect(() => {
+    if (tab !== 'bounties' || !signedIn || !isStaff) return undefined;
+    handleRefreshBounties();
+    const timer = setInterval(handleRefreshBounties, 60000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, signedIn, isStaff]);
+
   async function handleSaveCard(record, prevSku) {
     const idx = catalog.findIndex(c => c.sku === prevSku);
     const existing = prevSku && idx >= 0 ? catalog[idx] : null;

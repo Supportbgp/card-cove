@@ -6358,6 +6358,30 @@ the member **accepts or declines on the website**; the offered copy is
 **Setup, staging first, then production**: run `phase21_bounty_offers.sql`
 (after phase20), then redeploy `bounties`.
 
+### Fixes from recording the tutorial on staging
+
+Recording the staff tutorial videos on staging (deck: "Bounties Tutorial",
+a Slides artifact) surfaced four issues, all fixed in the same PR:
+
+- **"Could not find the table 'public.inventory_losses' in the schema
+  cache"** on staging: the copy recreated every table, but Supabase's API
+  (PostgREST) only re-reads its table list when told. `Copy-ProdToStaging`
+  now ends its restore with `notify pgrst, 'reload schema'`, and
+  `Invoke-BranchMigrations` sends it after the branch's migrations. On a
+  staging already up, run that line once in the SQL Editor.
+- **Edit's "Mark as sold" on a held card didn't ask first** (only the
+  Catalog's Mark sold did). `CatalogPanel`'s `confirmHeldSale` is now asked
+  from both; cancelling leaves the Edit screen open, nothing saved.
+- **The Bounties tab showed a stale state** (an accepted offer still read
+  "Offer sent") since bounties aren't on the realtime channel. `App.jsx`
+  reloads them whenever the tab is opened and every minute while it's open.
+- **"Your bounties" flashed "0 of 10 open / you haven't posted any" while
+  loading.** `WantedPanel`'s `mine` starts as `null` and shows "Loading
+  your bounties…" (Post a bounty disabled) until the list arrives.
+
+Covered by two new `e2e/bounties.spec.js` tests (the Edit-screen prompt;
+the tab reload picking up an accepted offer).
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

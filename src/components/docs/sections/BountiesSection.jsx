@@ -48,8 +48,9 @@ export default function BountiesSection() {
         <li>No answer in 7 days: the hold runs out on its own and the bounty is open again.</li>
       </ul>
       <p>
-        When they come in, sell the card with <strong>Mark sold</strong> as usual
-        (it asks first, since the copy is held), then <strong>Mark fulfilled</strong>{' '}
+        When they come in, sell the card as usual, with <strong>Mark sold</strong> or
+        Edit’s <strong>Mark as sold</strong> (both ask first, since the copy is
+        held), then <strong>Mark fulfilled</strong>{' '}
         on the bounty. <strong>Withdraw offer</strong> takes an offer back and
         releases the card.
       </p>

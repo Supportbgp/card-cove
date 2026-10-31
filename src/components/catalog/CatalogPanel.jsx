@@ -124,17 +124,22 @@ export default function CatalogPanel({
     setSelectedSkus(new Set());
   }
 
-  async function handleBatchSell() {
-    const count = selectedSkus.size;
-    if (!count) return;
-    // A copy held for a bounty offer is set aside for that member; selling it
-    // is fine when it's their pickup, but worth a second look otherwise.
-    const held = catalog.filter(c => selectedSkus.has(c.sku) && isHeld(c));
-    if (held.length && !(await showConfirm(
+  // A copy held for a bounty offer is set aside for that member; selling it
+  // is fine when it's their pickup, but worth a second look otherwise. Asked
+  // from both ways of selling: Mark sold and Edit's "Mark as sold".
+  function confirmHeldSale(held) {
+    return showConfirm(
       `${held.map(c => c.name).join(', ')} ${held.length === 1 ? 'has' : 'have'} a copy held for a bounty offer. ` +
       'If this is that member picking it up, go ahead, then mark the bounty fulfilled in the Bounties tab. Otherwise, withdraw the offer first.',
       'Held for a bounty'
-    ))) return;
+    );
+  }
+
+  async function handleBatchSell() {
+    const count = selectedSkus.size;
+    if (!count) return;
+    const held = catalog.filter(c => selectedSkus.has(c.sku) && isHeld(c));
+    if (held.length && !(await confirmHeldSale(held))) return;
     if (count === 1) {
       const sku = selectedSkus.values().next().value;
       const card = catalog.find(c => c.sku === sku);
@@ -230,7 +235,12 @@ export default function CatalogPanel({
           multipliers={multipliers}
           priceAlert={editingSku ? priceAlertsBySku.get(editingSku) : null}
           onClose={closeEdit}
-          onSave={async (record, prevSku) => { await onSaveCard(record, prevSku); closeEdit(); }}
+          onSave={async (record, prevSku) => {
+            if (record.sold && editingCard && !editingCard.sold && isHeld(editingCard)
+              && !(await confirmHeldSale([editingCard]))) return;
+            await onSaveCard(record, prevSku);
+            closeEdit();
+          }}
           onDelete={async (sku) => { await onDeleteCard(sku); closeEdit(); }}
         />
       )}

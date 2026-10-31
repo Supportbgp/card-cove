@@ -49,7 +49,8 @@ function BountyCard({ b, onZoom }) {
 export default function WantedPanel({ session, onZoom }) {
   const [bounties, setBounties] = useState(null);
   const [loadError, setLoadError] = useState('');
-  const [mine, setMine] = useState([]);
+  // null = still loading (shown as Loading…, not as "no bounties").
+  const [mine, setMine] = useState(null);
   const [query, setQuery] = useState('');
   const [game, setGame] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -65,12 +66,15 @@ export default function WantedPanel({ session, onZoom }) {
   }
   function reloadMine() {
     if (!isMember || !userId) { setMine([]); return Promise.resolve(); }
-    return dbLoadMyBounties(userId).then(setMine).catch(err => setMessage({ err: true, text: err.message }));
+    return dbLoadMyBounties(userId).then(setMine).catch(err => {
+      setMine([]);
+      setMessage({ err: true, text: err.message });
+    });
   }
 
   useEffect(() => { reloadPublic(); }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reloadMine(); }, [isMember, userId]);
+  useEffect(() => { setMine(null); reloadMine(); }, [isMember, userId]);
 
   const games = useMemo(
     () => Array.from(new Set((bounties || []).map(b => b.game).filter(Boolean))).sort(),
@@ -85,11 +89,11 @@ export default function WantedPanel({ session, onZoom }) {
     });
   }, [bounties, query, game]);
 
-  const openMine = countOpenBounties(mine);
+  const openMine = countOpenBounties(mine || []);
   // Closed ones are only kept around briefly: the list shows open, expired
   // (renewable) and the last few closed.
-  const visibleMine = mine.filter(b => ACTIVE.includes(bountyState(b)))
-    .concat(mine.filter(b => !ACTIVE.includes(bountyState(b))).slice(0, 5));
+  const visibleMine = (mine || []).filter(b => ACTIVE.includes(bountyState(b)))
+    .concat((mine || []).filter(b => !ACTIVE.includes(bountyState(b))).slice(0, 5));
 
   async function handlePost(form) {
     const { posted } = await callBounties('create', { bounty: form });
@@ -122,19 +126,21 @@ export default function WantedPanel({ session, onZoom }) {
             <div>
               <div className="section-label" style={{ margin: 0 }}>Your bounties</div>
               <div className="status-line" style={{ margin: 0 }}>
-                {openMine} of {MAX_OPEN_BOUNTIES} open · each stays up {BOUNTY_EXPIRY_DAYS} days, then you can renew it.
+                {mine === null ? 'Loading…' : `${openMine} of ${MAX_OPEN_BOUNTIES} open`} · each stays up {BOUNTY_EXPIRY_DAYS} days, then you can renew it.
               </div>
             </div>
             <button
               className="btn small"
-              disabled={openMine >= MAX_OPEN_BOUNTIES}
+              disabled={mine === null || openMine >= MAX_OPEN_BOUNTIES}
               title={openMine >= MAX_OPEN_BOUNTIES ? `You have ${MAX_OPEN_BOUNTIES} open bounties. Cancel one to post another.` : undefined}
               onClick={() => { setMessage(null); setShowForm(true); }}
             >
               + Post a bounty
             </button>
           </div>
-          {visibleMine.length === 0 ? (
+          {mine === null ? (
+            <div className="status-line"><span className="spinner" /> Loading your bounties…</div>
+          ) : visibleMine.length === 0 ? (
             <div className="status-line">You haven't posted any bounties yet.</div>
           ) : (
             <div className="my-bounty-list">
