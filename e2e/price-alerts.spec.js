@@ -46,6 +46,24 @@ test('an open alert shows a topbar badge and a marker on the item\'s price', asy
   await expect(row).toContainText('+67%');
 });
 
+test('an alert for a card that has sold out is hidden', async ({ page }) => {
+  await seedHarness(page, {
+    seed: {
+      ...catalogSeed([
+        makeCardRow({ sku: 'sku-1', name: 'Charizard', price: 250 }),
+        makeCardRow({ sku: 'sku-2', name: 'Circle of Life', game: 'Lorcana', price: 40, qty: 0, sold: true }),
+      ]),
+      price_alerts: [makeAlertRow(), makeAlertRow({ id: 'alert-2', sku: 'sku-2', name: 'Circle of Life', game: 'Lorcana' })],
+    },
+  });
+  await page.goto('./');
+  await expect(page.locator('.price-alerts-badge')).toHaveText(/1 price alert$/);
+  await page.locator('.price-alerts-badge').click();
+  await expect(page.locator('.price-alert-row')).toHaveCount(1);
+  await expect(page.locator('.price-alert-row')).toContainText('Charizard');
+  await expect(page.locator('.price-alert-row')).not.toContainText('Circle of Life');
+});
+
 test('"Find card" opens Edit with the alert for reference, never changes the price itself, and saving clears the alert', async ({ page }) => {
   await seedHarness(page, { seed: seedWithAlert() });
   await page.goto('./');

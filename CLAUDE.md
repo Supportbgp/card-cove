@@ -6382,6 +6382,26 @@ a Slides artifact) surfaced four issues, all fixed in the same PR:
 Covered by two new `e2e/bounties.spec.js` tests (the Edit-screen prompt;
 the tab reload picking up an accepted offer).
 
+## Price alerts: only for cards still in stock
+
+Staff report: an alert for Circle of Life (Lorcana), sold out a while
+back. `price-check` only skipped Bulk, so sold-out rows were still
+checked, and alerts raised before a sale stayed open after it.
+
+- `price-check`'s catalog query now also requires `sold = false` and
+  `qty > 0`, so a sold-out card gets no new alerts.
+- The app hides open alerts whose item is sold or at qty 0
+  (`alertsForOwnedItems` in `priceAlertUtils.js`, used by the badge, the
+  alerts list and the Catalog markers). Hidden, not acknowledged: undoing
+  the sale brings it back. An alert for a deleted item still shows, with
+  Dismiss, as before.
+- Covered by `priceAlertUtils.test.js` and a new
+  `e2e/price-alerts.spec.js` case. Staff docs: a sentence in
+  `PricingSettingsSection.jsx`.
+
+**Requires redeploying `price-check`** (staging first, then production);
+the hiding ships with the site. No migration.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

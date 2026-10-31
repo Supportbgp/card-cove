@@ -673,6 +673,9 @@ Deno.serve(async (req) => {
     .from("catalog")
     .select("sku, name, set_name, game, price, condition")
     .neq("item_type", "bulk")
+    // Only cards we still have: a sold-out card's price doesn't matter.
+    .eq("sold", false)
+    .gt("qty", 0)
     .not("price", "is", null)
     .gte("price", floor)
     .in("game", Object.keys(PRICE_LOOKUPS))

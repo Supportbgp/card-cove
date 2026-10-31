@@ -29,7 +29,9 @@ export default function PricingSettingsSection() {
         above Our Price, it raises a <strong>price alert</strong>. A blue{' '}
         <strong>"▲ N price alerts"</strong> badge then shows up at the top of
         every screen, and that item's price gets a small <strong>▲</strong> in
-        the Catalog.
+        the Catalog. Only cards still in stock are checked: once an item is
+        sold out, it gets no new alerts, and any alert it already had is
+        hidden (it comes back if the sale is undone).
       </p>
       <p>
         Click the badge to see every open alert: Our Price, the market price
