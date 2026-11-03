@@ -6202,6 +6202,44 @@ checked, and alerts raised before a sale stayed open after it.
 the hiding ships with the site. No migration.
 
 
+## Dev skills and review rules
+
+Tools added for design and security work (2026-11-03), checked against
+their own docs and source before installing:
+
+- **Frontend Design** (Anthropic plugin, installed per user, not in the
+  repo): a playbook for new UI (token plan, then build, then critique).
+  It's built for new designs and pushes "bold" choices, so here it works
+  inside Card Cove's look: keep the logo palette tokens in `:root`
+  (`--teal`, `--amber`, ...), their semantic roles and the 4.5:1 contrast
+  rule, the existing fonts, plain CSS in `index.css`, the shared 640px
+  breakpoint, and the explicit-button-only modals. Use it for new screens
+  and redesigns, not to restyle what already works.
+- **Make Interfaces Feel Better** (Jakub Krehel, MIT): copied into
+  `.claude/skills/make-interfaces-feel-better/` from a pinned commit (see
+  its `VENDORED.md`), so everyone gets the same reviewed version. 19 polish
+  rules (concentric radius, 44px touch targets, tabular numbers for
+  changing values, press scale 0.96, no `transition: all`, ...) and a
+  `quick`/`full` review mode with a findings table and a verdict. For Card
+  Cove: plain CSS, no motion library (use its CSS paths, ignore Tailwind/
+  `motion` examples), no dark mode yet.
+- **Security Guidance** (Anthropic plugin, installed per user): regex
+  warnings on edits (free), an Opus review of each turn's changes when
+  Claude finishes (costs tokens, logged in `~/.claude/security/log.txt`),
+  and an agentic review on `git commit`/`git push`. It only reviews
+  changes, never the whole codebase. Project rules for it are in
+  `.claude/claude-security-guidance.md` (max 8 KB; read by the per-turn
+  review only, not the commit reviewer): keep it current when a security
+  decision is made (a new public view, a new secret, a new Edge Function).
+  To drop the per-turn review and keep commit/push reviews, set
+  `ENABLE_STOP_REVIEW=0`.
+- **Thermos (Cursor) evaluated, not installed**: its deep review
+  (correctness, breakages, security, verified findings) matches the
+  built-in `/code-review` + `/security-review`, and its quality rubric
+  mostly matches `/simplify`. Its official version is Cursor-only and the
+  Claude Code port is a small one-person repo. The one distinct rule, file
+  size, was adopted below.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new
@@ -6292,3 +6330,18 @@ discipline this file already follows everywhere else.
   on every intermediate push — run just the specific `e2e/*.spec.js` file(s)
   that cover the area touched, if one exists, otherwise skip e2e for that
   push. Do the full e2e run as the last step before merge regardless.
+- **Reviews before merging** (see "Dev skills and review rules"):
+  - Every PR: run `/code-review` (at `high`) and `/security-review` on the
+    branch before merging, and fix or answer each finding in the PR.
+    `/simplify` when a change touched a lot of structure.
+  - UI changes: a `quick` Make Interfaces Feel Better review of the changed
+    screens before pushing; a `full` one for a dedicated polish pass. New
+    screens start from Frontend Design, within the existing palette.
+  - Security Guidance runs on its own; don't skip a high-severity finding
+    it raises without saying why in the PR.
+  - File size: a change shouldn't push a file past 1,000 lines, and files
+    already past it (`App.jsx`, `cardSearch.js`, ...) shouldn't grow
+    without splitting something out. A soft rule, borrowed from Thermos.
+  - None of these audit the whole codebase. Run a full-codebase security
+    review after big features (new tables, new public pages, new Edge
+    Functions) and at least once a quarter.
