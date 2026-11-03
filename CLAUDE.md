@@ -5993,6 +5993,194 @@ ticket** like a sale does, so listings get taken down.
 Editor before this deploys (staging runs it automatically on
 `/deploy-staging`).
 
+## Staff-only access (bounties Phase 0)
+
+First step of the public bounty section (planned with the user: members
+sign in with Discord, only BGP server members post, fulfilled through the
+shop, Discord channel posts; see the conversation's plan, phases 0-4).
+Until now every table's rule was "authenticated full access", which was
+fine while the only login was the shop's own. Once members can sign in,
+that rule would hand any member the whole catalog, quotes and sales, so
+it had to change first.
+
+- **Who's staff**: a `staff: true` flag in the login's `app_metadata`
+  (only an admin can set it; a user can't change their own) and
+  `public.is_staff()`, which reads it from the login token
+  (`auth.jwt()`), so checking it costs no extra query. Chosen over a
+  staff table because nothing has to be seeded in a separate place and
+  the check works the same in both projects.
+- **`phase18_staff_only_access.sql`**: creates `is_staff()`, marks the
+  shop login (`rafaelromero.dev@gmail.com`, the app's
+  `SHARED_LOGIN_EMAIL`) as staff, then loops over **every** table in
+  `public`: turns RLS on, drops every existing rule, and adds one
+  `"staff full access"` rule for `authenticated` using `is_staff()`. A
+  loop rather than a list, so tables made by hand (`catalog`,
+  `sync_queue`) and anything not in this repo's migrations are covered
+  too. Re-runnable. The public binder page is unaffected (it reads
+  `catalog_public_view` through the view owner's access), and
+  `price-check` uses the service role, which bypasses RLS.
+- **Rule for every future table**: a migration that creates a table
+  must add `create policy "staff full access" ... using
+  (public.is_staff()) with check (public.is_staff())`, never "authenticated
+  full access" again. Re-running phase18 also fixes a table that was missed.
+- **Edge Functions**: `scan-binder-page` and `card-lookup-proxy` only
+  checked "has a valid login", so any member could have run scans on the
+  shop's Anthropic key. Both now look the caller up on the auth server
+  (`callerIsStaff`, with the auto-provided service-role key, so removing
+  the flag takes effect at once rather than at token expiry) and answer
+  403 "Staff only" otherwise. Duplicated in each, per the no-shared-code
+  convention. `card-lookup-proxy` will need to open up to members later
+  (bounty card picker, Phase 3).
+- **App**: `staffAccess.js`'s `loadSession` refreshes the login on load,
+  so a flag set since the last sign-in reaches the token without asking
+  staff to sign out, and `isStaffUser` reads the flag from the session.
+  A non-staff login gets `NoStaffAccess.jsx` ("No staff access", Sign
+  out) instead of the app, whose tabs would otherwise just come up empty
+  and read as lost data. Data and realtime only load for staff. The
+  database is what actually enforces this; the screen is only so the app
+  explains itself.
+- **Verified** against a throwaway local Postgres set up like Supabase
+  (`auth.users`, `auth.jwt()`, the `authenticated`/`anon` roles, tables
+  with the old rule, one with an extra anon rule, one with no RLS):
+  after the migration (run twice) every table has exactly the one staff
+  rule; the staff login reads and writes everything; a member login
+  (no flag) reads nothing and can't write ("violates row-level security
+  policy"); anon reads nothing from tables but still reads
+  `catalog_public_view`. Plus `e2e/staff-access.spec.js` (Desktop +
+  Mobile) for the "No staff access" screen; the harness login carries
+  the flag unless a test sets `staff: false` in `seedHarness`.
+- **Order with PR #79** (lost/stolen cards): its `phase17_inventory_losses.sql`
+  was written before this and still creates "authenticated full access".
+  It was merged and run on production first (2026-10-28), so phase18's
+  loop over every table makes `inventory_losses` staff-only too. The
+  phase17 file itself was left as-is (already run); phase18 overrides it.
+- Staff docs: a "No staff access" entry in `KnownQuirksSection.jsx`.
+
+**Requires, in order, on staging first and then production**: running
+`phase18_staff_only_access.sql`, then redeploying both functions
+(`supabase functions deploy scan-binder-page` and `card-lookup-proxy`,
+with `--project-ref` for staging). Functions deployed before the
+migration would refuse the shop login, since it isn't flagged yet. Also
+confirm Authentication → "Allow new users to sign up" is off in both
+projects until Discord sign-in is set up deliberately.
+
+## Public binders and the public stock page (bounties Phase 1)
+
+Second step of the bounty plan (see "Staff-only access" above): customers
+can browse what's in stock online, limited to binders staff choose. Decided
+with the user: one setting covers both the public stock page and a binder's
+QR page; **every binder starts private** (option B, picked because the QR
+pages weren't really in use yet), so a QR page for a binder nobody has
+ticked says "This binder isn't shared online"; Bulk stays in-store only.
+Open bounties join this page in Phase 3.
+
+- **`phase19_public_binders.sql`**: a `public_binders` table (one row per
+  public `location`; there's no binders table, a binder is just a catalog
+  location). Staff-only rule, as phase18 requires for every new table, plus
+  explicit grants (authenticated read/write, nothing for anon) instead of
+  relying on Supabase's automatic ones. `catalog_public_view` keeps its
+  columns and now also requires the row's location to be in
+  `public_binders`. A new `public_binder_list` view exposes just the names,
+  so the public pages can tell "not shared" from "empty". Both views are
+  granted to `anon` and `authenticated` (a signed-in staff member or, later,
+  a member opening a public page queries as `authenticated`). Verified on a
+  throwaway local Postgres after phase18, both run twice: nothing public
+  until a binder is ticked; visitors see only ticked binders, never bulk or
+  sold; a member login can't add to the list ("violates row-level security
+  policy") but sees the same public views; anon can't write.
+- **Staff side**: Import / Export → **Public binders…**
+  (`PublicBindersModal.jsx`): every location, with how many cards would
+  show (unsold, in stock, not bulk), ticked = public, Save. A binder that's
+  public but has no catalog rows left still appears, so it can be turned
+  off. The public stock page's link is in the same window.
+  `dbSetPublicBinders` inserts the newly ticked and deletes the unticked.
+  Loaded once at sign-in (`dbLoadPublicBinders`), no realtime: it rarely
+  changes. The Binder QR window now warns when the chosen binder isn't
+  public, and its select gained a real label (`htmlFor`).
+- **Public stock page, `?shop=1`** (`src/components/public/ShopView.jsx`,
+  routed in `main.jsx` like `?binder=`; no login, no UIProvider): search by
+  name/set, Game and Binder filters (Binder only when there's more than
+  one), 48 cards at a time with "Show more". **Inline images are loaded
+  only for the cards on screen**: `dbLoadPublicStock` selects every column
+  except `image_data`/`photo_data` (scanner crops and uploads are ~50-150 KB
+  each, far too much for a whole shop on a phone), and
+  `dbLoadPublicImages` fetches them for the visible cards. The view has no
+  id, so cards are matched back by `publicItemKey` (name, binder, set,
+  condition, printing, grader, grade). `fetchAllRows` gained a `columns`
+  option for this.
+- **`PublicCard.jsx`** is the card tile shared by both public pages
+  (moved out of `BinderView.jsx`, plus an optional "In: <binder>" line for
+  the stock page). `BinderView` now checks `public_binder_list` and links to
+  the stock page ("Search all stock").
+- Staff docs: `PublicBinderSection.jsx` (public-only rule, the stock page)
+  and `ImportExportSection.jsx` (Public binders…, QR warning).
+- Covered by new `db.test.js` cases (no heavy columns in the list query,
+  image fetch and matching, list/load/save incl. failures),
+  `e2e/public-binders.spec.js` (Desktop + Mobile: the stock page lists and
+  filters; the nothing-public state; staff tick/untick with bulk not
+  counted and the QR warning) and a new `binder-view.spec.js` case (a
+  non-public binder says so). The harness views are seeded directly, so the
+  view filtering itself is what the local Postgres check covers.
+
+**Requires running `phase19_public_binders.sql`** (after phase18) in the
+SQL Editor; staging runs both on `npm run deploy-staging`. Right after it,
+every QR page and the stock page show nothing until staff tick binders.
+
+## Want list (replaces the Discord bounties, PRs #82-#84)
+
+Demo feedback on the bounty system (Discord sign-in, member posting, a
+10-open limit, 60-day expiry, offers, holds, Accept/Decline): staff found
+it "more complicated and convoluted than what it was meant to be". What
+they need is the walk-in flow, "do you have X?" "No, but I'll keep it on a
+list. Name and number?", plus a heads-up while quoting a card someone
+wants. Built fresh from #81 (public binders) rather than on top of #82-#84,
+so none of the Discord/member/offer code or its Edge Functions came along;
+those PRs are superseded. Decided with the user: anyone on duty contacts
+the customer, so the app is only the record (plus an optional Responsible
+field, like a quote's Employee); a request **stays until fulfilled or
+rejected**, no expiry; the quote notice **suggests paying more**; and the
+public page stays, shareable, with each request's visibility up to staff.
+
+- **`phase20_want_list.sql`**: `want_requests` (card: game/name/set_name/
+  number/rarity/printing/condition/image_url; `max_price`, what the
+  customer would pay; `customer_name`, `customer_contact`, `responsible`,
+  `notes`; `show_public`; `status` open|fulfilled|rejected; `created_at`,
+  `closed_at`), staff-only RLS per phase18's rule, and a
+  `public_want_list` view (open + `show_public`, card columns only: no
+  customer, contact, price, responsible or notes) for anon/authenticated.
+  Ends with `notify pgrst, 'reload schema'`.
+- **Staff write the table directly** (`dbLoadWantRequests`/
+  `dbSaveWantRequest`/`dbSetWantStatus` in `db.js`); no Edge Function,
+  since there's no member side to police. Insert sends `status` and
+  `created_at` itself (the harness doesn't apply column defaults).
+- **Want list tab** (`WantListTab.jsx`, count = open requests): filters
+  Open/Fulfilled/Rejected/All, search by card/customer/staff, the
+  customer's contact, "N in stock" (`wantStockMatches`: same game and
+  name, unsold, not Bulk), Edit, Fulfilled, Reject (confirm) and Reopen,
+  plus the public link (Open / Copy link). `WantRequestModal.jsx` adds and
+  edits: the card (optional search via `searchCardImage`, picking a result
+  fills picture/set/number/rarity), price, customer, contact, Responsible,
+  notes, "Show on the public Wanted list" (default on). Not on the
+  realtime channel: reloaded when the tab is opened, plus Refresh.
+- **Quote notice** (`QuoteLineItemRow`): a card row whose name (and game,
+  once both have one) matches an open request (`wantsForCard`) shows "On
+  the want list: wanted by Jake (up to $40)" and **Pay +10% for it**, which
+  turns on the row's Alter % at +10 (`WANTED_PAY_BUMP_PCT`, added to any
+  delta already there). Matching by name alone before a game is picked is
+  deliberate: a fresh row has no game yet, and an early heads-up beats a
+  missed one. **Sorting** shows a "Wanted ×N" tag the same way.
+- **Public page**: `ShopView` gained an In stock / Wanted toggle;
+  `?shop=1&view=wanted` opens Wanted (`PublicWantList.jsx`), read-only.
+- Also ported from #84: the staging copy and branch migrations end with
+  `notify pgrst, 'reload schema'` (the "schema cache" error on staging).
+- Covered by `wantList.test.js` and `e2e/want-list.spec.js` (Desktop +
+  Mobile): add a request; the public page hides hidden/closed requests and
+  every customer detail; fulfill/reject/reopen; edit; the quote notice and
+  its +10%; the Sorting tag. Staff docs: new `WantListSection.jsx`, and a
+  line in `PublicBinderSection.jsx`.
+
+**Requires running `phase20_want_list.sql`** (after phase18 and phase19).
+No Edge Function deploy.
 ## Price alerts: only for cards still in stock
 
 Staff report: an alert for Circle of Life (Lorcana), sold out a while

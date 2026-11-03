@@ -22,6 +22,10 @@ const PRIMARY_KEY = {
   price_alerts: 'id',
   price_tracking_settings: 'id',
   inventory_losses: 'id',
+  public_binders: 'location',
+  public_binder_list: 'location',
+  want_requests: 'id',
+  public_want_list: 'id',
 };
 
 function defaultSeed() {
@@ -37,6 +41,9 @@ function defaultSeed() {
     price_alerts: [],
     price_tracking_settings: [{ id: 1, floor_price: 25, spike_pct: 20 }],
     inventory_losses: [],
+    public_binders: [],
+    public_binder_list: [],
+    want_requests: [],
   };
 }
 
@@ -65,10 +72,20 @@ function matchesFilters(row, filters) {
 
 let harnessQuoteNumberCounter = 0;
 
+// public_want_list is a view in the real database (phase20_want_list.sql):
+// open requests staff chose to show, without the customer. Derived from
+// want_requests here the same way, so a request added in a test shows up.
+function publicWantList(db) {
+  return (db.want_requests || [])
+    .filter((w) => w.status === 'open' && w.show_public !== false)
+    .map(({ id, game, name, set_name, number, rarity, printing, condition, image_url, created_at }) =>
+      ({ id, game, name, set_name, number, rarity, printing, condition, image_url, created_at }));
+}
+
 function execute(table, op, filters, single, order, range) {
   const db = getDb();
   const key = PRIMARY_KEY[table];
-  const rows = db[table] || (db[table] = []);
+  const rows = table === 'public_want_list' ? publicWantList(db) : (db[table] || (db[table] = []));
 
   if (op.type === 'select') {
     let matched = rows.filter((r) => matchesFilters(r, filters));
@@ -181,16 +198,27 @@ function makeChannel() {
 // e2e/login.spec.js doesn't need to duplicate the literal.
 export const HARNESS_PASSWORD = 'harness-test-password';
 
+// The harness login is staff unless a test sets window.__HARNESS_STAFF__ =
+// false (to show the "No staff access" screen), mirroring the real
+// app_metadata.staff flag (CLAUDE.md "Staff-only access").
+function harnessSession() {
+  return { user: { id: 'harness-user', app_metadata: { staff: window.__HARNESS_STAFF__ !== false } } };
+}
+
 export const supabaseClient = {
   auth: {
     async getSession() {
       const signedIn = window.__HARNESS_SIGNED_IN__ !== false;
-      return { data: { session: signedIn ? { user: { id: 'harness-user' } } : null } };
+      return { data: { session: signedIn ? harnessSession() : null } };
+    },
+    async refreshSession() {
+      const signedIn = window.__HARNESS_SIGNED_IN__ !== false;
+      return { data: { session: signedIn ? harnessSession() : null }, error: null };
     },
     async signInWithPassword({ password }) {
       if (password === HARNESS_PASSWORD) {
         window.__HARNESS_SIGNED_IN__ = true;
-        return { data: { session: { user: { id: 'harness-user' } } }, error: null };
+        return { data: { session: harnessSession() }, error: null };
       }
       return { data: null, error: { message: 'Invalid login credentials' } };
     },

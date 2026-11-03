@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabaseClient } from './lib/supabase.js';
+import { loadSession, isStaffUser } from './lib/staffAccess.js';
+import NoStaffAccess from './components/NoStaffAccess.jsx';
 import { lossReasonLabel } from './lib/reportUtils.js';
 import {
   dbLoadAll, dbUpsertCard, dbUpsertCards, dbDeleteCard, dbDeleteCards, dbClearCatalog,
@@ -8,6 +10,8 @@ import {
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, dbFindLossForTicket,
   dbLoadSettings, dbSaveSettings,
   dbLoadPriceAlerts, dbAcknowledgePriceAlerts, dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
+  dbLoadPublicBinders, dbSetPublicBinders,
+  dbLoadWantRequests, dbSaveWantRequest, dbSetWantStatus,
   dbLoadQuotes, dbUpsertQuote, dbDeleteQuote, dbLoadQuoteSettings, dbSaveQuoteSettings,
   dbLoadSortingQueue, dbInsertSortingItems, dbDeleteSortingItem,
 } from './lib/db.js';
@@ -30,6 +34,7 @@ import { DEFAULT_PRICE_TRACKING, alertsBySku, alertsForOwnedItems } from './lib/
 import QuotesTab from './components/quotes/QuotesTab.jsx';
 import SortingTab from './components/sorting/SortingTab.jsx';
 import ReportsTab from './components/reports/ReportsTab.jsx';
+import WantListTab from './components/wantlist/WantListTab.jsx';
 
 const TABS = [
   { key: 'catalog', label: 'Catalog' },
@@ -39,6 +44,7 @@ const TABS = [
   { key: 'quote', label: 'Quote' },
   { key: 'sorting', label: 'Sorting' },
   { key: 'reports', label: 'Reports' },
+  { key: 'wants', label: 'Want list' },
 ];
 
 const CONDITION_RANK = { NM: 0, LP: 1, MP: 2, HP: 3, DMG: 4 };
@@ -88,6 +94,9 @@ function priceVsMarketValueWarning(record, multipliers) {
 export default function App() {
   const { toast } = useUI();
   const [signedIn, setSignedIn] = useState(false);
+  // Whether the login is marked as staff (CLAUDE.md "Staff-only access").
+  // Data only loads for staff; any other login gets NoStaffAccess.
+  const [isStaff, setIsStaff] = useState(false);
   const [checkedSession, setCheckedSession] = useState(false);
   const [tab, setTab] = useState('catalog');
   const [catalog, setCatalog] = useState([]);
@@ -124,6 +133,10 @@ export default function App() {
   const [priceAlerts, setPriceAlerts] = useState([]);
   const [showPriceAlerts, setShowPriceAlerts] = useState(false);
   const [priceTracking, setPriceTracking] = useState(DEFAULT_PRICE_TRACKING);
+  // Binders shown on the public stock page and their QR pages.
+  const [publicBinders, setPublicBinders] = useState([]);
+  // Cards customers asked us to look for (CLAUDE.md "Want list").
+  const [wantRequests, setWantRequests] = useState([]);
   // A request for Catalog to open one item's Edit screen (from a price
   // alert's "Find card"). A fresh object each time, so asking for the
   // same sku twice still opens it twice.
@@ -133,14 +146,15 @@ export default function App() {
   const [quoteOpenRequest, setQuoteOpenRequest] = useState(null);
 
   useEffect(() => {
-    supabaseClient.auth.getSession().then(({ data: { session } }) => {
-      if (session) setSignedIn(true);
+    loadSession().then(({ signedIn: s, staff }) => {
+      setSignedIn(s);
+      setIsStaff(staff);
       setCheckedSession(true);
     });
   }, []);
 
   useEffect(() => {
-    if (!signedIn) return;
+    if (!signedIn || !isStaff) return;
     dbLoadAll(toast).then(({ catalog: c, queue: q }) => { setCatalog(c); setQueue(q); });
     // dbLoadSettings already falls back to defaults on a Supabase-shaped
     // error, but a thrown network exception would reject this promise
@@ -152,8 +166,10 @@ export default function App() {
     dbLoadSortingQueue(toast).then(setSorting);
     dbLoadPriceAlerts(toast).then(setPriceAlerts);
     dbLoadPriceTrackingSettings(toast).then(setPriceTracking).catch(() => setPriceTracking(DEFAULT_PRICE_TRACKING));
+    dbLoadPublicBinders(toast).then(setPublicBinders);
+    dbLoadWantRequests(toast).then(setWantRequests);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn]);
+  }, [signedIn, isStaff]);
 
   async function handleSaveSettings(next, nextTracking) {
     setMultipliers(next);
@@ -193,7 +209,7 @@ export default function App() {
     setQuoteOpenRequest({ id });
   }
 
-  useRealtimeSync({ enabled: signedIn, setCatalog, setQueue, setQuotes, setSorting });
+  useRealtimeSync({ enabled: signedIn && isStaff, setCatalog, setQueue, setQuotes, setSorting });
 
   const locations = useMemo(
     () => Array.from(new Set(catalog.map(c => c.location).filter(Boolean))).sort(),
@@ -201,6 +217,44 @@ export default function App() {
   );
 
   const pendingCount = queue.filter(t => !isTicketComplete(t)).length;
+
+  // Public binders (CLAUDE.md "Public binders"): save the ticked list.
+  // The want list isn't on the realtime channel, so it's reloaded whenever
+  // the tab is opened (another device may have added or closed requests).
+  useEffect(() => {
+    if (tab !== 'wants' || !signedIn || !isStaff) return;
+    dbLoadWantRequests(toast).then(setWantRequests);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  async function handleSaveWantRequest(form) {
+    const saved = await dbSaveWantRequest(form, toast);
+    if (!saved) return false;
+    setWantRequests(prev => (form.id ? prev.map(w => (w.id === saved.id ? saved : w)) : [saved, ...prev]));
+    toast(form.id ? `Saved the request for ${saved.name}` : `Added ${saved.name} to the want list`);
+    return true;
+  }
+
+  async function handleSetWantStatus(want, status) {
+    const saved = await dbSetWantStatus(want.id, status, toast);
+    if (!saved) return;
+    setWantRequests(prev => prev.map(w => (w.id === saved.id ? saved : w)));
+    const what = { fulfilled: 'fulfilled', rejected: 'rejected', open: 'reopened' }[status];
+    toast(`Marked the request for ${want.name} ${what}`);
+  }
+
+  async function handleRefreshWantRequests() {
+    setWantRequests(await dbLoadWantRequests(toast));
+  }
+
+  async function handleSavePublicBinders(next) {
+    const ok = await dbSetPublicBinders(next, publicBinders, toast);
+    if (ok) {
+      setPublicBinders(next);
+      toast(next.length === 1 ? '1 binder is public' : `${next.length} binders are public`);
+    }
+    return ok;
+  }
 
   async function handleSaveCard(record, prevSku) {
     const idx = catalog.findIndex(c => c.sku === prevSku);
@@ -745,7 +799,8 @@ export default function App() {
   }
 
   if (!checkedSession) return null;
-  if (!signedIn) return <Login onSignedIn={() => setSignedIn(true)} />;
+  if (!signedIn) return <Login onSignedIn={(session) => { setSignedIn(true); setIsStaff(isStaffUser(session && session.user)); }} />;
+  if (!isStaff) return <NoStaffAccess onSignOut={handleLogout} />;
 
   return (
     <div className="app">
@@ -781,6 +836,7 @@ export default function App() {
             {t.key === 'queue' && <span className="count">{pendingCount}</span>}
             {t.key === 'quote' && <span className="count">{quotes.filter(q => !q.offerStatus).length}</span>}
             {t.key === 'sorting' && <span className="count">{sorting.length}</span>}
+            {t.key === 'wants' && <span className="count">{wantRequests.filter(w => w.status === 'open').length}</span>}
           </div>
         ))}
       </div>
@@ -818,6 +874,8 @@ export default function App() {
           queue={queue}
           locations={locations}
           quotes={quotes}
+          publicBinders={publicBinders}
+          onSavePublicBinders={handleSavePublicBinders}
           onSaveQuote={handleSaveQuote}
           onImport={handleImport}
           onClearAll={handleClearAll}
@@ -830,6 +888,7 @@ export default function App() {
         <QuotesTab
           quotes={quotes}
           catalog={catalog}
+          wantRequests={wantRequests}
           locations={locations}
           multipliers={multipliers}
           tierSettings={tierSettings}
@@ -842,7 +901,7 @@ export default function App() {
       </div>
 
       <div className={`panel${tab === 'sorting' ? ' active' : ''}`}>
-        <SortingTab sorting={sorting} catalog={catalog} locations={locations} onSortItems={handleSortItems} />
+        <SortingTab sorting={sorting} catalog={catalog} locations={locations} wantRequests={wantRequests} onSortItems={handleSortItems} />
       </div>
 
       <div className={`panel${tab === 'reports' ? ' active' : ''}`}>
@@ -852,6 +911,16 @@ export default function App() {
           onUpdateSale={handleUpdateSale}
           onUndoLoss={(loss) => undoLoss({ loss })}
           refreshKey={salesRevision}
+        />
+      </div>
+
+      <div className={`panel${tab === 'wants' ? ' active' : ''}`}>
+        <WantListTab
+          requests={wantRequests}
+          catalog={catalog}
+          onSave={handleSaveWantRequest}
+          onSetStatus={handleSetWantStatus}
+          onRefresh={handleRefreshWantRequests}
         />
       </div>
 

@@ -102,6 +102,20 @@ export default function ImportExportSection() {
         live lookup, not a one-time snapshot — print it once and stick it on
         the physical binder; it stays accurate as stock changes.
       </p>
+      <DocsCallout kind="warn">
+        A QR page only shows cards if that binder is public. Tick it first in{' '}
+        <strong>Public binders…</strong> (below); otherwise the page says the
+        binder isn't shared online.
+      </DocsCallout>
+
+      <h3>Public binders</h3>
+      <p>
+        <strong>Public binders…</strong> lists every binder/case with how many
+        cards it has in stock. Tick the ones customers may see, then Save.
+        Ticked binders show on the public stock page (its link is at the
+        bottom of that window) and on their QR page. Everything else stays
+        private, and Bulk lots are never shown. Every binder starts private.
+      </p>
 
       <h3>Reset all data</h3>
       <DocsCallout kind="warn">

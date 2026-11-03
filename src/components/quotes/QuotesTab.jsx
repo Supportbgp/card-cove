@@ -42,7 +42,7 @@ const QUOTE_SORT_COLUMNS = {
 // (resume an in-progress collection, or start a brand-new one), and the
 // single-quote detail view (QuoteDetail) for whichever quote is open.
 export default function QuotesTab({
-  quotes, catalog, locations, multipliers, tierSettings, onSaveQuote, onDeleteQuote, onSaveTierSettings,
+  quotes, catalog, wantRequests, locations, multipliers, tierSettings, onSaveQuote, onDeleteQuote, onSaveTierSettings,
   openRequest = null, onOpenRequestHandled = () => {},
 }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -242,6 +242,7 @@ export default function QuotesTab({
           key={openQuote.id || 'new-draft'}
           quote={openQuote}
           catalog={catalog}
+          wantRequests={wantRequests}
           locations={locations}
           multipliers={multipliers}
           tierSettings={tierSettings}

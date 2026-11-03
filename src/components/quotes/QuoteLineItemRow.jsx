@@ -5,6 +5,7 @@ import { searchCardImage, tcgplayerSearchUrl, ebaySoldSearchUrl, priceChartingSe
 import { resizeImageFile } from '../../lib/image.js';
 import CatalogItemPicker from './CatalogItemPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
+import { wantsForCard, wantedByLine, WANTED_PAY_BUMP_PCT } from '../../lib/wantList.js';
 
 // Same url/data convention as cardUtils.js's own (unexported) resolveSrc —
 // url === 'local' means the real image lives in the data field, otherwise
@@ -31,8 +32,11 @@ function resolveImgSrc(url, data) {
 // the same live external search (Scryfall/TCGdex/etc.) EditModal/
 // Scanner already use, scoped locally to this one row (self-contained
 // search state, same pattern as EditModal's own candidates/candidateMode).
-export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers, flagMissingGame = false }) {
+export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers, wantRequests, flagMissingGame = false }) {
   const { openLightbox } = useUI();
+  // Customers on the want list who asked for this card (CLAUDE.md "Want list").
+  const wanted = wantsForCard(item, wantRequests);
+  const wantBumpApplied = item.pctAltered && Number(item.pctDelta) >= WANTED_PAY_BUMP_PCT;
   const [candidates, setCandidates] = useState([]);
   const [candidateMode, setCandidateMode] = useState('image'); // 'image' | 'price'
   const [activeSearch, setActiveSearch] = useState(null); // null | 'image' | 'price'
@@ -345,6 +349,24 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
             <button className="icon-btn" title="Remove" onClick={onRemove}>✕</button>
           </div>
         </div>
+        {wanted.length > 0 && (
+          <div className="want-notice" role="note">
+            <span>
+              <strong>On the want list:</strong> {wanted.length === 1 ? 'wanted' : `wanted by ${wanted.length} customers`}
+              {wanted.length === 1 ? ' by ' : ': '}{wantedByLine(wanted)}. It's worth paying more for this card.
+            </span>
+            {wantBumpApplied ? (
+              <span className="want-notice-applied">Paying {item.pctDelta > 0 ? '+' : ''}{item.pctDelta}% on this card.</span>
+            ) : (
+              <button
+                type="button" className="btn secondary small"
+                onClick={() => patch({ pctAltered: true, pctDelta: (item.pctAltered ? Number(item.pctDelta) || 0 : 0) + WANTED_PAY_BUMP_PCT })}
+              >
+                Pay +{WANTED_PAY_BUMP_PCT}% for it
+              </button>
+            )}
+          </div>
+        )}
         {/* Alter % — a card that deserves a different payout rate than
             whatever tier the whole quote ends up bought at (condition,
             rarity, ease of resale), without hand-editing the price and

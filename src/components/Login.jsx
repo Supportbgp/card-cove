@@ -10,10 +10,10 @@ export default function Login({ onSignedIn }) {
   async function doLogin() {
     setBusy(true);
     setStatus({ text: "Signing in…", isErr: false });
-    const { error } = await supabaseClient.auth.signInWithPassword({ email: SHARED_LOGIN_EMAIL, password });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email: SHARED_LOGIN_EMAIL, password });
     setBusy(false);
     if (error) { setStatus({ text: "Incorrect password.", isErr: true }); return; }
-    onSignedIn();
+    onSignedIn(data && data.session);
   }
 
   function handleKeyDown(e) {
