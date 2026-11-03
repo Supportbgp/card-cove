@@ -6217,8 +6217,10 @@ Four findings from a `/security-review` pass, fixed in one PR:
   (desktop + mobile), `EditModal`, `QuoteLineItemRow`, `scanShared`'s
   `ScanRow` and `PriceAlertMatch`; an unsafe value just shows no link (or the
   manual TCGPlayer search, where that was already the fallback).
-  `ImportPanel` runs the Source URL column through it before saving, so a
-  bad cell is dropped rather than stored. The TCGPlayer/eBay/PriceCharting
+  `normalizeCard` also runs `sourceUrl` through it, so a bad value is
+  dropped on every save path (Edit, CSV/XLSX import, Scanner, quote →
+  Sorting → Catalog) and on every DB read, not just hidden at render; a quote
+  item's back-filled `listingUrl` is checked the same way. The TCGPlayer/eBay/PriceCharting
   search links are left as-is: they're built on fixed `https://` hosts with
   `encodeURIComponent`, so the check would be a no-op.
 - **`price-check` accepted any valid project token.** The gateway's JWT check
@@ -6242,7 +6244,7 @@ Four findings from a `/security-review` pass, fixed in one PR:
   would reopen its tables to any signed-in account. **Editing those files
   would have made `deploy-staging` re-run them** (it runs every migration a
   branch adds *or changes*), so `Get-BranchMigrations` (`staging-lib.ps1`)
-  now skips any file whose header has that line, and says so. Verified: on
+  now skips any file with a `-- DO NOT RE-RUN` line, and says so. Verified: on
   this branch it returns none of the seven.
 - `.claude/claude-security-guidance.md` gained the matching rules
   (`safeHttpUrl`, `isServiceRoleRequest`, the migration header, workflow

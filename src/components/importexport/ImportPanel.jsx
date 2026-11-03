@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { detectGrading, normalizeCard, channelDefaultsForLocation } from '../../lib/cardUtils.js';
 import { searchCardImage } from '../../lib/cardSearch.js';
-import { safeHttpUrl } from '../../lib/safeUrl.js';
 import {
   FIELD_TARGETS, guessHeader, parseCsvFile, readWorkbook, loadXlsxSheet, runWithConcurrency,
 } from '../../lib/importParse.js';
@@ -174,9 +173,8 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
         cost: mapping.cost ? r[mapping.cost] : null,
         notes: mapping.notes ? r[mapping.notes] : "",
         imageUrl: mapping.imageUrl ? r[mapping.imageUrl] : "",
-        // A cell that isn't a plain http(s) link (e.g. "javascript:...") is
-        // dropped here, before it can be saved and later clicked.
-        sourceUrl: mapping.sourceUrl ? safeHttpUrl(r[mapping.sourceUrl]) : "",
+        // normalizeCard drops a cell that isn't a plain http(s) link.
+        sourceUrl: mapping.sourceUrl ? r[mapping.sourceUrl] : "",
         location: perRowLocation || batchLocation,
         itemType: mapping.itemType ? r[mapping.itemType] : detected.itemType,
         grader: mapping.grader ? r[mapping.grader] : detected.grader,

@@ -252,7 +252,7 @@ function Get-BranchMigrations {
   $files = git -C $RepoRoot diff --name-only --diff-filter=AM origin/main...HEAD -- supabase/migrations
   $sql = @($files | Where-Object { $_ -like '*.sql' } | Sort-Object)
   return @($sql | Where-Object {
-    if (Select-String -Path (Join-Path $RepoRoot $_) -Pattern '^-- DO NOT RE-RUN' -Quiet) {
+    if (Select-String -Path (Join-Path $RepoRoot $_) -Pattern '^--\s*DO NOT RE-RUN' -Quiet) {
       Write-Host "Skipping $_ (marked DO NOT RE-RUN)."
       $false
     } else { $true }

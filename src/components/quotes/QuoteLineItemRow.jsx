@@ -119,7 +119,8 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
     // something in Source link themselves, never overwriting a manual
     // entry. Applies in both modes, same reasoning as EditModal: a
     // price-search pick still means staff have identified the exact print.
-    const sourceUrlPatch = (c.listingUrl && !item.sourceUrl.trim()) ? { sourceUrl: c.listingUrl } : {};
+    const listingUrl = safeHttpUrl(c.listingUrl);
+    const sourceUrlPatch = (listingUrl && !item.sourceUrl.trim()) ? { sourceUrl: listingUrl } : {};
     // Once staff visually confirm a candidate, that print's own Set/Number/
     // Rarity is more trustworthy than whatever's already in the fields —
     // back-fill whichever of these the candidate actually carries,
