@@ -181,16 +181,27 @@ function makeChannel() {
 // e2e/login.spec.js doesn't need to duplicate the literal.
 export const HARNESS_PASSWORD = 'harness-test-password';
 
+// The harness login is staff unless a test sets window.__HARNESS_STAFF__ =
+// false (to show the "No staff access" screen), mirroring the real
+// app_metadata.staff flag (CLAUDE.md "Staff-only access").
+function harnessSession() {
+  return { user: { id: 'harness-user', app_metadata: { staff: window.__HARNESS_STAFF__ !== false } } };
+}
+
 export const supabaseClient = {
   auth: {
     async getSession() {
       const signedIn = window.__HARNESS_SIGNED_IN__ !== false;
-      return { data: { session: signedIn ? { user: { id: 'harness-user' } } : null } };
+      return { data: { session: signedIn ? harnessSession() : null } };
+    },
+    async refreshSession() {
+      const signedIn = window.__HARNESS_SIGNED_IN__ !== false;
+      return { data: { session: signedIn ? harnessSession() : null }, error: null };
     },
     async signInWithPassword({ password }) {
       if (password === HARNESS_PASSWORD) {
         window.__HARNESS_SIGNED_IN__ = true;
-        return { data: { session: { user: { id: 'harness-user' } } }, error: null };
+        return { data: { session: harnessSession() }, error: null };
       }
       return { data: null, error: { message: 'Invalid login credentials' } };
     },

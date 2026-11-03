@@ -10,6 +10,12 @@ export default function KnownQuirksSection() {
       </p>
       <ul>
         <li>
+          <strong>"No staff access" after signing in.</strong> Card Cove only
+          lets in logins marked as staff. If you see this with the shop's own
+          login, sign out and back in once; if it stays, ask whoever manages
+          Card Cove to check the login.
+        </li>
+        <li>
           <strong>Signing out reloads the page.</strong> If you have an
           unsaved modal open somewhere, it's gone after signing out — save
           first.

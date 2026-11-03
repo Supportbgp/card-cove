@@ -3,13 +3,14 @@
 // harness's getSession()/getDb() calls see this state from their very first
 // invocation.
 
-export async function seedHarness(page, { signedIn = true, seed } = {}) {
+export async function seedHarness(page, { signedIn = true, seed, staff = true } = {}) {
   await page.addInitScript(
-    ({ signedIn, seed }) => {
+    ({ signedIn, seed, staff }) => {
       window.__HARNESS_SIGNED_IN__ = signedIn;
+      window.__HARNESS_STAFF__ = staff;
       if (seed) window.__HARNESS_SEED__ = seed;
     },
-    { signedIn, seed }
+    { signedIn, seed, staff }
   );
 }
 

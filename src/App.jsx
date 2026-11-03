@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabaseClient } from './lib/supabase.js';
+import { loadSession, isStaffUser } from './lib/staffAccess.js';
+import NoStaffAccess from './components/NoStaffAccess.jsx';
 import { lossReasonLabel } from './lib/reportUtils.js';
 import {
   dbLoadAll, dbUpsertCard, dbUpsertCards, dbDeleteCard, dbDeleteCards, dbClearCatalog,
@@ -88,6 +90,9 @@ function priceVsMarketValueWarning(record, multipliers) {
 export default function App() {
   const { toast } = useUI();
   const [signedIn, setSignedIn] = useState(false);
+  // Whether the login is marked as staff (CLAUDE.md "Staff-only access").
+  // Data only loads for staff; any other login gets NoStaffAccess.
+  const [isStaff, setIsStaff] = useState(false);
   const [checkedSession, setCheckedSession] = useState(false);
   const [tab, setTab] = useState('catalog');
   const [catalog, setCatalog] = useState([]);
@@ -133,14 +138,15 @@ export default function App() {
   const [quoteOpenRequest, setQuoteOpenRequest] = useState(null);
 
   useEffect(() => {
-    supabaseClient.auth.getSession().then(({ data: { session } }) => {
-      if (session) setSignedIn(true);
+    loadSession().then(({ signedIn: s, staff }) => {
+      setSignedIn(s);
+      setIsStaff(staff);
       setCheckedSession(true);
     });
   }, []);
 
   useEffect(() => {
-    if (!signedIn) return;
+    if (!signedIn || !isStaff) return;
     dbLoadAll(toast).then(({ catalog: c, queue: q }) => { setCatalog(c); setQueue(q); });
     // dbLoadSettings already falls back to defaults on a Supabase-shaped
     // error, but a thrown network exception would reject this promise
@@ -153,7 +159,7 @@ export default function App() {
     dbLoadPriceAlerts(toast).then(setPriceAlerts);
     dbLoadPriceTrackingSettings(toast).then(setPriceTracking).catch(() => setPriceTracking(DEFAULT_PRICE_TRACKING));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn]);
+  }, [signedIn, isStaff]);
 
   async function handleSaveSettings(next, nextTracking) {
     setMultipliers(next);
@@ -191,7 +197,7 @@ export default function App() {
     setQuoteOpenRequest({ id });
   }
 
-  useRealtimeSync({ enabled: signedIn, setCatalog, setQueue, setQuotes, setSorting });
+  useRealtimeSync({ enabled: signedIn && isStaff, setCatalog, setQueue, setQuotes, setSorting });
 
   const locations = useMemo(
     () => Array.from(new Set(catalog.map(c => c.location).filter(Boolean))).sort(),
@@ -743,7 +749,8 @@ export default function App() {
   }
 
   if (!checkedSession) return null;
-  if (!signedIn) return <Login onSignedIn={() => setSignedIn(true)} />;
+  if (!signedIn) return <Login onSignedIn={(session) => { setSignedIn(true); setIsStaff(isStaffUser(session && session.user)); }} />;
+  if (!isStaff) return <NoStaffAccess onSignOut={handleLogout} />;
 
   return (
     <div className="app">
