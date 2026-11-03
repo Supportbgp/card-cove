@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { activeImageSrc } from '../../lib/cardUtils.js';
 import { useUI } from '../../context/UIContext.jsx';
 import SortItemModal from './SortItemModal.jsx';
+import { wantsForCard, wantedByLine } from '../../lib/wantList.js';
 
 // "Needs to process" queue — every accepted quote's line items land here
 // (see App.jsx's handleSaveQuote/buildSortingItemsFromQuoteItems) before
@@ -10,7 +11,7 @@ import SortItemModal from './SortItemModal.jsx';
 // it's placed — the resulting Catalog row is the durable record from
 // then on, not this queue (see CLAUDE.md's "Sorting stage" section for
 // why history isn't kept here).
-export default function SortingTab({ sorting, catalog, locations, onSortItems }) {
+export default function SortingTab({ sorting, catalog, locations, wantRequests, onSortItems }) {
   const { openLightbox } = useUI();
   // `sortingItems` holds whichever item(s) the open SortItemModal is
   // currently deciding a destination for — a single-item array from a
@@ -100,7 +101,14 @@ export default function SortingTab({ sorting, catalog, locations, onSortItems })
                     </div>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600 }}>{item.name}{item.qty > 1 ? ` × ${item.qty}` : ''}</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {item.name}{item.qty > 1 ? ` × ${item.qty}` : ''}
+                      {wantsForCard(item, wantRequests).length > 0 && (
+                        <span className="badge want-tag" title={`On the want list: ${wantedByLine(wantsForCard(item, wantRequests))}`}>
+                          Wanted ×{wantsForCard(item, wantRequests).length}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>
                       {[item.game, item.set, item.rarity, item.condition].filter(Boolean).join(' · ')}
                     </div>

@@ -9,6 +9,7 @@ import ImportExportSection from './sections/ImportExportSection.jsx';
 import ScannerSection from './sections/ScannerSection.jsx';
 import QuoteSection from './sections/QuoteSection.jsx';
 import SortingSection from './sections/SortingSection.jsx';
+import WantListSection from './sections/WantListSection.jsx';
 import PricingSettingsSection from './sections/PricingSettingsSection.jsx';
 import PublicBinderSection from './sections/PublicBinderSection.jsx';
 import GlossarySection from './sections/GlossarySection.jsx';
@@ -26,6 +27,7 @@ const SECTIONS = [
   { id: 'scan-binder', label: 'Scan Binder', Component: ScannerSection },
   { id: 'quote', label: 'Quote', Component: QuoteSection },
   { id: 'sorting', label: 'Sorting', Component: SortingSection },
+  { id: 'want-list', label: 'Want list', Component: WantListSection },
   { id: 'pricing-settings', label: 'Pricing settings', Component: PricingSettingsSection },
   { id: 'public-binder-page', label: 'The public binder page', Component: PublicBinderSection },
   { id: 'glossary', label: 'Concepts & glossary', Component: GlossarySection },

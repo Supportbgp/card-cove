@@ -25,6 +25,10 @@ export default function PublicBinderSection() {
         ("Search all stock"), and its address is shown in the Public binders
         window.
       </p>
+      <p>
+        Its <strong>Wanted</strong> view lists the cards we're looking for (see{' '}
+        <a href="#want-list">Want list</a>), without who asked.
+      </p>
       <DocsCallout kind="note">
         It's a live lookup, not a snapshot — as soon as an item sells or its
         price changes in Card Cove, the page reflects it immediately. You can

@@ -1690,6 +1690,52 @@
     .shop-filters input { flex: 2 1 220px; min-width: 0; }
     .shop-filters select { flex: 1 1 140px; min-width: 0; }
 
+    /* Want list (CLAUDE.md "Want list") */
+    .shop-view-toggle { margin-bottom: 12px; }
+    .want-share {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--ink-soft);
+      margin-top: 8px;
+    }
+    .want-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .want-search-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 8px;
+    }
+    .want-picked { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .want-picked img { width: 60px; border-radius: 4px; }
+    .want-thumb { width: 40px; border-radius: 3px; display: block; }
+    .want-in-stock { color: var(--green); font-weight: 600; white-space: nowrap; }
+    .want-table td { white-space: nowrap; vertical-align: top; }
+    .want-table td:nth-child(2), .want-table td:nth-child(3) { white-space: normal; min-width: 160px; }
+    .want-table .n-name { font-weight: 600; }
+    .want-table .n-sub { color: var(--ink-soft); font-size: 12.5px; }
+    .badge.want-state-open { background: var(--blue-soft); color: var(--blue); }
+    .badge.want-state-fulfilled { background: var(--green-soft); color: var(--green); }
+    .badge.want-state-rejected { background: var(--surface-alt); color: var(--ink-soft); }
+    .badge.want-tag { background: var(--blue-soft); color: var(--blue); margin-left: 6px; }
+    .want-notice {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: var(--blue-soft);
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12.5px;
+    }
+    .want-notice > span:first-child { flex: 1 1 240px; min-width: 0; }
+    .want-notice-applied { color: var(--green); font-weight: 600; }
+
     .binder-card-row {
       display: flex;
       justify-content: space-between;

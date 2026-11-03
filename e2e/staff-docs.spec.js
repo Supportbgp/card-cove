@@ -34,7 +34,7 @@ test('the Next stepper walks through every section in order, and wraps at the en
   const titles = [
     'Getting started', 'Catalog', 'Editing an item', 'Selling an item',
     'Sync Queue', 'Import / Export', 'Scan Binder', 'Quote',
-    'Sorting', 'Pricing settings',
+    'Sorting', 'Want list', 'Pricing settings',
     'The public binder page', 'Concepts & glossary', 'Known quirks',
   ];
 

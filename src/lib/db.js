@@ -2,6 +2,7 @@ import { supabaseClient } from './supabase.js';
 import { normalizeCard, DEFAULT_CONDITION_MULTIPLIERS } from './cardUtils.js';
 import { DEFAULT_QUOTE_TIER_PCTS } from './quoteUtils.js';
 import { DEFAULT_PRICE_TRACKING } from './priceAlertUtils.js';
+import { rowToWant, wantToRow } from './wantList.js';
 
 // Supabase/PostgREST caps a bare `.select()` at the project's configured
 // Max Rows (1000 by default) — past that point a table's real total is
@@ -732,4 +733,51 @@ export async function dbSetPublicBinders(locations, previous, toast) {
     if (error) { toast('Saving public binders failed: ' + error.message, true); return false; }
   }
   return true;
+}
+
+// Want list (CLAUDE.md "Want list"). Staff read and write want_requests
+// directly (staff-only RLS); visitors read the public_want_list view.
+
+export async function dbLoadWantRequests(toast) {
+  const { data, error } = await fetchAllRows('want_requests', 'created_at', { ascending: false });
+  if (error) {
+    toast('Failed to load the want list: ' + error.message, true);
+    return [];
+  }
+  return (data || []).map(rowToWant);
+}
+
+// Adds a request (no id) or saves an edit to one. Returns the saved
+// request, or null when the write failed.
+export async function dbSaveWantRequest(want, toast) {
+  const row = wantToRow(want);
+  const query = want.id
+    ? supabaseClient.from('want_requests').update(row).eq('id', want.id)
+    : supabaseClient.from('want_requests').insert({ ...row, status: 'open', created_at: new Date().toISOString() });
+  const { data, error } = await query.select().single();
+  if (error) {
+    toast('Saving the request failed: ' + error.message, true);
+    return null;
+  }
+  return rowToWant(data);
+}
+
+// Fulfilled / rejected close a request; open reopens it.
+export async function dbSetWantStatus(id, status, toast) {
+  const closedAt = status === 'open' ? null : new Date().toISOString();
+  const { data, error } = await supabaseClient.from('want_requests')
+    .update({ status, closed_at: closedAt }).eq('id', id).select().single();
+  if (error) {
+    toast('Updating the request failed: ' + error.message, true);
+    return null;
+  }
+  return rowToWant(data);
+}
+
+// The public Wanted page: open requests staff chose to show, no customer
+// details (public_want_list view, readable without a login).
+export async function dbLoadPublicWantList() {
+  const { data, error } = await fetchAllRows('public_want_list', 'created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(rowToWant);
 }

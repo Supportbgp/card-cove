@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbLoadPublicStock, dbLoadPublicBinderList, dbLoadPublicImages, publicItemKey } from '../../lib/db.js';
 import PublicCard from './PublicCard.jsx';
+import PublicWantList from './PublicWantList.jsx';
 import Lightbox from '../Lightbox.jsx';
 import logoIcon from '../../assets/logo-icon.png';
 
@@ -9,8 +10,15 @@ const PAGE_SIZE = 48;
 // The public stock page (?shop=1): everything in stock in the binders staff
 // have made public, searchable, no login. Bulk is never listed (in-store
 // only). Inline images are fetched only for the cards on screen, since a
-// whole shop's worth is too heavy for a phone.
+// whole shop's worth is too heavy for a phone. The Wanted view
+// (&view=wanted) lists the cards the shop is looking for (CLAUDE.md "Want
+// list"); staff share that link with customers.
+function initialView() {
+  return new URLSearchParams(window.location.search).get('view') === 'wanted' ? 'wanted' : 'stock';
+}
+
 export default function ShopView() {
+  const [view, setView] = useState(initialView);
   const [stock, setStock] = useState(null);
   const [binders, setBinders] = useState([]);
   const [error, setError] = useState('');
@@ -72,9 +80,17 @@ export default function ShopView() {
         <div className="brand">
           <img src={logoIcon} alt="" className="brand-logo" />
           <span className="mark">Card Cove</span>
-          <span className="sub">In stock</span>
+          <span className="sub">{view === 'wanted' ? 'Wanted' : 'In stock'}</span>
         </div>
       </div>
+
+      <div className="scan-mode-toggle shop-view-toggle" role="group" aria-label="Show">
+        <button type="button" aria-pressed={view === 'stock'} className={`btn small${view === 'stock' ? '' : ' ghost'}`} onClick={() => setView('stock')}>In stock</button>
+        <button type="button" aria-pressed={view === 'wanted'} className={`btn small${view === 'wanted' ? '' : ' ghost'}`} onClick={() => setView('wanted')}>Wanted</button>
+      </div>
+
+      {view === 'wanted' && <PublicWantList onZoom={setZoomUrl} />}
+      {view === 'stock' && (<>
 
       {error && (
         <div className="empty"><span className="mark">Couldn't load our stock</span>{error}</div>
@@ -130,6 +146,7 @@ export default function ShopView() {
           )}
         </>
       )}
+      </>)}
 
       {zoomUrl && <Lightbox url={zoomUrl} onClose={() => setZoomUrl(null)} />}
 
