@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { alertsBySku, formatPctChange, formatMoney, alertConditionNote } from './priceAlertUtils.js';
+import { alertsBySku, alertsForOwnedItems, formatPctChange, formatMoney, alertConditionNote } from './priceAlertUtils.js';
 
 describe('alertsBySku', () => {
   it('keys alerts by sku, keeping the most recent if a sku somehow has two', () => {
@@ -49,5 +49,20 @@ describe('alertConditionNote', () => {
 
   it('flags an older alert that compared against NM regardless of condition', () => {
     expect(alertConditionNote({ condition: null })).toBe('compared as Near Mint (older alert)');
+  });
+});
+
+describe('alertsForOwnedItems', () => {
+  const alerts = [{ id: 1, sku: 'in' }, { id: 2, sku: 'sold' }, { id: 3, sku: 'zero' }, { id: 4, sku: 'gone' }];
+  const catalog = [
+    { sku: 'in', qty: 2, sold: false },
+    { sku: 'sold', qty: 0, sold: true },
+    { sku: 'zero', qty: 0, sold: false },
+  ];
+  it('drops alerts for items that are sold or out of stock, keeps deleted ones', () => {
+    expect(alertsForOwnedItems(alerts, catalog).map(a => a.id)).toEqual([1, 4]);
+  });
+  it('handles empty input', () => {
+    expect(alertsForOwnedItems(null, null)).toEqual([]);
   });
 });

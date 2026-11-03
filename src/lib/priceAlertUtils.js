@@ -25,6 +25,18 @@ export function alertsBySku(alerts) {
   return map;
 }
 
+// Alerts for cards the shop still has. An alert whose item has since sold
+// out (sold, or qty 0) is hidden rather than deleted: it comes back if the
+// sale is undone. An item that was deleted keeps its alert, which says so
+// and can be dismissed.
+export function alertsForOwnedItems(alerts, catalog) {
+  const bySku = new Map((catalog || []).map(c => [c.sku, c]));
+  return (alerts || []).filter(a => {
+    const item = bySku.get(a.sku);
+    return !item || (!item.sold && Number(item.qty) > 0);
+  });
+}
+
 export function formatPctChange(pct) {
   if (pct == null || pct === '') return '';
   const n = Number(pct);

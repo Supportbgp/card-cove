@@ -30,7 +30,7 @@ import ImportExportPanel from './components/importexport/ImportExportPanel.jsx';
 import ScannerPanel from './components/scanner/ScannerPanel.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import PriceAlertsModal from './components/PriceAlertsModal.jsx';
-import { DEFAULT_PRICE_TRACKING, alertsBySku } from './lib/priceAlertUtils.js';
+import { DEFAULT_PRICE_TRACKING, alertsBySku, alertsForOwnedItems } from './lib/priceAlertUtils.js';
 import QuotesTab from './components/quotes/QuotesTab.jsx';
 import SortingTab from './components/sorting/SortingTab.jsx';
 import ReportsTab from './components/reports/ReportsTab.jsx';
@@ -182,7 +182,9 @@ export default function App() {
     toast("Pricing settings saved");
   }
 
-  const priceAlertsBySku = useMemo(() => alertsBySku(priceAlerts), [priceAlerts]);
+  // Alerts for cards we no longer have (sold out) aren't shown anywhere.
+  const visiblePriceAlerts = useMemo(() => alertsForOwnedItems(priceAlerts, catalog), [priceAlerts, catalog]);
+  const priceAlertsBySku = useMemo(() => alertsBySku(visiblePriceAlerts), [visiblePriceAlerts]);
 
   async function handleDismissPriceAlerts(ids) {
     const idSet = new Set(ids);
@@ -813,14 +815,14 @@ export default function App() {
           <span className="pending-dot"></span>
           <span>{pendingCount} pending sync</span>
         </div>
-        {priceAlerts.length > 0 && (
+        {visiblePriceAlerts.length > 0 && (
           <button
             type="button" className="price-alerts-badge"
             onClick={() => setShowPriceAlerts(true)}
             title="Items whose market price has risen well above Our Price"
           >
             <span aria-hidden="true">▲</span>
-            <span>{priceAlerts.length} price alert{priceAlerts.length === 1 ? '' : 's'}</span>
+            <span>{visiblePriceAlerts.length} price alert{visiblePriceAlerts.length === 1 ? '' : 's'}</span>
           </button>
         )}
         </div>
@@ -940,7 +942,7 @@ export default function App() {
       )}
       {showPriceAlerts && (
         <PriceAlertsModal
-          alerts={priceAlerts}
+          alerts={visiblePriceAlerts}
           catalog={catalog}
           onClose={() => setShowPriceAlerts(false)}
           onFindCard={handleFindCardFromAlert}
