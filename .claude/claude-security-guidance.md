@@ -21,6 +21,9 @@ any of these rules.
   a public view needs a deliberate reason.
 - Migrations are SQL run by hand in the Supabase SQL Editor and must be
   re-runnable (`if not exists`, `drop policy if exists`, `create or replace`).
+- Old migrations that create "authenticated full access" start with
+  `-- DO NOT RE-RUN` (superseded by phase18); `deploy-staging` skips them.
+  Keep that header on any migration a later one supersedes.
 
 ## Secrets
 - The service-role key is only ever used inside Edge Functions
@@ -39,7 +42,9 @@ any of these rules.
   spending the shop's API keys or touching data.
 - CORS stays an allowlist (`ALLOWED_ORIGINS` + `DEV_ORIGIN_RE`), never `*`
   with credentials.
-- `price-check` runs with the service role from GitHub Actions only; it must
+- `price-check` runs with the service role from GitHub Actions only: it
+  rejects any bearer that isn't the service-role key (`isServiceRoleRequest`
+  in `auth.ts`), checked before anything else. It must
   not become callable with arbitrary request bodies that widen what it
   reads or writes.
 - Don't send secrets, tokens or customer data to third-party card APIs
@@ -55,5 +60,11 @@ any of these rules.
   validation.
 - Never put personal data in URL query strings or `localStorage`.
   IndexedDB (the stack scanner) holds card photos only.
-- Links built from API data (`listingUrl`, `sourceUrl`, image URLs) must be
-  `http(s)` only before going into `href`/`src`.
+- Links built from stored, imported or API data (`listingUrl`, `sourceUrl`,
+  a price alert's `matched_url`) go through `safeHttpUrl` (or `openSafeUrl`
+  for `window.open`) in `src/lib/safeUrl.js` before any `href`; imports run
+  `sourceUrl` through it before saving.
+
+## GitHub Actions
+- Workflow inputs and secrets reach `run:` scripts through `env:`, never as
+  `${{ }}` pasted into the script text, and inputs are validated there.

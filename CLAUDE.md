@@ -6202,6 +6202,60 @@ checked, and alerts raised before a sale stayed open after it.
 the hiding ships with the site. No migration.
 
 
+## Security review fixes: safe links, price-check auth, workflow inputs, old migrations
+
+Four findings from a `/security-review` pass, fixed in one PR:
+
+- **Links from stored data could run script.** A `javascript:...` value in a
+  catalog row's Source URL (typed in, or from an imported spreadsheet cell),
+  a quote item's Source link, a scan candidate's `listingUrl` or a price
+  alert's `matched_url` went straight into an `href` or `window.open`, so
+  clicking it would run code in the signed-in staff session.
+  **`safeHttpUrl` (`src/lib/safeUrl.js`)** returns the URL only if it parses
+  as absolute `http:`/`https:`, else `''`; `openSafeUrl` does the same for
+  `window.open` and adds `noopener,noreferrer`. Used in `CatalogTable`
+  (desktop + mobile), `EditModal`, `QuoteLineItemRow`, `scanShared`'s
+  `ScanRow` and `PriceAlertMatch`; an unsafe value just shows no link (or the
+  manual TCGPlayer search, where that was already the fallback).
+  `ImportPanel` runs the Source URL column through it before saving, so a
+  bad cell is dropped rather than stored. The TCGPlayer/eBay/PriceCharting
+  search links are left as-is: they're built on fixed `https://` hosts with
+  `encodeURIComponent`, so the check would be a no-op.
+- **`price-check` accepted any valid project token.** The gateway's JWT check
+  also lets the public anon key or any signed-in account through, which could
+  trigger a full, write-heavy catalog run. The function now requires the
+  bearer to be exactly its own `SUPABASE_SERVICE_ROLE_KEY`
+  (`isServiceRoleRequest` in `price-check/auth.ts`, constant-time compare),
+  checked before the body is read; anything else gets 401. In its own file
+  with no Deno-only APIs, so Vitest tests it (`auth.test.ts`). If the GitHub
+  secret ever stops matching the project's service-role key, the daily run
+  now fails with 401 instead of running.
+- **`price-check.yml` pasted the `batch_size` input into the shell script**
+  (`${{ github.event.inputs.batch_size }}`), so anyone able to run the
+  workflow could inject commands with the service-role key in scope. The
+  input and the secret now come in through `env:`, and `batch_size` must be a
+  whole number from 1 to 200 (leading zeros stripped so the JSON body stays
+  valid). Checked with empty, `08`, `0`, `201`, `abc` and `1; echo PWNED`.
+- **Old migrations still create "authenticated full access".** phase5, phase8,
+  phase10, phase12, phase13, phase17 and `phase_security_rls_review` now
+  start with a `-- DO NOT RE-RUN` header: running one again after phase18
+  would reopen its tables to any signed-in account. **Editing those files
+  would have made `deploy-staging` re-run them** (it runs every migration a
+  branch adds *or changes*), so `Get-BranchMigrations` (`staging-lib.ps1`)
+  now skips any file whose header has that line, and says so. Verified: on
+  this branch it returns none of the seven.
+- `.claude/claude-security-guidance.md` gained the matching rules
+  (`safeHttpUrl`, `isServiceRoleRequest`, the migration header, workflow
+  inputs through `env:`).
+- Tests: `safeUrl.test.js`, `price-check/auth.test.ts`, new cases in
+  `CatalogTable.test.jsx`/`QuoteLineItemRow.test.jsx`, and
+  `e2e/import-source-url.spec.js` (an http link imports, a `javascript:` one
+  is dropped and nothing on the page links to it).
+
+**Requires redeploying `price-check`** (staging, then production) for the
+service-role check; then run the workflow once by hand to confirm the GitHub
+secret still matches. No migration to run.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
