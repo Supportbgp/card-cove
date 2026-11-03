@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useUI } from '../../context/UIContext.jsx';
 import { searchCardImage, tcgplayerSearchUrl, ebaySoldSearchUrl, priceChartingSearchUrl } from '../../lib/cardSearch.js';
+import { safeHttpUrl, openSafeUrl } from '../../lib/safeUrl.js';
 import { normalizeCard, channelDefaultsForLocation, marketValueForCondition, canonicalizeCondition, roundPriceUp, roundPriceDown, RARITY_OPTIONS_BY_GAME, CONDITION_OPTIONS, PRINTING_OPTIONS_BY_GAME, GAMES } from '../../lib/cardUtils.js';
 import LocationPicker from '../LocationPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
@@ -294,8 +295,8 @@ export function ScanRow({ row, entranceDelay = 0, multipliers, onChange, onRemov
             listing link (once row.listingUrl is known) and a manual-search
             fallback; eBay/PriceCharting are always manual-search links. */}
         <div className="scan-row-line" style={{ fontSize: '11.5px', color: 'var(--ink-soft)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          {row.listingUrl ? (
-            <span style={{ cursor: 'pointer', color: 'var(--blue)', fontWeight: 600 }} onClick={() => window.open(row.listingUrl, '_blank')}>
+          {safeHttpUrl(row.listingUrl) ? (
+            <span style={{ cursor: 'pointer', color: 'var(--blue)', fontWeight: 600 }} onClick={() => openSafeUrl(row.listingUrl)}>
               Check live TCGPlayer listing ↗
             </span>
           ) : (

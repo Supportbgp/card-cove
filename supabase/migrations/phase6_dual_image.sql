@@ -1,3 +1,9 @@
+-- DO NOT RE-RUN. Already applied; superseded by phase19_public_binders.sql.
+--
+-- This file recreates catalog_public_view without phase19's public_binders
+-- filter, so running it again would put every binder back on the public
+-- pages. Kept as history. npm run deploy-staging skips files with this line.
+--
 -- Sprint 6: dual-image model. Every item can now have two independent
 -- images — a "stock" reference (image_url/image_data, already existed —
 -- from card search APIs or a manual paste) and a "photo" (photo_url/

@@ -1,3 +1,11 @@
+-- DO NOT RE-RUN. Already applied; superseded by phase18_staff_only_access.sql.
+--
+-- This file creates "authenticated full access" policies. Since phase18,
+-- every table is staff-only (public.is_staff()), so running this again
+-- would reopen these tables to any signed-in account, not just the shop
+-- login. Kept as history. On a brand-new database, run it and then re-run
+-- phase18 straight after. npm run deploy-staging skips files with this line.
+--
 -- Sales reporting (Feature A of the price-tracking/reporting roadmap) —
 -- a durable, append-only record of what's actually sold, independent of
 -- sync_queue (which only tracks in-flight cross-platform listing cleanup

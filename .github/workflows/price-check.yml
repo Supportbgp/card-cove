@@ -40,9 +40,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call price-check Edge Function in batches
+        # Inputs and secrets reach the script as environment variables, never
+        # as ${{ }} text pasted into it, so a crafted batch_size (e.g.
+        # "1; curl evil.example") can't become a shell command.
+        env:
+          BATCH_SIZE_INPUT: ${{ github.event.inputs.batch_size }}
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -u
-          BATCH_SIZE="${{ github.event.inputs.batch_size || '100' }}"
+          BATCH_SIZE="${BATCH_SIZE_INPUT:-100}"
+          case "$BATCH_SIZE" in
+            ''|*[!0-9]*) echo "batch_size must be a whole number, got: $BATCH_SIZE"; exit 1 ;;
+          esac
+          BATCH_SIZE=$((10#$BATCH_SIZE))  # "08" -> 8, so the JSON body stays valid
+          if [ "$BATCH_SIZE" -lt 1 ] || [ "$BATCH_SIZE" -gt 200 ]; then
+            echo "batch_size must be between 1 and 200, got: $BATCH_SIZE"; exit 1
+          fi
           # A defensive cap on how many batches one workflow run will make —
           # same "a shop whose tracked catalog grows past this will need a
           # different approach" reasoning the Edge Function's own
@@ -68,8 +81,8 @@ jobs:
 
             RESPONSE=$(curl -sS --fail-with-body -X POST \
               "https://pkyeytypgifgyiartgii.supabase.co/functions/v1/price-check" \
-              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-              -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+              -H "apikey: $SERVICE_ROLE_KEY" \
               -H "Content-Type: application/json" \
               -d "{\"offset\": $OFFSET, \"limit\": $BATCH_SIZE}")
             echo "$RESPONSE"

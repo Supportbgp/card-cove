@@ -1,3 +1,9 @@
+-- DO NOT RE-RUN. Already applied; superseded by phase19_public_binders.sql.
+--
+-- This file recreates catalog_public_view without phase19's public_binders
+-- filter, so running it again would put every binder back on the public
+-- pages. Kept as history. npm run deploy-staging skips files with this line.
+--
 -- Binder QR feature: a restricted, read-only view for the unauthenticated
 -- binder lookup page. Exposes only browsing-relevant columns (no SKU, notes,
 -- or source URL), and only rows that are actually available (not sold, qty

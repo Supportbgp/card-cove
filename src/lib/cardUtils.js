@@ -1,3 +1,5 @@
+import { safeHttpUrl } from './safeUrl.js';
+
 export function parseMoney(v) {
   if (v === "" || v === null || v === undefined) return null;
   if (typeof v === "number") return v;
@@ -407,7 +409,10 @@ export function normalizeCard(c) {
     grader: c.grader || "",
     grade: c.grade || "",
     certNumber: c.certNumber || "",
-    sourceUrl: c.sourceUrl || "",
+    // Every save path (Edit, Import, Scanner, quote → Sorting → Catalog)
+    // and every DB read goes through here, so a non-http(s) link such as
+    // "javascript:..." is dropped once, before it can be stored or shown.
+    sourceUrl: safeHttpUrl(c.sourceUrl),
     location: c.location || "",
     imageData: c.imageData || "",
     sold: (c.sold === true || c.sold === "true" || c.sold === "TRUE" || c.sold === "1" || (typeof c.sold === "string" && /^\s*sold\s*$/i.test(c.sold))),

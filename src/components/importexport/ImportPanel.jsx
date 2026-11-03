@@ -173,6 +173,7 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
         cost: mapping.cost ? r[mapping.cost] : null,
         notes: mapping.notes ? r[mapping.notes] : "",
         imageUrl: mapping.imageUrl ? r[mapping.imageUrl] : "",
+        // normalizeCard drops a cell that isn't a plain http(s) link.
         sourceUrl: mapping.sourceUrl ? r[mapping.sourceUrl] : "",
         location: perRowLocation || batchLocation,
         itemType: mapping.itemType ? r[mapping.itemType] : detected.itemType,

@@ -535,3 +535,11 @@ describe('mergeScanDuplicates', () => {
     expect(merged[0].confidence).toBe('low');
   });
 });
+
+describe('normalizeCard — sourceUrl safety', () => {
+  it('keeps an http(s) source URL and drops anything else', () => {
+    expect(normalizeCard({ name: 'A', sourceUrl: ' https://www.tcgplayer.com/product/1 ' }).sourceUrl).toBe('https://www.tcgplayer.com/product/1');
+    expect(normalizeCard({ name: 'A', sourceUrl: 'javascript:alert(1)' }).sourceUrl).toBe('');
+    expect(normalizeCard({ name: 'A', sourceUrl: 42 }).sourceUrl).toBe('');
+  });
+});

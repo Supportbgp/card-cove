@@ -1,3 +1,11 @@
+-- DO NOT RE-RUN. Already applied; superseded by phase18_staff_only_access.sql.
+--
+-- This file creates "authenticated full access" policies. Since phase18,
+-- every table is staff-only (public.is_staff()), so running this again
+-- would reopen these tables to any signed-in account, not just the shop
+-- login. Kept as history. On a brand-new database, run it and then re-run
+-- phase18 straight after. npm run deploy-staging skips files with this line.
+--
 -- Security review: catalog/sync_queue RLS was set up directly in the
 -- Supabase dashboard early in the project and was never captured as a
 -- migration, so it isn't version-controlled or auditable from the repo.
