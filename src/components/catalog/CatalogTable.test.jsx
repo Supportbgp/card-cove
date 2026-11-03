@@ -167,3 +167,21 @@ describe('CatalogTable — mobile stacked cards', () => {
     expect(screen.getByText('Edit')).toBeInTheDocument();
   });
 });
+
+describe('CatalogTable — source link safety', () => {
+  it('links an http(s) source URL', () => {
+    render(<CatalogTable {...baseProps({ rows: [makeCard({ sourceUrl: 'https://www.tcgplayer.com/product/1' })] })} />);
+    expect(screen.getByTitle('Open source link')).toHaveAttribute('href', 'https://www.tcgplayer.com/product/1');
+  });
+
+  it('shows no link for a javascript: source URL (desktop and mobile)', () => {
+    const rows = [makeCard({ sourceUrl: 'javascript:alert(1)' })];
+    const { unmount } = render(<CatalogTable {...baseProps({ rows })} />);
+    expect(screen.queryByTitle('Open source link')).toBeNull();
+    unmount();
+    useIsMobileMock.mockReturnValue(true);
+    render(<CatalogTable {...baseProps({ rows })} />);
+    fireEvent.click(screen.getByText('Charizard'));
+    expect(screen.queryByTitle('Open source link')).toBeNull();
+  });
+});

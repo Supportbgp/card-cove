@@ -244,11 +244,19 @@ end $$;
 
 # Migration files this branch adds or changes compared to main, in name
 # order. They run on staging after the copy, so a feature's schema change is
-# tested before it's run on production.
+# tested before it's run on production. A file marked "-- DO NOT RE-RUN"
+# (an old migration superseded by a later one, e.g. phase18) is skipped even
+# when its comments change: running it again would undo the later one.
 function Get-BranchMigrations {
   git -C $RepoRoot fetch -q origin main
   $files = git -C $RepoRoot diff --name-only --diff-filter=AM origin/main...HEAD -- supabase/migrations
-  return @($files | Where-Object { $_ -like '*.sql' } | Sort-Object)
+  $sql = @($files | Where-Object { $_ -like '*.sql' } | Sort-Object)
+  return @($sql | Where-Object {
+    if (Select-String -Path (Join-Path $RepoRoot $_) -Pattern '^-- DO NOT RE-RUN' -Quiet) {
+      Write-Host "Skipping $_ (marked DO NOT RE-RUN)."
+      $false
+    } else { $true }
+  })
 }
 
 function Invoke-BranchMigrations([string]$stagingUrl) {

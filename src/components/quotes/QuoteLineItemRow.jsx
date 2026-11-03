@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUI } from '../../context/UIContext.jsx';
 import { GAMES, RARITY_OPTIONS_BY_GAME, PRINTING_OPTIONS_BY_GAME, CONDITION_OPTIONS, marketValueForCondition, roundPriceUp, roundPriceDown, activeImageSrc } from '../../lib/cardUtils.js';
 import { searchCardImage, tcgplayerSearchUrl, ebaySoldSearchUrl, priceChartingSearchUrl } from '../../lib/cardSearch.js';
+import { safeHttpUrl } from '../../lib/safeUrl.js';
 import { resizeImageFile } from '../../lib/image.js';
 import CatalogItemPicker from './CatalogItemPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
@@ -412,8 +413,8 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
             onChange={(e) => patch({ sourceUrl: e.target.value })}
             style={{ flex: 1, minWidth: 0 }}
           />
-          {item.sourceUrl && (
-            <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--blue)', whiteSpace: 'nowrap' }}>
+          {safeHttpUrl(item.sourceUrl) && (
+            <a href={safeHttpUrl(item.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--blue)', whiteSpace: 'nowrap' }}>
               open ↗
             </a>
           )}
@@ -440,8 +441,8 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
             manual search — same logic as EditModal's own reference row,
             now that a quote item actually carries a sourceUrl. */}
         <div className="scan-row-line" style={{ fontSize: '11.5px', color: 'var(--ink-soft)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          {item.sourceUrl.trim() ? (
-            <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue)', fontWeight: 600 }}>
+          {safeHttpUrl(item.sourceUrl) ? (
+            <a href={safeHttpUrl(item.sourceUrl)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue)', fontWeight: 600 }}>
               Check live TCGPlayer listing ↗
             </a>
           ) : (

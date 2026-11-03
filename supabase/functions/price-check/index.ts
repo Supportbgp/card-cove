@@ -10,7 +10,10 @@
 // into every Edge Function automatically (SUPABASE_URL/
 // SUPABASE_SERVICE_ROLE_KEY env vars — no `supabase secrets set` needed for
 // those two). The HTTP call itself still needs a valid Authorization bearer
-// to pass Supabase's default per-function JWT check — the calling GitHub
+// to pass Supabase's default per-function JWT check, and on top of that the
+// bearer must be the service-role key itself (isServiceRoleRequest in
+// auth.ts) — the gateway alone also lets the public anon key or any
+// signed-in user through. The calling GitHub
 // Actions workflow authenticates with the same service-role key, stored as
 // a GitHub repository secret (SUPABASE_SERVICE_ROLE_KEY). See CLAUDE.md for
 // the exact setup steps.
@@ -30,6 +33,7 @@
 // not re-guessed from scratch.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest } from "./auth.ts";
 
 // Light 1-retry-on-5xx safety net, same reasoning already used throughout
 // cardSearch.js/card-lookup-proxy — none of these providers have a
@@ -601,6 +605,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return json({ error: "POST only" }, 405);
   }
+  // Checked before reading the body or touching the database.
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!isServiceRoleRequest(req, serviceKey)) {
+    return json({ error: "Service role only" }, 401);
+  }
 
   let body = {};
   try {
@@ -615,7 +624,6 @@ Deno.serve(async (req) => {
     : MAX_ITEMS_PER_RUN;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const admin = createClient(supabaseUrl, serviceKey);
 
   const { data: settingsRow } = await admin

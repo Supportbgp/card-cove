@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useUI } from '../../context/UIContext.jsx';
 import { timeAgo, activeImageSrc, GAME_TAG_CLASS } from '../../lib/cardUtils.js';
+import { safeHttpUrl } from '../../lib/safeUrl.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { formatMoney, formatPctChange } from '../../lib/priceAlertUtils.js';
 
@@ -194,8 +195,8 @@ export default function CatalogTable({
                       {c.itemType === "slab" && <span className="badge slab">Slab</span>}
                       {c.itemType === "bulk" && <span className="badge bulk">Bulk</span>}
                       {c.location && <span className="badge location" title="Binder / case">{c.location}</span>}
-                      {c.sourceUrl && (
-                        <a href={c.sourceUrl} target="_blank" rel="noopener" className="notes-pin" title="Open source link">link</a>
+                      {safeHttpUrl(c.sourceUrl) && (
+                        <a href={safeHttpUrl(c.sourceUrl)} target="_blank" rel="noopener noreferrer" className="notes-pin" title="Open source link">link</a>
                       )}
                       {c.notes && <span className="notes-pin" title={c.notes}>note</span>}
                     </div>
@@ -276,8 +277,8 @@ export default function CatalogTable({
                       {c.itemType === "bulk" && <span className="badge bulk">Bulk</span>}
                       {isSold && <span className="badge sold">Sold</span>}
                       {c.notes && <span className="notes-pin" title={c.notes}>note</span>}
-                      {c.sourceUrl && (
-                        <a href={c.sourceUrl} target="_blank" rel="noopener" className="notes-pin" title="Open source link" onClick={(e) => e.stopPropagation()}>link</a>
+                      {safeHttpUrl(c.sourceUrl) && (
+                        <a href={safeHttpUrl(c.sourceUrl)} target="_blank" rel="noopener noreferrer" className="notes-pin" title="Open source link" onClick={(e) => e.stopPropagation()}>link</a>
                       )}
                       {c.location && <span className="badge location" title="Binder / case">{c.location}</span>}
                     </div>

@@ -3,6 +3,8 @@
 // screen so a wrong-print match (a bare "Mew" priced off a different, pricier
 // Mew) is obvious at a glance. Alerts raised before matched-card recording
 // existed have no `match` and say so instead of showing nothing.
+import { safeHttpUrl } from '../lib/safeUrl.js';
+
 const BASIS_LABEL = {
   number: 'matched by the number in the name',
   set: "matched by this item's Set",
@@ -36,10 +38,10 @@ export default function PriceAlertMatch({ alert, onZoom }) {
         </div>
         <div className="price-alert-match-meta">
           {BASIS_LABEL[m.basis] || 'first search result'}
-          {m.url && (
+          {safeHttpUrl(m.url) && (
             <>
               {' · '}
-              <a href={m.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+              <a href={safeHttpUrl(m.url)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                 View listing ↗
               </a>
             </>

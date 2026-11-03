@@ -1,3 +1,11 @@
+-- DO NOT RE-RUN. Already applied; superseded by phase18_staff_only_access.sql.
+--
+-- This file creates "authenticated full access" policies. Since phase18,
+-- every table is staff-only (public.is_staff()), so running this again
+-- would reopen these tables to any signed-in account, not just the shop
+-- login. Kept as history. On a brand-new database, run it and then re-run
+-- phase18 straight after. npm run deploy-staging skips files with this line.
+--
 -- Sorting stage + Bulk item type. Real staff feedback on the Quote tab:
 -- accepting a quote used to ask for one location+channels decision for the
 -- WHOLE quote and write straight to Catalog (see the now-superseded

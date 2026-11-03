@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useUI } from '../../context/UIContext.jsx';
 import { normalizeCard, channelDefaultsForLocation, marketValueForCondition, canonicalizeCondition, roundPriceUp, roundPriceDown, RARITY_OPTIONS_BY_GAME, CONDITION_OPTIONS, PRINTING_OPTIONS_BY_GAME, GAMES } from '../../lib/cardUtils.js';
 import { searchCardImage as searchByGame, tcgplayerSearchUrl, ebaySoldSearchUrl, priceChartingSearchUrl } from '../../lib/cardSearch.js';
+import { safeHttpUrl, openSafeUrl } from '../../lib/safeUrl.js';
 import { resizeImageFile } from '../../lib/image.js';
 import LocationPicker from '../LocationPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
@@ -448,10 +449,10 @@ export default function EditModal({ card, template, catalog, locations, multipli
             <div className="field-group">
               <label>
                 Source / product URL{' '}
-                {form.sourceUrl && (
+                {safeHttpUrl(form.sourceUrl) && (
                   <span
                     style={{ textTransform: 'none', fontFamily: "'Inter',sans-serif", fontWeight: 600, cursor: 'pointer', color: 'var(--blue)' }}
-                    onClick={() => window.open(form.sourceUrl, '_blank')}
+                    onClick={() => openSafeUrl(form.sourceUrl)}
                   >(open ↗)</span>
                 )}
               </label>
@@ -720,10 +721,10 @@ export default function EditModal({ card, template, catalog, locations, multipli
             <div className="field-group">
               <label>Reference prices</label>
               <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px' }}>
-                {form.sourceUrl.trim() ? (
+                {safeHttpUrl(form.sourceUrl) ? (
                   <span
                     style={{ textTransform: 'none', fontFamily: "'Inter',sans-serif", fontWeight: 600, cursor: 'pointer', color: 'var(--blue)' }}
-                    onClick={() => window.open(form.sourceUrl, '_blank')}
+                    onClick={() => openSafeUrl(form.sourceUrl)}
                   >
                     Check live TCGPlayer listing ↗
                   </span>

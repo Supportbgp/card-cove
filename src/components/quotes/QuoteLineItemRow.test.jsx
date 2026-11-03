@@ -115,3 +115,20 @@ describe('QuoteLineItemRow — Alter %', () => {
     expect(screen.getByDisplayValue('-20')).toBeInTheDocument();
   });
 });
+
+describe('QuoteLineItemRow — source link safety', () => {
+  it('links an http(s) Source link as the live TCGPlayer listing', () => {
+    renderRow({ sourceUrl: 'https://www.tcgplayer.com/product/1' });
+    expect(screen.getByText('Check live TCGPlayer listing ↗').closest('a')).toHaveAttribute('href', 'https://www.tcgplayer.com/product/1');
+    expect(screen.getByText('open ↗').closest('a')).toHaveAttribute('href', 'https://www.tcgplayer.com/product/1');
+  });
+
+  it('never puts a javascript: Source link in an href, falling back to the manual search', () => {
+    renderRow({ sourceUrl: 'javascript:alert(1)' });
+    expect(screen.queryByText('open ↗')).toBeNull();
+    expect(screen.queryByText('Check live TCGPlayer listing ↗')).toBeNull();
+    for (const a of document.querySelectorAll('a')) {
+      expect(a.getAttribute('href')).not.toMatch(/^javascript:/i);
+    }
+  });
+});
