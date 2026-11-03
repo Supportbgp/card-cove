@@ -6064,6 +6064,68 @@ migration would refuse the shop login, since it isn't flagged yet. Also
 confirm Authentication → "Allow new users to sign up" is off in both
 projects until Discord sign-in is set up deliberately.
 
+## Public binders and the public stock page (bounties Phase 1)
+
+Second step of the bounty plan (see "Staff-only access" above): customers
+can browse what's in stock online, limited to binders staff choose. Decided
+with the user: one setting covers both the public stock page and a binder's
+QR page; **every binder starts private** (option B, picked because the QR
+pages weren't really in use yet), so a QR page for a binder nobody has
+ticked says "This binder isn't shared online"; Bulk stays in-store only.
+Open bounties join this page in Phase 3.
+
+- **`phase19_public_binders.sql`**: a `public_binders` table (one row per
+  public `location`; there's no binders table, a binder is just a catalog
+  location). Staff-only rule, as phase18 requires for every new table, plus
+  explicit grants (authenticated read/write, nothing for anon) instead of
+  relying on Supabase's automatic ones. `catalog_public_view` keeps its
+  columns and now also requires the row's location to be in
+  `public_binders`. A new `public_binder_list` view exposes just the names,
+  so the public pages can tell "not shared" from "empty". Both views are
+  granted to `anon` and `authenticated` (a signed-in staff member or, later,
+  a member opening a public page queries as `authenticated`). Verified on a
+  throwaway local Postgres after phase18, both run twice: nothing public
+  until a binder is ticked; visitors see only ticked binders, never bulk or
+  sold; a member login can't add to the list ("violates row-level security
+  policy") but sees the same public views; anon can't write.
+- **Staff side**: Import / Export → **Public binders…**
+  (`PublicBindersModal.jsx`): every location, with how many cards would
+  show (unsold, in stock, not bulk), ticked = public, Save. A binder that's
+  public but has no catalog rows left still appears, so it can be turned
+  off. The public stock page's link is in the same window.
+  `dbSetPublicBinders` inserts the newly ticked and deletes the unticked.
+  Loaded once at sign-in (`dbLoadPublicBinders`), no realtime: it rarely
+  changes. The Binder QR window now warns when the chosen binder isn't
+  public, and its select gained a real label (`htmlFor`).
+- **Public stock page, `?shop=1`** (`src/components/public/ShopView.jsx`,
+  routed in `main.jsx` like `?binder=`; no login, no UIProvider): search by
+  name/set, Game and Binder filters (Binder only when there's more than
+  one), 48 cards at a time with "Show more". **Inline images are loaded
+  only for the cards on screen**: `dbLoadPublicStock` selects every column
+  except `image_data`/`photo_data` (scanner crops and uploads are ~50-150 KB
+  each, far too much for a whole shop on a phone), and
+  `dbLoadPublicImages` fetches them for the visible cards. The view has no
+  id, so cards are matched back by `publicItemKey` (name, binder, set,
+  condition, printing, grader, grade). `fetchAllRows` gained a `columns`
+  option for this.
+- **`PublicCard.jsx`** is the card tile shared by both public pages
+  (moved out of `BinderView.jsx`, plus an optional "In: <binder>" line for
+  the stock page). `BinderView` now checks `public_binder_list` and links to
+  the stock page ("Search all stock").
+- Staff docs: `PublicBinderSection.jsx` (public-only rule, the stock page)
+  and `ImportExportSection.jsx` (Public binders…, QR warning).
+- Covered by new `db.test.js` cases (no heavy columns in the list query,
+  image fetch and matching, list/load/save incl. failures),
+  `e2e/public-binders.spec.js` (Desktop + Mobile: the stock page lists and
+  filters; the nothing-public state; staff tick/untick with bulk not
+  counted and the QR warning) and a new `binder-view.spec.js` case (a
+  non-public binder says so). The harness views are seeded directly, so the
+  view filtering itself is what the local Postgres check covers.
+
+**Requires running `phase19_public_binders.sql`** (after phase18) in the
+SQL Editor; staging runs both on `npm run deploy-staging`. Right after it,
+every QR page and the stock page show nothing until staff tick binders.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

@@ -10,6 +10,7 @@ import {
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, dbFindLossForTicket,
   dbLoadSettings, dbSaveSettings,
   dbLoadPriceAlerts, dbAcknowledgePriceAlerts, dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
+  dbLoadPublicBinders, dbSetPublicBinders,
   dbLoadQuotes, dbUpsertQuote, dbDeleteQuote, dbLoadQuoteSettings, dbSaveQuoteSettings,
   dbLoadSortingQueue, dbInsertSortingItems, dbDeleteSortingItem,
 } from './lib/db.js';
@@ -129,6 +130,8 @@ export default function App() {
   const [priceAlerts, setPriceAlerts] = useState([]);
   const [showPriceAlerts, setShowPriceAlerts] = useState(false);
   const [priceTracking, setPriceTracking] = useState(DEFAULT_PRICE_TRACKING);
+  // Binders shown on the public stock page and their QR pages.
+  const [publicBinders, setPublicBinders] = useState([]);
   // A request for Catalog to open one item's Edit screen (from a price
   // alert's "Find card"). A fresh object each time, so asking for the
   // same sku twice still opens it twice.
@@ -158,6 +161,7 @@ export default function App() {
     dbLoadSortingQueue(toast).then(setSorting);
     dbLoadPriceAlerts(toast).then(setPriceAlerts);
     dbLoadPriceTrackingSettings(toast).then(setPriceTracking).catch(() => setPriceTracking(DEFAULT_PRICE_TRACKING));
+    dbLoadPublicBinders(toast).then(setPublicBinders);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn, isStaff]);
 
@@ -205,6 +209,16 @@ export default function App() {
   );
 
   const pendingCount = queue.filter(t => !isTicketComplete(t)).length;
+
+  // Public binders (CLAUDE.md "Public binders"): save the ticked list.
+  async function handleSavePublicBinders(next) {
+    const ok = await dbSetPublicBinders(next, publicBinders, toast);
+    if (ok) {
+      setPublicBinders(next);
+      toast(next.length === 1 ? '1 binder is public' : `${next.length} binders are public`);
+    }
+    return ok;
+  }
 
   async function handleSaveCard(record, prevSku) {
     const idx = catalog.findIndex(c => c.sku === prevSku);
@@ -823,6 +837,8 @@ export default function App() {
           queue={queue}
           locations={locations}
           quotes={quotes}
+          publicBinders={publicBinders}
+          onSavePublicBinders={handleSavePublicBinders}
           onSaveQuote={handleSaveQuote}
           onImport={handleImport}
           onClearAll={handleClearAll}

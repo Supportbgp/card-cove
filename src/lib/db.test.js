@@ -51,6 +51,7 @@ const {
   rowToPriceAlert, dbLoadPriceAlerts, dbAcknowledgePriceAlerts,
   dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, rowToLoss, dbFindLossForTicket,
+  dbLoadPublicStock, dbLoadPublicImages, dbLoadPublicBinderList, publicItemKey, dbLoadPublicBinders, dbSetPublicBinders,
 } = await import('./db.js');
 
 beforeEach(() => {
@@ -612,5 +613,60 @@ describe('dbFindLossForTicket', () => {
   it('returns null when it was already undone', async () => {
     tableResults.inventory_losses = { data: [], error: null };
     expect(await dbFindLossForTicket({ sku: 'poca', timestamp: Date.now() }, vi.fn())).toBe(null);
+  });
+});
+
+describe('public binders', () => {
+  it('loads public stock without the heavy inline image columns', async () => {
+    tableResults.catalog_public_view = { data: [{ name: 'Charizard', set_name: 'Base Set', location: 'Binder A', qty: 1, price: 45 }], error: null };
+    const rows = await dbLoadPublicStock();
+    const builder = fromMock.mock.results[0].value;
+    const cols = builder.select.mock.calls[0][0];
+    expect(cols).not.toMatch(/image_data|photo_data/);
+    expect(rows[0]).toMatchObject({ name: 'Charizard', set: 'Base Set', location: 'Binder A' });
+  });
+
+  it('fetches inline images for the given cards and keys them by what a visitor sees', async () => {
+    tableResults.catalog_public_view = { data: [{ name: 'Charizard', set_name: 'Base Set', location: 'Binder A', image_data: 'data:x', photo_data: '', active_image: 'stock' }], error: null };
+    const item = { name: 'Charizard', set: 'Base Set', location: 'Binder A' };
+    const found = await dbLoadPublicImages([item]);
+    const builder = fromMock.mock.results[0].value;
+    expect(builder.in).toHaveBeenCalledWith('name', ['Charizard']);
+    expect(builder.in).toHaveBeenCalledWith('location', ['Binder A']);
+    expect(found[publicItemKey(item)]).toMatchObject({ imageUrl: 'local', imageData: 'data:x' });
+  });
+
+  it('asks for nothing when no cards are given', async () => {
+    expect(await dbLoadPublicImages([])).toEqual({});
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('reads the public binder names', async () => {
+    tableResults.public_binder_list = { data: [{ location: 'Binder A' }], error: null };
+    expect(await dbLoadPublicBinderList()).toEqual(['Binder A']);
+  });
+
+  it('staff load: a failure toasts and returns none', async () => {
+    tableResults.public_binders = { data: null, error: { message: 'nope' } };
+    const toast = vi.fn();
+    expect(await dbLoadPublicBinders(toast)).toEqual([]);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('nope'), true);
+  });
+
+  it('saving adds the new binders and removes the unticked ones', async () => {
+    tableResults.public_binders = { data: null, error: null };
+    const ok = await dbSetPublicBinders(['A', 'C'], ['A', 'B'], vi.fn());
+    expect(ok).toBe(true);
+    const [insertBuilder, deleteBuilder] = fromMock.mock.results.map(r => r.value);
+    expect(insertBuilder.insert).toHaveBeenCalledWith([{ location: 'C' }]);
+    expect(deleteBuilder.delete).toHaveBeenCalled();
+    expect(deleteBuilder.in).toHaveBeenCalledWith('location', ['B']);
+  });
+
+  it('saving reports a failed write', async () => {
+    tableResults.public_binders = { data: null, error: { message: 'denied' } };
+    const toast = vi.fn();
+    expect(await dbSetPublicBinders(['A'], [], toast)).toBe(false);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('denied'), true);
   });
 });

@@ -20,11 +20,11 @@ import { DEFAULT_PRICE_TRACKING } from './priceAlertUtils.js';
 // ideally-unique column) until a page comes back short of a full page.
 const FETCH_PAGE_SIZE = 1000;
 
-async function fetchAllRows(table, orderColumn, { ascending = true, filter } = {}) {
+async function fetchAllRows(table, orderColumn, { ascending = true, filter, columns = '*' } = {}) {
   const rows = [];
   let from = 0;
   for (;;) {
-    let query = supabaseClient.from(table).select('*').order(orderColumn, { ascending });
+    let query = supabaseClient.from(table).select(columns).order(orderColumn, { ascending });
     if (filter) query = filter(query);
     const { data, error } = await query.range(from, from + FETCH_PAGE_SIZE - 1);
     if (error) return { data: null, error };
@@ -641,14 +641,95 @@ export async function dbLoadPublicBinder(location) {
     filter: (q) => q.eq('location', location),
   });
   if (error) throw error;
-  return (data || []).map(r => ({
+  return (data || []).map(rowToPublicItem);
+}
+
+function rowToPublicItem(r) {
+  return {
     name: r.name, set: r.set_name, game: r.game, condition: r.condition, printing: r.printing,
     itemType: r.item_type, grader: r.grader, grade: r.grade,
-    qty: r.qty, price: r.price,
+    qty: r.qty, price: r.price, location: r.location,
     imageUrl: r.image_data ? "local" : (r.image_url || ""),
     imageData: r.image_data || "",
     photoUrl: r.photo_data ? "local" : (r.photo_url || ""),
     photoData: r.photo_data || "",
     activeImage: r.active_image,
-  }));
+  };
+}
+
+// The names of the binders staff have made public (public_binder_list view,
+// readable without a login). Used by the public pages to tell a binder
+// that isn't shared apart from one that's just empty.
+export async function dbLoadPublicBinderList() {
+  const { data, error } = await fetchAllRows('public_binder_list', 'location');
+  if (error) throw error;
+  return (data || []).map(r => r.location);
+}
+
+// Everything in stock in the public binders, for the public stock page.
+// Leaves out image_data/photo_data: those are inline images (often 50-150 KB
+// each), too heavy to load for a whole shop at once on a phone. The page
+// fetches them for the cards it actually shows (dbLoadPublicImages).
+const PUBLIC_LIST_COLUMNS = 'name,set_name,game,condition,printing,item_type,grader,grade,qty,price,image_url,location,photo_url,active_image';
+
+export async function dbLoadPublicStock() {
+  const { data, error } = await fetchAllRows('catalog_public_view', 'name', { columns: PUBLIC_LIST_COLUMNS });
+  if (error) throw error;
+  return (data || []).map(rowToPublicItem);
+}
+
+// A row of the public view has no id, so items are matched back up by what
+// a visitor can see of them.
+export function publicItemKey(item) {
+  return [item.name, item.location, item.set, item.condition, item.printing, item.grader, item.grade]
+    .map(v => v || '').join('|');
+}
+
+// The inline images for the given items (the ones on screen). Returns a map
+// of publicItemKey -> { imageUrl, imageData, photoUrl, photoData, activeImage }.
+export async function dbLoadPublicImages(items) {
+  const names = Array.from(new Set(items.map(i => i.name)));
+  const locations = Array.from(new Set(items.map(i => i.location)));
+  if (!names.length) return {};
+  const { data, error } = await supabaseClient.from('catalog_public_view')
+    .select('name,set_name,condition,printing,grader,grade,location,image_url,image_data,photo_url,photo_data,active_image')
+    .in('name', names).in('location', locations);
+  if (error) throw error;
+  const out = {};
+  for (const r of data || []) {
+    const it = rowToPublicItem(r);
+    out[publicItemKey(it)] = {
+      imageUrl: it.imageUrl, imageData: it.imageData,
+      photoUrl: it.photoUrl, photoData: it.photoData, activeImage: it.activeImage,
+    };
+  }
+  return out;
+}
+
+// Staff side: which binders are public (public_binders table, staff only).
+export async function dbLoadPublicBinders(toast) {
+  const { data, error } = await fetchAllRows('public_binders', 'location');
+  if (error) {
+    toast('Failed to load public binders: ' + error.message, true);
+    return [];
+  }
+  return (data || []).map(r => r.location);
+}
+
+// Makes exactly `locations` public: adds the new ones, removes the rest.
+// Returns true when both writes succeeded.
+export async function dbSetPublicBinders(locations, previous, toast) {
+  const want = new Set(locations);
+  const had = new Set(previous);
+  const add = locations.filter(l => !had.has(l));
+  const remove = previous.filter(l => !want.has(l));
+  if (add.length) {
+    const { error } = await supabaseClient.from('public_binders').insert(add.map(location => ({ location })));
+    if (error) { toast('Saving public binders failed: ' + error.message, true); return false; }
+  }
+  if (remove.length) {
+    const { error } = await supabaseClient.from('public_binders').delete().in('location', remove);
+    if (error) { toast('Saving public binders failed: ' + error.message, true); return false; }
+  }
+  return true;
 }
