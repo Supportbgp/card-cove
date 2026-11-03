@@ -6244,7 +6244,10 @@ Four findings from a `/security-review` pass, fixed in one PR:
   would reopen its tables to any signed-in account. **Editing those files
   would have made `deploy-staging` re-run them** (it runs every migration a
   branch adds *or changes*), so `Get-BranchMigrations` (`staging-lib.ps1`)
-  now skips any file with a `-- DO NOT RE-RUN` line, and says so. Verified: on
+  now skips any file with a `-- DO NOT RE-RUN` line, and says so. phase6 and
+  `phase_qr_public_binder_view` got the same header for the same reason: they
+  recreate `catalog_public_view` without phase19's `public_binders` filter,
+  so re-running either would put every binder back on the public pages. Verified: on
   this branch it returns none of the seven.
 - `.claude/claude-security-guidance.md` gained the matching rules
   (`safeHttpUrl`, `isServiceRoleRequest`, the migration header, workflow
