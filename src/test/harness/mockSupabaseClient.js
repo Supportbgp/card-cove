@@ -24,6 +24,8 @@ const PRIMARY_KEY = {
   inventory_losses: 'id',
   public_binders: 'location',
   public_binder_list: 'location',
+  want_requests: 'id',
+  public_want_list: 'id',
 };
 
 function defaultSeed() {
@@ -41,6 +43,7 @@ function defaultSeed() {
     inventory_losses: [],
     public_binders: [],
     public_binder_list: [],
+    want_requests: [],
   };
 }
 
@@ -69,10 +72,20 @@ function matchesFilters(row, filters) {
 
 let harnessQuoteNumberCounter = 0;
 
+// public_want_list is a view in the real database (phase20_want_list.sql):
+// open requests staff chose to show, without the customer. Derived from
+// want_requests here the same way, so a request added in a test shows up.
+function publicWantList(db) {
+  return (db.want_requests || [])
+    .filter((w) => w.status === 'open' && w.show_public !== false)
+    .map(({ id, game, name, set_name, number, rarity, printing, condition, image_url, created_at }) =>
+      ({ id, game, name, set_name, number, rarity, printing, condition, image_url, created_at }));
+}
+
 function execute(table, op, filters, single, order, range) {
   const db = getDb();
   const key = PRIMARY_KEY[table];
-  const rows = db[table] || (db[table] = []);
+  const rows = table === 'public_want_list' ? publicWantList(db) : (db[table] || (db[table] = []));
 
   if (op.type === 'select') {
     let matched = rows.filter((r) => matchesFilters(r, filters));

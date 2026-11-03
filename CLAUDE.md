@@ -6126,6 +6126,62 @@ Open bounties join this page in Phase 3.
 SQL Editor; staging runs both on `npm run deploy-staging`. Right after it,
 every QR page and the stock page show nothing until staff tick binders.
 
+## Want list (replaces the Discord bounties, PRs #82-#84)
+
+Demo feedback on the bounty system (Discord sign-in, member posting, a
+10-open limit, 60-day expiry, offers, holds, Accept/Decline): staff found
+it "more complicated and convoluted than what it was meant to be". What
+they need is the walk-in flow, "do you have X?" "No, but I'll keep it on a
+list. Name and number?", plus a heads-up while quoting a card someone
+wants. Built fresh from #81 (public binders) rather than on top of #82-#84,
+so none of the Discord/member/offer code or its Edge Functions came along;
+those PRs are superseded. Decided with the user: anyone on duty contacts
+the customer, so the app is only the record (plus an optional Responsible
+field, like a quote's Employee); a request **stays until fulfilled or
+rejected**, no expiry; the quote notice **suggests paying more**; and the
+public page stays, shareable, with each request's visibility up to staff.
+
+- **`phase20_want_list.sql`**: `want_requests` (card: game/name/set_name/
+  number/rarity/printing/condition/image_url; `max_price`, what the
+  customer would pay; `customer_name`, `customer_contact`, `responsible`,
+  `notes`; `show_public`; `status` open|fulfilled|rejected; `created_at`,
+  `closed_at`), staff-only RLS per phase18's rule, and a
+  `public_want_list` view (open + `show_public`, card columns only: no
+  customer, contact, price, responsible or notes) for anon/authenticated.
+  Ends with `notify pgrst, 'reload schema'`.
+- **Staff write the table directly** (`dbLoadWantRequests`/
+  `dbSaveWantRequest`/`dbSetWantStatus` in `db.js`); no Edge Function,
+  since there's no member side to police. Insert sends `status` and
+  `created_at` itself (the harness doesn't apply column defaults).
+- **Want list tab** (`WantListTab.jsx`, count = open requests): filters
+  Open/Fulfilled/Rejected/All, search by card/customer/staff, the
+  customer's contact, "N in stock" (`wantStockMatches`: same game and
+  name, unsold, not Bulk), Edit, Fulfilled, Reject (confirm) and Reopen,
+  plus the public link (Open / Copy link). `WantRequestModal.jsx` adds and
+  edits: the card (optional search via `searchCardImage`, picking a result
+  fills picture/set/number/rarity), price, customer, contact, Responsible,
+  notes, "Show on the public Wanted list" (default on). Not on the
+  realtime channel: reloaded when the tab is opened, plus Refresh.
+- **Quote notice** (`QuoteLineItemRow`): a card row whose name (and game,
+  once both have one) matches an open request (`wantsForCard`) shows "On
+  the want list: wanted by Jake (up to $40)" and **Pay +10% for it**, which
+  turns on the row's Alter % at +10 (`WANTED_PAY_BUMP_PCT`, added to any
+  delta already there). Matching by name alone before a game is picked is
+  deliberate: a fresh row has no game yet, and an early heads-up beats a
+  missed one. **Sorting** shows a "Wanted ×N" tag the same way.
+- **Public page**: `ShopView` gained an In stock / Wanted toggle;
+  `?shop=1&view=wanted` opens Wanted (`PublicWantList.jsx`), read-only.
+- Also ported from #84: the staging copy and branch migrations end with
+  `notify pgrst, 'reload schema'` (the "schema cache" error on staging).
+- Covered by `wantList.test.js` and `e2e/want-list.spec.js` (Desktop +
+  Mobile): add a request; the public page hides hidden/closed requests and
+  every customer detail; fulfill/reject/reopen; edit; the quote notice and
+  its +10%; the Sorting tag. Staff docs: new `WantListSection.jsx`, and a
+  line in `PublicBinderSection.jsx`.
+
+**Requires running `phase20_want_list.sql`** (after phase18 and phase19).
+No Edge Function deploy.
+
 ## Backlog
 
 Open items not yet scheduled into a sprint, consolidated here so a new

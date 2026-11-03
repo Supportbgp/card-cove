@@ -225,6 +225,11 @@ end $$;
     foreach ($t in @($realtimeTables)) {
       if ($t) { $after += "alter publication supabase_realtime add table public.`"$t`";`n" }
     }
+    # Supabase's API keeps its own list of tables and only reloads it when
+    # told to; without this the app can report a copied table as missing
+    # ("Could not find the table ... in the schema cache"). Sent when the
+    # transaction commits.
+    $after += "notify pgrst, 'reload schema';`n"
     [System.IO.File]::WriteAllText($postSql, $after, $Utf8NoBom)
 
     & psql "--dbname=$($urls.Staging)" --single-transaction --set=ON_ERROR_STOP=1 --quiet --output=NUL "--file=$dropSql" "--file=$dump" "--file=$postSql"
@@ -254,6 +259,8 @@ function Invoke-BranchMigrations([string]$stagingUrl) {
     & psql "--dbname=$stagingUrl" --single-transaction --set=ON_ERROR_STOP=1 --quiet --output=NUL "--file=$(Join-Path $RepoRoot $f)"
     if ($LASTEXITCODE -ne 0) { throw "Migration $f failed on staging (see above). The site wasn't published." }
   }
+  # Same reason as in Copy-ProdToStaging: new tables/columns must reach the API.
+  & psql "--dbname=$stagingUrl" --quiet --output=NUL -c "notify pgrst, 'reload schema';"
 }
 
 # Empties every table in staging's public schema (structure stays).

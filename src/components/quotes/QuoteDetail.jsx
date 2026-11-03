@@ -20,7 +20,7 @@ const OFFER_STATUS_OPTIONS = [
 // reached from QuotesTab for either a brand-new or a resumed collection.
 // Rendered with a `key={quote.id}` by the parent so switching quotes
 // remounts this fresh rather than needing a prop-sync effect.
-export default function QuoteDetail({ quote, catalog, locations, multipliers, tierSettings, onSave, onDelete, onClose }) {
+export default function QuoteDetail({ quote, catalog, wantRequests, locations, multipliers, tierSettings, onSave, onDelete, onClose }) {
   const { showConfirm } = useUI();
   const [draft, setDraft] = useState(() => ({ ...quote, items: quote.items.map(normalizeQuoteItem) }));
   const [addMode, setAddMode] = useState(null); // null | 'scan' | 'import'
@@ -198,6 +198,7 @@ export default function QuoteDetail({ quote, catalog, locations, multipliers, ti
                     item={item}
                     flagMissingGame={missingGameBlocks}
                     catalog={catalog}
+                    wantRequests={wantRequests}
                     multipliers={multipliers}
                     onChange={(next) => updateItem(item.id, next)}
                     onRemove={() => removeItem(item.id)}
