@@ -75,7 +75,7 @@ export default function ShopView() {
   }
 
   return (
-    <div className="app">
+    <div className="app public-page">
       <div className="topbar">
         <div className="brand">
           <img src={logoIcon} alt="" className="brand-logo" />
@@ -85,8 +85,8 @@ export default function ShopView() {
       </div>
 
       <div className="scan-mode-toggle shop-view-toggle" role="group" aria-label="Show">
-        <button type="button" aria-pressed={view === 'stock'} className={`btn small${view === 'stock' ? '' : ' ghost'}`} onClick={() => setView('stock')}>In stock</button>
-        <button type="button" aria-pressed={view === 'wanted'} className={`btn small${view === 'wanted' ? '' : ' ghost'}`} onClick={() => setView('wanted')}>Wanted</button>
+        <button type="button" aria-pressed={view === 'stock'} className={`btn${view === 'stock' ? '' : ' ghost'}`} onClick={() => setView('stock')}>In stock</button>
+        <button type="button" aria-pressed={view === 'wanted'} className={`btn${view === 'wanted' ? '' : ' ghost'}`} onClick={() => setView('wanted')}>Wanted</button>
       </div>
 
       {view === 'wanted' && <PublicWantList onZoom={setZoomUrl} />}

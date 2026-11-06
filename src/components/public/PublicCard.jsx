@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { activeImageSrc } from '../../lib/cardUtils.js';
 
+// Keeps each ' · ' attached to the word before it, so a wrapped details line
+// never starts with a dot.
+export function keepSeparators(text) {
+  return text.replaceAll(' · ', '\u00a0· ');
+}
+
 // One card on the public pages (the binder QR page and the public stock
 // page). Read-only: image, name, set/condition/printing, stock and price.
 export default function PublicCard({ item, onZoom, showLocation = false }) {
   const [broken, setBroken] = useState(false);
   const rawSrc = activeImageSrc(item);
   const src = broken ? null : rawSrc;
-  const sub = [item.set, item.condition, item.printing].filter(Boolean).join(' · ') +
-    (item.itemType === 'slab' && (item.grader || item.grade) ? ` · ${item.grader || ''} ${item.grade || ''}`.trim() : '');
+  const sub = keepSeparators([item.set, item.condition, item.printing].filter(Boolean).join(' · ') +
+    (item.itemType === 'slab' && (item.grader || item.grade) ? ' · ' + `${item.grader || ''} ${item.grade || ''}`.trim() : ''));
 
   return (
     <div className="binder-card">
