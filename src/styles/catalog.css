@@ -9,6 +9,10 @@
   height: 40px;
 }
 
+.catalog-toolbar .btn {
+  min-height: 40px;
+}
+
 /* P/T/C platform-status chips: buttons (keyboard reachable), 20px to look
    at, with an invisible 28px tap area. The 8px gap keeps neighbouring tap
    areas from overlapping, and a near miss no longer falls through to the

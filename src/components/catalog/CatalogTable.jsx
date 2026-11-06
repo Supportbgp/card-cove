@@ -32,7 +32,7 @@ function PlatformStatus({ card, onToggle }) {
           key={chip.field}
           className={`platform-chip${card[chip.field] ? ' done' : ''}`}
           title={`${chip.title} — ${card[chip.field] ? 'up to date' : 'needs updating'}`}
-          aria-label={`${chip.title}: ${card[chip.field] ? 'up to date' : 'needs updating'}`}
+          aria-label={chip.title}
           aria-pressed={!!card[chip.field]}
           onClick={(e) => { e.stopPropagation(); onToggle(card.sku, chip.field); }}
         >

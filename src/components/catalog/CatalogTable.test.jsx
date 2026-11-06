@@ -190,9 +190,9 @@ describe('CatalogTable — polish pass controls', () => {
   it('platform chips are buttons with their state, and clicking one toggles it without selecting the row', () => {
     const props = baseProps();
     render(<CatalogTable {...props} />);
-    const pos = screen.getByRole('button', { name: 'POS: up to date' });
+    const pos = screen.getByRole('button', { name: 'POS' });
     expect(pos).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'TCG Player: needs updating' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'TCG Player' })).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(pos);
     expect(props.onTogglePlatformStatus).toHaveBeenCalledWith('sku-1', 'posSynced');
     expect(props.onToggleSelected).not.toHaveBeenCalled();
