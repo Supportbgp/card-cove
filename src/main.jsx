@@ -10,6 +10,7 @@ import { IS_STAGING } from './lib/appEnv.js';
 import './styles/index.css';
 import './styles/public.css';
 import './styles/catalog.css';
+import './styles/scanner.css';
 
 // A binder QR code links to ?binder=<location>, the public stock page is
 // ?shop=1, and the staff docs page

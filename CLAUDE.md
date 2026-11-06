@@ -6357,6 +6357,59 @@ Edit window gets its own pass later.
   catalog/duplicate/undo-sale/price-alerts/lost-stolen/import-cost e2e
   specs pass unchanged.
 
+## Scan Binder polish (Make Interfaces Feel Better, third pass)
+
+Third screen of the MIFB pass (see "Public pages polish"): the Scan Binder
+tab (Binder page and Stack modes, the review rows, the stack camera).
+
+- **CSS split, continued.** The scanner's own rules (`.scan-row*`,
+  `.scan-field*`, `.stack-*`, and their mobile overrides) moved out of
+  `index.css` into **`src/styles/scanner.css`**, imported in `main.jsx`
+  after `catalog.css`. `index.css` went from 2,223 to 1,915 lines.
+  `.drop` and `.scan-mode-toggle` stay in `index.css`, since other tabs use
+  them too. **The Quote tab's line-item rows (`QuoteLineItemRow`,
+  `AddOnLineItemRow`, `BulkLineItemRow`) reuse `.scan-row`/`.scan-field`/
+  `.scan-row-thumb-col`**, so they get these fixes as well: found by the
+  code review, which caught the quote row's own inline-styled thumbnail
+  buttons and ↓/↑ looking broken in the new phone layout. Both now use the
+  same `.scan-thumb-btn`/`.scan-thumb-toggle`/`.scan-round-btn` classes.
+  `scanner.css`'s header says so, so a scanner-only change isn't made
+  assuming it can't touch Quote.
+- **Fixes (4 medium, 3 low), from a quick review with measured sizes:**
+  - "Find another image" / "Find market price" were 10.5px buttons in a
+    64px column, wrapping to three lines, with their sizes as inline
+    styles (which a media query can't override: the trap recorded under
+    "Polish & mobile responsiveness"). Now `.scan-thumb-btn` classes in an
+    88px column (two lines at most); on a phone the column becomes a grid
+    with the thumbnail on the left and the buttons beside it, full width
+    and 44px tall.
+  - Phone price links (TCGPlayer / eBay / PriceCharting) were 11.5px text
+    about 17px tall, packed against each other. Now `.scan-ref-link`, each
+    its own 44px tap row on a phone (desktop unchanged). The live
+    TCGPlayer listing `<span>` also got `role="link"`, `tabIndex` and
+    Enter to open, so it works from the keyboard.
+  - Review-row controls were mismatched (inputs 35px, dropdowns 37px,
+    ↓/↑ ~32px, ✕ 28px). Now one height: 36px desktop, 44px phone
+    (`.scan-round-btn`, `.scan-row-meta .icon-btn`, `.scan-price-wrap`).
+  - The mode toggle and the tab's actions (Take a photo, Take photo,
+    Upload photos, +1 same card, Clear stack, + Add missed card) were
+    `.btn.small` (about 25px on desktop); now normal buttons. The camera
+    overlay's own Stop camera / +1 buttons and the inline Retry were left
+    small on purpose.
+  - Low: Stack mode's camera box is a short placeholder (at least 180px,
+    growing with a long camera error instead of clipping it) until the
+    camera starts (`.stack-camera.idle`) instead of a tall empty box;
+    review thumbnails get the faint pure-black edge; the Photo/Stock
+    toggle moved from 10px inline styles to `.scan-thumb-toggle` (40px tall
+    on a phone).
+- Covered by an added check in `e2e/stack-scanner.spec.js` (the camera box
+  is `idle` and shorter before Start camera, full height while on, idle
+  again after Stop). The scanner still has no component test file (the
+  accepted gap noted under "Scanner review row layout pass"); the
+  existing stack-scanner/quotes e2e specs pass unchanged. Visual check via
+  a throwaway Playwright screenshot spec driving the harness's mock scan
+  (not committed).
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against

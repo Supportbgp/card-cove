@@ -96,8 +96,14 @@ test('live camera: tapping the preview captures the card inside the guide into t
   await seedScanQueue(page, [[griffey]]);
   await openStackMode(page);
 
+  // Before the camera starts, the preview is a short placeholder, not the
+  // full-height camera box.
+  await expect(page.locator('.stack-camera')).toHaveClass(/\bidle\b/);
+  const idleHeight = (await page.locator('.stack-camera').boundingBox()).height;
   await page.getByRole('button', { name: 'Start camera' }).click();
   await expect(page.locator('.stack-counter')).toHaveText('0 in stack');
+  await expect(page.locator('.stack-camera')).not.toHaveClass(/\bidle\b/);
+  expect((await page.locator('.stack-camera').boundingBox()).height).toBeGreaterThan(idleHeight);
   await page.locator('.stack-camera').click({ position: { x: 40, y: 80 } });
 
   await expect(page.locator('.scan-row input[placeholder="Card name"]')).toHaveValue('Ken Griffey Jr.');
@@ -107,6 +113,7 @@ test('live camera: tapping the preview captures the card inside the guide into t
 
   await page.getByRole('button', { name: 'Stop camera' }).click();
   await expect(page.getByRole('button', { name: 'Start camera' })).toBeVisible();
+  await expect(page.locator('.stack-camera')).toHaveClass(/\bidle\b/);
 });
 
 test('"+1 same card" bumps the last card\'s quantity with no new AI call, even while it\'s still being recognized', async ({ page }) => {

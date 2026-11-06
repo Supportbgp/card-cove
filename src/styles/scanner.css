@@ -1,0 +1,452 @@
+/* Scan Binder (ScannerPanel, StackScanner, scanShared's ScanRow/ScanReview):
+   the review rows and the stack camera. The Quote tab's line-item rows
+   (QuoteLineItemRow, AddOnLineItemRow, BulkLineItemRow) reuse the same
+   .scan-row/.scan-field/.scan-row-thumb-col classes, so a change here
+   changes them too. Split out of index.css; shared
+   tokens and base styles (.btn, inputs, .badge, .icon-btn, .drop,
+   .scan-mode-toggle) still come from there. */
+
+/* Each review row fades/slides in once, on its first mount right after a
+   scan — staff see the queue populate card-by-card instead of the whole
+   batch appearing at once. Only plays on mount: later re-renders (e.g. an
+   image/price search resolving) don't replay it, since React keeps the
+   same DOM node for a given row's stable key. animation-delay is set
+   per-row via an inline style (see ScannerPanel.jsx). */
+@keyframes scanRowIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.scan-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  animation: scanRowIn 0.35s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-row { animation: none; }
+}
+
+.scan-row.row-selected {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+}
+
+.scan-row-thumb-col {
+  flex-shrink: 0;
+  width: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.scan-row-thumb {
+  width: 64px;
+  height: 90px;
+  border-radius: 6px;
+  background: var(--surface-alt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.scan-row-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scan-row-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scan-row-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Each field is a label+input pair (the label mirrors EditModal's
+   .field-group, but stays hidden on desktop — this queue is
+   deliberately dense, and a placeholder already identifies a blank
+   field there). Shown on mobile below, where a placeholder-only field
+   becomes indistinguishable from its neighbors the moment it's filled
+   in and the queue stacks one field per line. */
+.scan-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.scan-field input,
+.scan-field select {
+  min-width: 0;
+  width: 100%;
+}
+
+.scan-field-label {
+  display: none;
+}
+
+/* Flex-basis classes for scan-row-line's fields — kept as real
+   classes (not inline styles) specifically so the mobile media query
+   below can override them. An inline style="" attribute would win
+   over any external stylesheet rule, breakpoint or not. */
+.scan-row-line .scan-field.sf-wide {
+  flex: 2.5;
+}
+
+.scan-row-line .scan-field.sf {
+  flex: 1;
+}
+
+.scan-row-line .scan-field.sf-qty {
+  flex: 0 0 60px;
+}
+
+/* Confidence badge + remove button — row-level metadata/actions, not a
+   field to fill in, so this stays a plain side-by-side pair rather than
+   following the one-field-per-line treatment above (mobile included). */
+.scan-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* The live preview: a dark box the video fills (object-fit: cover — see
+   cameraCapture.js's coverRectToVideoRect for why the crop math has to
+   account for that). Tapping anywhere in it captures. */
+.stack-camera {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  aspect-ratio: 3 / 4;
+  max-height: 62vh;
+  margin: 0 auto;
+  background: #11191b;
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.stack-camera video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Card-shaped guide; the dim outside comes from a huge box-shadow, so
+   the guide itself stays a clean transparent window. */
+.stack-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 78%;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 4.5% / 3.2%;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+}
+.stack-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  animation: stackFlash 0.28s ease-out;
+  pointer-events: none;
+}
+@keyframes stackFlash {
+  from { opacity: 0.75; }
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-flash { animation: none; }
+}
+.stack-camera-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: #E4EFEE;
+  font-size: 13.5px;
+}
+.stack-camera-hint,
+.stack-counter {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.stack-camera-hint { bottom: 12px; }
+.stack-counter {
+  top: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+}
+.stack-last {
+  position: absolute;
+  left: 10px;
+  bottom: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+  padding: 4px 8px 4px 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
+}
+.stack-last img {
+  width: 26px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.stack-last span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stack-stop {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+/* "+1 same card" sits bottom-right, clear of the last-card chip
+   (bottom-left) and the capture hint (bottom-center). */
+.stack-again {
+  position: absolute;
+  right: 10px;
+  bottom: 44px;
+}
+
+.stack-defaults {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.stack-defaults .field-group {
+  flex: 1 1 160px;
+  margin-bottom: 4px;
+}
+
+.stack-pending-row {
+  align-items: center;
+  gap: 12px;
+}
+.stack-failed-row {
+  border-left: 3px solid var(--amber);
+  padding-left: 8px;
+}
+.stack-failed-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--amber);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 640px) {
+  .scan-row {
+    flex-direction: column;
+  }
+
+  .scan-row-thumb-col {
+    align-self: flex-start;
+  }
+
+  /* One field per line on mobile, matching EditModal's stacked
+     .field-group layout — real-phone feedback found the previous
+     wrap-when-it-fits behavior (multiple narrow fields still sharing a
+     visual line) cramped and uncomfortable to type into. .scan-row-meta
+     (confidence badge + remove button) is a plain sibling here, not a
+     .scan-field, so it stretches full-width too but keeps its own
+     side-by-side pair instead of also splitting across two lines. */
+  .scan-row-line {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scan-row-line .scan-field {
+    flex: none;
+    width: 100%;
+  }
+
+  .scan-field-label {
+    display: block;
+    font-size: 10.5px;
+    font-family: 'IBM Plex Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--ink-soft);
+    margin-bottom: 3px;
+  }
+
+  .scan-row-meta {
+    justify-content: space-between;
+  }
+}
+
+/* --- Polish pass (Make Interfaces Feel Better) --- */
+
+/* Thumbnail column actions: real classes instead of inline styles, so the
+   phone layout below can resize them (an inline style would win over any
+   media query). 88px column so each label fits on two lines. */
+.scan-thumb-btn {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.scan-thumb-note {
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+.scan-thumb-toggle {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+}
+.scan-thumb-toggle .btn {
+  flex: 1;
+  min-height: 26px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+/* Faint pure-black edge, like the public pages' and Catalog's images. */
+.scan-row-thumb img {
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+  border-radius: 6px;
+}
+
+/* One control height inside a review row. */
+.scan-row .scan-field input,
+.scan-row .scan-field select {
+  height: 36px;
+}
+.scan-price-wrap {
+  display: flex;
+  gap: 4px;
+}
+.scan-round-btn {
+  min-width: 32px;
+  height: 36px;
+  padding: 0 8px;
+}
+.scan-row-meta .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+
+/* Price reference links. */
+.scan-ref-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11.5px;
+}
+.scan-ref-link {
+  color: var(--blue);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Stack mode, camera not started: a short placeholder instead of a tall
+   empty box. */
+.stack-camera.idle {
+  aspect-ratio: auto;
+}
+/* The message sits in normal flow while idle, so the box grows with a long
+   camera error instead of clipping it. */
+.stack-camera.idle .stack-camera-msg {
+  position: static;
+  min-height: 180px;
+}
+
+@media (max-width: 640px) {
+  /* Thumbnail on the left, its actions stacked beside it at full width. */
+  .scan-row-thumb-col {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    column-gap: 10px;
+    row-gap: 6px;
+    align-items: start;
+  }
+  .scan-row-thumb {
+    grid-column: 1;
+    grid-row: 1 / span 4;
+  }
+  .scan-row-thumb-col > :not(.scan-row-thumb) {
+    grid-column: 2;
+  }
+  .scan-thumb-btn {
+    font-size: 13px;
+  }
+  .scan-thumb-note {
+    text-align: left;
+  }
+  .scan-thumb-toggle .btn {
+    min-height: 40px;
+  }
+
+  .scan-row .scan-field input,
+  .scan-row .scan-field select,
+  .scan-round-btn {
+    height: 44px;
+  }
+  .scan-round-btn {
+    min-width: 44px;
+  }
+  .scan-row-meta .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Each price link its own 44px tap row, instead of small text lines
+     packed against each other. */
+  .scan-ref-links {
+    flex-direction: column;
+    gap: 0;
+    font-size: 13px;
+  }
+  .scan-ref-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

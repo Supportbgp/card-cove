@@ -321,7 +321,7 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
           everything to the {destinationLabel} at once. The stack is kept on this device until then.
         </div>
 
-        <div className="stack-camera" ref={boxRef} onClick={captureFromCamera} role={camera === 'on' ? 'button' : undefined}
+        <div className={`stack-camera${camera === 'on' || camera === 'starting' ? '' : ' idle'}`} ref={boxRef} onClick={captureFromCamera} role={camera === 'on' ? 'button' : undefined}
           aria-label={camera === 'on' ? 'Capture card' : undefined}>
           <video ref={videoRef} playsInline muted autoPlay style={{ display: camera === 'on' || camera === 'starting' ? 'block' : 'none' }} />
           {(camera === 'on' || camera === 'starting') && (
@@ -364,10 +364,10 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
-          <button type="button" className="btn secondary small" onClick={() => cameraFileRef.current.click()}>Take photo</button>
-          <button type="button" className="btn secondary small" onClick={() => fileRef.current.click()}>Upload photos</button>
+          <button type="button" className="btn secondary" onClick={() => cameraFileRef.current.click()}>Take photo</button>
+          <button type="button" className="btn secondary" onClick={() => fileRef.current.click()}>Upload photos</button>
           {camera !== 'on' && last && (
-            <button type="button" className="btn secondary small" onClick={addSameAgain}>+1 same card</button>
+            <button type="button" className="btn secondary" onClick={addSameAgain}>+1 same card</button>
           )}
           <label className="checkbox-row" style={{ marginBottom: 0, marginLeft: 'auto' }}>
             <input type="checkbox" checked={soundOn} onChange={(e) => setSoundOn(e.target.checked)} />
@@ -420,7 +420,7 @@ export default function StackScanner({ catalog, locations, onImport, multipliers
             <span style={{ fontSize: '12px', color: 'var(--ink-soft)', marginRight: 'auto' }}>
               {totalQty} card{totalQty === 1 ? '' : 's'} total
             </span>
-            <button type="button" className="btn ghost small" onClick={clearStack}>Clear stack</button>
+            <button type="button" className="btn ghost" onClick={clearStack}>Clear stack</button>
           </div>
           <ScanReview
             rows={items}

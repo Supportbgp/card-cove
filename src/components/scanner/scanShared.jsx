@@ -125,26 +125,24 @@ export function ScanRow({ row, entranceDelay = 0, multipliers, onChange, onRemov
           )}
         </div>
         {stockSrc && photoSrc ? (
-          <div style={{ display: 'flex', gap: '3px', marginTop: '2px' }}>
+          <div className="scan-thumb-toggle">
             <button
-              type="button" className={`btn small${row.activeImage === 'photo' ? '' : ' ghost'}`}
-              style={{ fontSize: '10px', padding: '2px 5px' }}
+              type="button" className={`btn${row.activeImage === 'photo' ? '' : ' ghost'}`}
               onClick={(e) => { e.stopPropagation(); onChange({ activeImage: 'photo' }); }}
             >Photo</button>
             <button
-              type="button" className={`btn small${row.activeImage === 'stock' ? '' : ' ghost'}`}
-              style={{ fontSize: '10px', padding: '2px 5px' }}
+              type="button" className={`btn${row.activeImage === 'stock' ? '' : ' ghost'}`}
               onClick={(e) => { e.stopPropagation(); onChange({ activeImage: 'stock' }); }}
             >Stock</button>
           </div>
         ) : photoSrc ? (
-          <div style={{ fontSize: '9px', color: 'var(--ink-faint)', textAlign: 'center' }}>real photo</div>
+          <div className="scan-thumb-note">real photo</div>
         ) : null}
         {/* Disabled while this row's own search is in flight — guards
             against a double-tap firing two overlapping searches for the
             same row, same reasoning as EditModal's shared `searching` gate. */}
         <button
-          className="btn ghost small" style={{ fontSize: '10.5px', padding: '2px 6px' }}
+          className="btn ghost scan-thumb-btn"
           disabled={row.imageStatus === 'searching'}
           onClick={onFindAnotherImage}
         >
@@ -152,7 +150,7 @@ export function ScanRow({ row, entranceDelay = 0, multipliers, onChange, onRemov
         </button>
         {row.basePrice == null && (
           <button
-            className="btn ghost small" style={{ fontSize: '10.5px', padding: '2px 6px', marginTop: '4px' }}
+            className="btn ghost scan-thumb-btn"
             disabled={row.imageStatus === 'searching'}
             onClick={onFindMarketPrice}
           >Find market price</button>
@@ -240,20 +238,20 @@ export function ScanRow({ row, entranceDelay = 0, multipliers, onChange, onRemov
                 whole dollar, in whichever direction staff pick — arrow
                 buttons right of the input here (EditModal's own Our Price
                 field keeps the earlier labeled-button layout). */}
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'stretch' }}>
+            <div className="scan-price-wrap">
               <input
                 type="number" placeholder="Price" step="0.01" value={row.price}
                 onChange={(e) => onChange({ price: e.target.value })}
                 style={{ flex: 1, minWidth: 0 }}
               />
               <button
-                type="button" className="btn ghost small" style={{ padding: '2px 8px' }}
+                type="button" className="btn ghost scan-round-btn"
                 title="Round down" aria-label="Round down"
                 disabled={row.price === '' || row.price == null || isNaN(Number(row.price))}
                 onClick={() => onChange({ price: roundPriceDown(Number(row.price)) })}
               >↓</button>
               <button
-                type="button" className="btn ghost small" style={{ padding: '2px 8px' }}
+                type="button" className="btn ghost scan-round-btn"
                 title="Round up" aria-label="Round up"
                 disabled={row.price === '' || row.price == null || isNaN(Number(row.price))}
                 onClick={() => onChange({ price: roundPriceUp(Number(row.price)) })}
@@ -294,9 +292,10 @@ export function ScanRow({ row, entranceDelay = 0, multipliers, onChange, onRemov
             "Reference prices" block. TCGPlayer switches between a real
             listing link (once row.listingUrl is known) and a manual-search
             fallback; eBay/PriceCharting are always manual-search links. */}
-        <div className="scan-row-line" style={{ fontSize: '11.5px', color: 'var(--ink-soft)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        <div className="scan-ref-links">
           {safeHttpUrl(row.listingUrl) ? (
-            <span style={{ cursor: 'pointer', color: 'var(--blue)', fontWeight: 600 }} onClick={() => openSafeUrl(row.listingUrl)}>
+            <span className="scan-ref-link" role="link" tabIndex={0} onClick={() => openSafeUrl(row.listingUrl)}
+              onKeyDown={(e) => { if (e.key === 'Enter') openSafeUrl(row.listingUrl); }}>
               Check live TCGPlayer listing ↗
             </span>
           ) : (
@@ -305,21 +304,21 @@ export function ScanRow({ row, entranceDelay = 0, multipliers, onChange, onRemov
             // most of the way there instead of leaving nothing to click.
             <a
               href={tcgplayerSearchUrl(row.name, row.set)} target="_blank" rel="noopener noreferrer"
-              style={{ color: 'var(--blue)', fontWeight: 600 }}
+              className="scan-ref-link"
             >
               Search TCGPlayer manually ↗
             </a>
           )}
           <a
             href={ebaySoldSearchUrl(row.name, row.set)} target="_blank" rel="noopener noreferrer"
-            style={{ color: 'var(--blue)', fontWeight: 600 }}
+            className="scan-ref-link"
             title="Requires being signed into eBay to see results."
           >
             Check eBay sold listings ↗
           </a>
           <a
             href={priceChartingSearchUrl(row.name, row.set)} target="_blank" rel="noopener noreferrer"
-            style={{ color: 'var(--blue)', fontWeight: 600 }}
+            className="scan-ref-link"
           >
             Check PriceCharting ↗
           </a>
@@ -519,7 +518,7 @@ export function ScanReview({
         {rows.map((row, i) => (renderRow ? renderRow(row, i, defaultRow) : defaultRow(row, i)))}
       </div>
       <div style={{ display: 'flex', gap: '8px', marginTop: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn secondary small" onClick={addBlankRow}>+ Add missed card</button>
+        <button className="btn secondary" onClick={addBlankRow}>+ Add missed card</button>
         <div style={{ flex: 1 }} />
         {confirmBlockedReason && <span className="status-line" style={{ margin: 0 }}>{confirmBlockedReason}</span>}
         <button className="btn" disabled={saving || !!confirmBlockedReason} onClick={handleConfirm}>
