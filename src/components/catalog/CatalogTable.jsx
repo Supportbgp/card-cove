@@ -27,14 +27,17 @@ function PlatformStatus({ card, onToggle }) {
   return (
     <div className="platform-status">
       {applicable.map(chip => (
-        <span
+        <button
+          type="button"
           key={chip.field}
           className={`platform-chip${card[chip.field] ? ' done' : ''}`}
           title={`${chip.title} — ${card[chip.field] ? 'up to date' : 'needs updating'}`}
+          aria-label={chip.title}
+          aria-pressed={!!card[chip.field]}
           onClick={(e) => { e.stopPropagation(); onToggle(card.sku, chip.field); }}
         >
           {chip.label}
-        </span>
+        </button>
       ))}
     </div>
   );
@@ -165,12 +168,14 @@ export default function CatalogTable({
             return (
               <div key={c.sku} className={`catalog-card${isSold ? ' sold-row' : ''}${isChecked ? ' row-selected' : ''}`}>
                 <div className="catalog-card-head" onClick={() => toggleExpanded(c.sku)}>
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => onToggleSelected(c.sku, e.target.checked)}
-                  />
+                  <label className="catalog-card-check" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${c.name}`}
+                      checked={isChecked}
+                      onChange={(e) => onToggleSelected(c.sku, e.target.checked)}
+                    />
+                  </label>
                   <Thumb card={c} onZoom={openLightbox} size="sm" />
                   <div className="catalog-card-main">
                     <div className="n-name">
@@ -186,7 +191,7 @@ export default function CatalogTable({
                       </span>
                     </div>
                   </div>
-                  <span className="catalog-card-chevron">{isExpanded ? '▲' : '▼'}</span>
+                  <span className={`catalog-card-chevron${isExpanded ? ' open' : ''}`} aria-hidden="true">▼</span>
                 </div>
                 {isExpanded && (
                   <div className="catalog-card-details">
@@ -229,21 +234,24 @@ export default function CatalogTable({
   return (
     <>
       <div className="table-scroll">
-        <table>
+        <table className="catalog-table">
           <thead>
             <tr>
               <th>
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={(e) => onToggleSelectAll(visibleSkus, e.target.checked)}
-                />
+                <label className="select-all-hit">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible"
+                    checked={allVisibleSelected}
+                    onChange={(e) => onToggleSelectAll(visibleSkus, e.target.checked)}
+                  />
+                </label>
               </th>
               <th></th>
               {COLUMNS.map(col => (
                 <th key={col.key} className="sortable" onClick={() => onSort(col.key)}>
                   {col.label}
-                  {sortState.col === col.key ? (sortState.dir === 1 ? ' ▲' : ' ▼') : ''}
+                  <span className="sort-arrow" aria-hidden="true">{sortState.col === col.key ? (sortState.dir === 1 ? '▲' : '▼') : ''}</span>
                 </th>
               ))}
               <th title="POS / TCG Player / Collectr — reminders to update each platform's listing">Status</th>

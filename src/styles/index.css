@@ -709,41 +709,6 @@
       font-family: 'IBM Plex Mono', monospace;
     }
 
-    .platform-status {
-      display: flex;
-      gap: 4px;
-    }
-
-    .platform-chip {
-      width: 20px;
-      height: 20px;
-      border-radius: 5px;
-      border: 1.5px dashed var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'IBM Plex Mono', monospace;
-      font-weight: 600;
-      font-size: 10.5px;
-      color: var(--ink-faint);
-      cursor: pointer;
-      user-select: none;
-      transition: all .15s ease;
-    }
-
-    .platform-chip.done {
-      border-style: solid;
-      border-color: var(--green);
-      background: var(--green-soft);
-      color: var(--green);
-    }
-
-    .platform-status-none {
-      font-size: 10.5px;
-      color: var(--ink-faint);
-      font-family: 'IBM Plex Mono', monospace;
-    }
-
     .ticket-time {
       font-size: 11px;
       color: var(--ink-faint);
@@ -1161,91 +1126,6 @@
     .thumb-placeholder.thumb-sm {
       width: 44px;
       height: 44px;
-    }
-
-    .name-cell .n-name {
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .name-cell .n-sub {
-      font-size: 11.5px;
-      color: var(--ink-soft);
-      margin-top: 1px;
-    }
-
-    /* Mobile stacked-card catalog view (CatalogTable, below the
-       useIsMobile breakpoint) — a compact summary row that expands on tap
-       instead of a wide table nobody can comfortably scroll sideways on a
-       phone. */
-    .catalog-cards {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .catalog-card {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--surface);
-      overflow: hidden;
-    }
-
-    .catalog-card.sold-row {
-      opacity: 0.6;
-    }
-
-    .catalog-card.row-selected {
-      background: var(--blue-soft);
-      border-color: var(--blue);
-    }
-
-    .catalog-card-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      cursor: pointer;
-    }
-
-    .catalog-card-head input[type=checkbox] {
-      flex-shrink: 0;
-      width: 18px;
-      height: 18px;
-    }
-
-    .catalog-card-main {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .catalog-card-row2 {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 3px;
-      font-size: 12.5px;
-    }
-
-    .catalog-card-chevron {
-      color: var(--ink-faint);
-      font-size: 11px;
-      flex-shrink: 0;
-    }
-
-    .catalog-card-details {
-      padding: 0 12px 12px 12px;
-      border-top: 1px solid var(--border);
-      padding-top: 10px;
-    }
-
-    .catalog-cards-selectall {
-      margin-bottom: 10px;
-      padding: 0 4px;
     }
 
     .badge {
@@ -2108,24 +1988,6 @@
       .checkbox-row input[type="checkbox"] {
         width: 20px;
         height: 20px;
-      }
-
-      /* The mobile catalog card's expanded view specifically — sync-status
-         chips and Edit/Sell were the two hardest-to-hit controls reported;
-         the desktop table's denser sizing is untouched. */
-      .catalog-card-details .platform-chip {
-        width: 34px;
-        height: 34px;
-        font-size: 12px;
-      }
-
-      .catalog-card-details .platform-status {
-        gap: 8px;
-      }
-
-      .catalog-card-details .row-actions .btn {
-        min-height: 42px;
-        padding: 9px 18px;
       }
 
       /* Staff docs: sidebar nav collapses above the content as a wrapped
