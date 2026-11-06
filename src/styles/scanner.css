@@ -1,5 +1,8 @@
 /* Scan Binder (ScannerPanel, StackScanner, scanShared's ScanRow/ScanReview):
-   the review rows and the stack camera. Split out of index.css; shared
+   the review rows and the stack camera. The Quote tab's line-item rows
+   (QuoteLineItemRow, AddOnLineItemRow, BulkLineItemRow) reuse the same
+   .scan-row/.scan-field/.scan-row-thumb-col classes, so a change here
+   changes them too. Split out of index.css; shared
    tokens and base styles (.btn, inputs, .badge, .icon-btn, .drop,
    .scan-mode-toggle) still come from there. */
 
@@ -386,7 +389,12 @@
    empty box. */
 .stack-camera.idle {
   aspect-ratio: auto;
-  height: 180px;
+}
+/* The message sits in normal flow while idle, so the box grows with a long
+   camera error instead of clipping it. */
+.stack-camera.idle .stack-camera-msg {
+  position: static;
+  min-height: 180px;
 }
 
 @media (max-width: 640px) {

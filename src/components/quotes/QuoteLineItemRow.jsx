@@ -197,21 +197,19 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
           {displaySrc ? <img src={displaySrc} /> : <span style={{ fontSize: '9px', color: 'var(--ink-faint)', textAlign: 'center' }}>{item.game || 'No image'}</span>}
         </div>
         {stockSrc && photoSrc && (
-          <div style={{ display: 'flex', gap: '3px', marginTop: '2px' }}>
+          <div className="scan-thumb-toggle">
             <button
-              type="button" className={`btn small${item.activeImage === 'photo' ? '' : ' ghost'}`}
-              style={{ fontSize: '10px', padding: '2px 5px' }}
+              type="button" className={`btn${item.activeImage === 'photo' ? '' : ' ghost'}`}
               onClick={() => patch({ activeImage: 'photo' })}
             >Photo</button>
             <button
-              type="button" className={`btn small${item.activeImage === 'stock' ? '' : ' ghost'}`}
-              style={{ fontSize: '10px', padding: '2px 5px' }}
+              type="button" className={`btn${item.activeImage === 'stock' ? '' : ' ghost'}`}
               onClick={() => patch({ activeImage: 'stock' })}
             >Stock</button>
           </div>
         )}
         <button
-          className="btn ghost small" style={{ fontSize: '10.5px', padding: '2px 6px', marginTop: '4px' }}
+          className="btn ghost scan-thumb-btn"
           disabled={searching} onClick={() => runSearch('image')}
         >
           {activeSearch === 'image' ? (<><span className="spinner" style={{ width: '10px', height: '10px' }} /> Searching…</>) : 'Find image'}
@@ -224,17 +222,16 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
             collapsed panel below in .scan-row-fields) — keeps this row
             condensed for the common case where nobody needs it. */}
         <button
-          className="btn ghost small" style={{ fontSize: '10.5px', padding: '2px 6px', marginTop: '3px' }}
+          className="btn ghost scan-thumb-btn"
           onClick={() => document.getElementById(`qliAddImage-${item.id}`).click()}
         >Add image</button>
         <input type="file" id={`qliAddImage-${item.id}`} accept="image/*" style={{ display: 'none' }} onChange={handleUploadFile} />
         <button
-          type="button" className={`btn small${showPasteUrl ? '' : ' ghost'}`}
-          style={{ fontSize: '10.5px', padding: '2px 6px', marginTop: '3px' }}
+          type="button" className={`btn scan-thumb-btn${showPasteUrl ? '' : ' ghost'}`}
           onClick={() => setShowPasteUrl(v => !v)}
         >{showPasteUrl ? 'Hide URL field' : 'Paste image URL'}</button>
         <button
-          className="btn ghost small" style={{ fontSize: '10.5px', padding: '2px 6px', marginTop: '3px' }}
+          className="btn ghost scan-thumb-btn"
           disabled={searching} onClick={() => runSearch('price')}
         >
           {activeSearch === 'price' ? (<><span className="spinner" style={{ width: '10px', height: '10px' }} /> Searching…</>) : 'Find price'}
@@ -329,19 +326,19 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
                 whole dollar, in whichever direction staff pick — arrow
                 buttons right of the input here (EditModal's own Our Price
                 field keeps the earlier labeled-button layout). */}
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'stretch' }}>
+            <div className="scan-price-wrap">
               <input
                 type="number" placeholder="Price" step="0.01" value={item.price ?? ''}
                 onChange={(e) => patch({ price: e.target.value === '' ? null : Number(e.target.value) })}
                 style={{ flex: 1, minWidth: 0 }}
               />
               <button
-                type="button" className="btn ghost small" style={{ padding: '2px 8px' }}
+                type="button" className="btn ghost scan-round-btn"
                 title="Round down" aria-label="Round down"
                 disabled={item.price == null} onClick={() => patch({ price: roundPriceDown(item.price) })}
               >↓</button>
               <button
-                type="button" className="btn ghost small" style={{ padding: '2px 8px' }}
+                type="button" className="btn ghost scan-round-btn"
                 title="Round up" aria-label="Round up"
                 disabled={item.price == null} onClick={() => patch({ price: roundPriceUp(item.price) })}
               >↑</button>

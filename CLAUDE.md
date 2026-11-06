@@ -6367,7 +6367,14 @@ tab (Binder page and Stack modes, the review rows, the stack camera).
   `index.css` into **`src/styles/scanner.css`**, imported in `main.jsx`
   after `catalog.css`. `index.css` went from 2,223 to 1,915 lines.
   `.drop` and `.scan-mode-toggle` stay in `index.css`, since other tabs use
-  them too.
+  them too. **The Quote tab's line-item rows (`QuoteLineItemRow`,
+  `AddOnLineItemRow`, `BulkLineItemRow`) reuse `.scan-row`/`.scan-field`/
+  `.scan-row-thumb-col`**, so they get these fixes as well: found by the
+  code review, which caught the quote row's own inline-styled thumbnail
+  buttons and ↓/↑ looking broken in the new phone layout. Both now use the
+  same `.scan-thumb-btn`/`.scan-thumb-toggle`/`.scan-round-btn` classes.
+  `scanner.css`'s header says so, so a scanner-only change isn't made
+  assuming it can't touch Quote.
 - **Fixes (4 medium, 3 low), from a quick review with measured sizes:**
   - "Find another image" / "Find market price" were 10.5px buttons in a
     64px column, wrapping to three lines, with their sizes as inline
@@ -6389,7 +6396,8 @@ tab (Binder page and Stack modes, the review rows, the stack camera).
     `.btn.small` (about 25px on desktop); now normal buttons. The camera
     overlay's own Stop camera / +1 buttons and the inline Retry were left
     small on purpose.
-  - Low: Stack mode's camera box is a short 180px placeholder until the
+  - Low: Stack mode's camera box is a short placeholder (at least 180px,
+    growing with a long camera error instead of clipping it) until the
     camera starts (`.stack-camera.idle`) instead of a tall empty box;
     review thumbnails get the faint pure-black edge; the Photo/Stock
     toggle moved from 10px inline styles to `.scan-thumb-toggle` (40px tall
