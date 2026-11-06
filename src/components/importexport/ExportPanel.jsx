@@ -28,7 +28,7 @@ export default function ExportPanel({ catalog, queue, locations, publicBinders =
         <button className="btn secondary" onClick={() => setShowExportModal(true)}>Export…</button>
         <button className="btn secondary" disabled={!locations.length} onClick={() => setShowQrModal(true)}>Binder QR code…</button>
         <button className="btn secondary" onClick={() => setShowPublicModal(true)}>Public binders…</button>
-        <button className="btn ghost" onClick={handleClearAll}>Reset all data</button>
+        <button className="btn ghost export-reset" onClick={handleClearAll}>Reset all data</button>
       </div>
       {showExportModal && (
         <ExportModal

@@ -99,6 +99,13 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
   async function handleFile(file) {
     const ext = file.name.split('.').pop().toLowerCase();
     setShowSheetPicker(false);
+    // A new file replaces whatever was loaded before. Without this, picking
+    // a multi-sheet .xlsx after a CSV left the CSV's rows and mapping (and
+    // its Import rows button) on screen, so Import would save the old file.
+    setShowMapSection(false);
+    setRows([]);
+    setHeaders([]);
+    setMapping({});
     if (ext === "xlsx" || ext === "xls") {
       setStatus({ text: "Reading Excel file…", kind: "" });
       try {
@@ -260,15 +267,15 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
       />
       {showSheetPicker && (
         <div className="sheet-picker">
-          <label style={{ fontSize: '12.5px', color: 'var(--ink-soft)' }}>Sheet to import:</label>
-          <select value={selectedSheet} onChange={(e) => setSelectedSheet(e.target.value)}>
+          <label htmlFor="imp_sheet">Sheet to import:</label>
+          <select id="imp_sheet" value={selectedSheet} onChange={(e) => setSelectedSheet(e.target.value)}>
             {sheetNames.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
-          <button className="btn secondary small" onClick={() => loadSheet(workbook, selectedSheet)}>Load sheet</button>
+          <button className="btn secondary" onClick={() => loadSheet(workbook, selectedSheet)}>Load sheet</button>
         </div>
       )}
       {showMapSection && (
-        <div>
+        <div className="import-map-section">
           <div className="section-label">Match your columns</div>
           <div className="map-grid">
             {FIELD_TARGETS.map(field => (
@@ -327,10 +334,10 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
                 : "Rows with no Image URL mapped (or blank for that row) get an automatic image search by name/game/set before saving — same lookup as the binder scanner. This can take a moment for a large import; a wrong or missing result can always be fixed afterward from the catalog table."}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="import-actions">
             <button className="btn" disabled={importing} onClick={handleConfirmImport}>{importing ? 'Importing…' : 'Import rows'}</button>
             {!embedded && (
-              <select value={importMode} onChange={(e) => setImportMode(e.target.value)}>
+              <select aria-label="Import mode" value={importMode} onChange={(e) => setImportMode(e.target.value)}>
                 <option value="merge">Merge (update matching SKUs, add new)</option>
                 <option value="replace">Replace entire catalog</option>
               </select>

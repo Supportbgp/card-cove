@@ -6410,6 +6410,61 @@ tab (Binder page and Stack modes, the review rows, the stack camera).
   a throwaway Playwright screenshot spec driving the harness's mock scan
   (not committed).
 
+## Import/Export polish (Make Interfaces Feel Better, fourth pass), and a stale-file import bug
+
+Fourth and last phone-priority screen of the MIFB pass (see "Public pages
+polish"): Import/Export → Cards and Quotes, and the Export buttons. The
+Export/QR modals weren't reviewed; they stay desktop-oriented.
+
+- **Bug found while taking the screenshots, fixed:** load a CSV, then load
+  a multi-sheet `.xlsx` in the same visit. The sheet picker appeared, but
+  the CSV's column mapping and its **Import rows** button stayed on
+  screen, so clicking Import saved the old CSV's rows, not the new file.
+  `ImportPanel`'s `handleFile` opened the sheet picker without clearing
+  the previous file's `rows`/`headers`/`mapping`; it now clears them (and
+  hides the mapping) the moment a new file is read. Covered by
+  `e2e/import-replace-file.spec.js` (Desktop + Mobile), which fails
+  without the fix: the old Import rows button is gone once the new file
+  is read, and loading a chosen sheet imports that sheet's rows. Not
+  obviously the parked "mobile multi-sheet `.xlsx`" report in the Backlog
+  (that one auto-loads the first sheet with no picker at all), so that
+  item stays as it was.
+- **CSS split, continued.** The column mapper (`.map-grid`/`.map-row`),
+  the sheet picker and the quote-spreadsheet list (`.quote-import-*`)
+  moved into **`src/styles/importexport.css`**, imported in `main.jsx`
+  after `scanner.css`. `index.css` went from 1,916 to 1,779 lines. `.drop`
+  stays in `index.css`: the scanner and quote import use it too.
+- **Fixes (1 high, 4 medium, 2 low), from a quick review with measured
+  sizes:**
+  - **High:** on a phone, Import rows and the Merge / Replace entire catalog
+    dropdown shared a row that didn't wrap, so the dropdown ran past the
+    screen (the page became 435px wide on a 390px phone, the overflow class
+    recorded under "Mobile polish round 2"). Now `.import-actions`: it
+    wraps, the dropdown can shrink, and on a phone the dropdown is full
+    width above a full-width Import rows button.
+  - Column mapping: labels of different lengths made every dropdown start
+    at a different x. Now a grid with a fixed 12rem label column on
+    desktop, and on a phone the label sits above a full-width 44px
+    dropdown. The mapping is one column below 900px (not just below the
+    640px phone breakpoint): the code review found two columns plus a
+    12rem label left ~120px dropdowns on a tablet or in the Quote tab's
+    embedded import.
+  - Sheet picker: on a phone the dropdown shrank to 94px ("Pokemo…").
+    Now the label, a full-width dropdown and Load sheet each take a line on
+    a phone. Its label got a real `htmlFor`.
+  - The Cards/Quotes toggle, Load sheet and the quote list's Show cards
+    were `.btn.small` (25px on desktop); now normal buttons.
+  - "Match your columns" sat flush against the drop zone; now
+    `.import-map-section` adds space above it.
+  - Low: drop zones (Import, quote import, Scan Binder) get smaller text and
+    padding on a phone (`index.css` mobile block); "Reset all data" moves to
+    the right of the export row on desktop (`.export-reset`), apart from
+    the export buttons. The Merge/Replace dropdown got an `aria-label`.
+- Visual check via a throwaway Playwright screenshot spec (CSV, a 2-sheet
+  `.xlsx`, a 2-quote workbook; not committed). The existing import-cost/
+  quote-import/import-source-url/public-binders/quotes e2e specs pass
+  unchanged.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
