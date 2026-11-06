@@ -635,6 +635,12 @@ export function resolveActiveImage(card) {
   return photoSrc ? "photo" : (stockSrc ? "stock" : "photo");
 }
 
+// Keeps each ' · ' attached to the word before it, so a wrapped details line
+// never starts with a dot.
+export function keepSeparators(text) {
+  return text.replaceAll(' · ', '\u00a0· ');
+}
+
 // The actual src string (http URL or data: URI) to render for whichever
 // slot resolveActiveImage picks, or null if neither slot has anything.
 export function activeImageSrc(card) {

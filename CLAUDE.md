@@ -6261,6 +6261,55 @@ Four findings from a `/security-review` pass, fixed in one PR:
 service-role check; then run the workflow once by hand to confirm the GitHub
 secret still matches. No migration to run.
 
+## Public pages polish (Make Interfaces Feel Better, first pass)
+
+First screen of the MIFB polish pass agreed after evaluating the skill (and
+deciding against Taste Skill, which targets company marketing sites, not a
+dense tool like this). Order: public pages, then Catalog, Scanner,
+Import/Export. Each pass: a `quick` review, the user picks the fixes,
+before/after screenshots at 390px and 1440px, then a real phone through
+staging.
+
+- **CSS split starts here.** The public pages' rules (`.binder-*`,
+  `.shop-*`) moved out of `index.css` into **`src/styles/public.css`**
+  (imported in `main.jsx` right after `index.css`), so polish doesn't grow
+  a 2,400-line file. Rules for these pages only are scoped to
+  **`.public-page`**, a class on the root `.app` of `ShopView`/`BinderView`,
+  so the staff app is untouched. Later passes should split their own area
+  the same way.
+- **Fixes (3 medium, 3 low):**
+  - The search box was `type="search"`, which the shared input style didn't
+    cover: a bare 21px-tall browser box on a phone, flush against the text
+    above it on Wanted. `input[type=search]` joined the shared input rule
+    (this also styles the staff Want list search), and the public filters
+    get a 40px minimum height (44px on a phone) plus a top margin.
+  - The In stock / Wanted toggle and "Search all stock" were `.btn.small`
+    (24px tall on desktop); now normal buttons with a 40px minimum (44px on a
+    phone) on the public pages. `.public-page .btn` outranks index.css's
+    mobile `.btn` rule, so the 44px has to be restated in `public.css`. "Search all stock" is a link, so it's `inline-flex` (for
+    the min-height) with no underline, and the public topbar centers
+    instead of using baselines so the taller button lines up with the logo.
+  - Card tile corners are concentric: card radius 16 = image 6 + padding 10
+    (was 10 / 8 / 12, which looked pinched).
+  - Card images get a faint pure-black edge (`oklch(0 0 0 / 0.1)`, inset)
+    so light scans don't fade into the white tile.
+  - Low: `text-wrap: balance` on card names and `pretty` on the details
+    line; buttons scale to 0.96 on press (120ms, only `scale`/`opacity`
+    transitioned, off for reduced motion); the Lightbox (shared with the
+    staff app) fades in over 160ms with the image settling from 0.96.
+  - `text-wrap: pretty` started lines with "· Holofoil", so
+    `keepSeparators` (`cardUtils.js`, used by the stock and Wanted cards)
+    joins each " · " to the word before it with a no-break space.
+  - **Bug found along the way:** a slab's grade was glued on without a
+    space ("Holofoil· PSA 10") because `.trim()` ran on a string that began
+    with " · ". Fixed.
+- Not done, noted for later: prices show without a thousands separator
+  (`$9000.00`); the existing `formatMoney` helper would fix it.
+- Covered by `PublicCard.test.jsx` (the separator helper and the slab
+  line); the existing public-binders/binder-view/want-list e2e specs pass
+  unchanged. Visual check via a throwaway Playwright screenshot spec
+  (not committed).
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against

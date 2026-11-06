@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbLoadPublicWantList } from '../../lib/db.js';
 import { wantDetailLine } from '../../lib/wantList.js';
+import { keepSeparators } from '../../lib/cardUtils.js';
 
 function WantedCard({ w, onZoom }) {
   const [broken, setBroken] = useState(false);
@@ -14,7 +15,7 @@ function WantedCard({ w, onZoom }) {
         )}
       </div>
       <div className="binder-card-name">{w.name}</div>
-      <div className="binder-card-sub">{[w.game, wantDetailLine(w)].filter(Boolean).join(' · ')}</div>
+      <div className="binder-card-sub">{keepSeparators([w.game, wantDetailLine(w)].filter(Boolean).join(' · '))}</div>
       <div className="binder-card-row"><span className="mono">Wanted</span></div>
     </div>
   );

@@ -1,0 +1,151 @@
+/* The public, no-login pages: the stock page (?shop=1, ShopView), its
+   Wanted view (PublicWantList) and the binder QR page (?binder=,
+   BinderView). Split out of index.css; shared tokens (--surface, --border,
+   --shadow, ...) and base styles (.btn, inputs, .empty) still come from
+   there. Rules scoped to .public-page apply only on these pages, not in the
+   staff app. */
+
+.binder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+/* Concentric corners: card radius 16 = image radius 6 + padding 10. */
+.binder-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+}
+
+.binder-card-img-wrap {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.binder-card-img {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--surface-alt);
+  display: block;
+}
+
+/* A faint pure-black edge so light scans (yellow, pink, white-bordered
+   cards) don't fade into the white tile. */
+img.binder-card-img {
+  cursor: zoom-in;
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+.binder-card-img-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--ink-faint);
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+}
+
+.binder-card-slab-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  background: var(--purple);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.binder-card-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  text-wrap: balance;
+}
+
+/* pretty: no lone "Edition"/"Holofoil" on its own line. */
+.binder-card-sub {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin-top: 1px;
+  text-wrap: pretty;
+}
+
+.binder-card-location {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.binder-card-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+
+/* Public stock page filters. min-width: 0 so a long option can't push the
+   row past the screen (Mobile polish round 2). */
+.shop-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+/* Wanted view: space below its intro line (the stock view's toggle already
+   has a bottom margin). */
+.status-line + .shop-filters { margin-top: 10px; }
+.shop-filters input { flex: 2 1 220px; min-width: 0; }
+.shop-filters select { flex: 1 1 140px; min-width: 0; }
+
+.shop-view-toggle { margin-bottom: 12px; }
+
+/* The staff topbar lines up on text baselines; here the full-size "Search
+   all stock" button would sit below the logo, so center instead. */
+.public-page .topbar { align-items: center; }
+
+/* Customers tap these; the staff app's dense sizes don't apply. */
+.public-page .shop-filters input,
+.public-page .shop-filters select {
+  min-height: 40px;
+}
+
+/* Press feedback on the public pages' buttons, and a 40px minimum hit
+   area (44 on a phone, below; this selector outranks index.css's mobile
+   .btn rule, so it has to be restated). */
+.public-page .btn {
+  min-height: 40px;
+  transition-property: scale, opacity;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+.public-page .btn:active:not(:disabled) {
+  scale: 0.96;
+}
+/* "Search all stock" is a link styled as a button: inline-flex so the
+   minimum height applies, and no underline. */
+.public-page a.btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+@media (max-width: 640px) {
+  .public-page .btn,
+  .public-page .shop-filters input,
+  .public-page .shop-filters select {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-page .btn { transition: none; }
+  .public-page .btn:active:not(:disabled) { scale: none; }
+}

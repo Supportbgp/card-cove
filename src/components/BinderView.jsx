@@ -22,14 +22,14 @@ export default function BinderView({ location }) {
   const loading = !error && (items === null || isPublic === null);
 
   return (
-    <div className="app">
+    <div className="app public-page">
       <div className="topbar">
         <div className="brand">
           <img src={logoIcon} alt="" className="brand-logo" />
           <span className="mark">Card Cove</span>
           <span className="sub">{location}</span>
         </div>
-        <a className="btn secondary small" href="?shop=1">Search all stock</a>
+        <a className="btn secondary" href="?shop=1">Search all stock</a>
       </div>
 
       {error && (
