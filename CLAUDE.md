@@ -6445,7 +6445,10 @@ Export/QR modals weren't reviewed; they stay desktop-oriented.
   - Column mapping: labels of different lengths made every dropdown start
     at a different x. Now a grid with a fixed 12rem label column on
     desktop, and on a phone the label sits above a full-width 44px
-    dropdown.
+    dropdown. The mapping is one column below 900px (not just below the
+    640px phone breakpoint): the code review found two columns plus a
+    12rem label left ~120px dropdowns on a tablet or in the Quote tab's
+    embedded import.
   - Sheet picker: on a phone the dropdown shrank to 94px ("Pokemo…").
     Now the label, a full-width dropdown and Load sheet each take a line on
     a phone. Its label got a real `htmlFor`.

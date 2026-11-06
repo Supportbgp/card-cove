@@ -23,15 +23,23 @@
   color: var(--ink-soft);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
-  flex-shrink: 0;
 }
 
-/* Flex items default to a content-based min-width, so a <select> with a
-   long option (a real column header) could otherwise force this row —
-   and the whole page — wider than the viewport instead of shrinking. */
+/* A <select> sizes to its longest option by default; a real column header
+   can be long, so it must be able to shrink to its grid column (the
+   column is minmax(0, 1fr)) instead of pushing the page wider. */
 .map-row select {
-  flex: 1;
+  width: 100%;
   min-width: 0;
+}
+
+/* Two mapping columns only once each has room for the 12rem label plus a
+   usable dropdown; below that (tablets, the Quote tab's embedded import)
+   one column. */
+@media (max-width: 900px) {
+  .map-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .sheet-picker {
@@ -51,7 +59,7 @@
   color: var(--ink-soft);
 }
 
-/* Same overflow bug as .map-row select — a flex item's content width is
+/* Same overflow bug .map-row select guards against — a flex item's content width is
    otherwise a floor it won't shrink below, which could push this whole
    picker wide enough to visually disappear off a phone screen. */
 .sheet-picker select {
