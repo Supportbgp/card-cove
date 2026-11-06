@@ -167,7 +167,7 @@ function BinderPageScanner({ catalog, locations, onImport, multipliers, destinat
           onChange={(e) => handlePhotoSelected(e.target.files[0])}
         />
         <button
-          type="button" className="btn secondary small" disabled={scanning}
+          type="button" className="btn secondary" disabled={scanning}
           style={{ marginTop: '10px' }}
           onClick={() => cameraInputRef.current.click()}
         >
@@ -247,9 +247,9 @@ export default function ScannerPanel(props) {
   return (
     <div>
       <div className="scan-mode-toggle" role="group" aria-label="Scan mode">
-        <button type="button" className={`btn small${mode === 'binder' ? '' : ' ghost'}`} aria-pressed={mode === 'binder'}
+        <button type="button" className={`btn${mode === 'binder' ? '' : ' ghost'}`} aria-pressed={mode === 'binder'}
           onClick={() => setMode('binder')}>Binder page</button>
-        <button type="button" className={`btn small${mode === 'stack' ? '' : ' ghost'}`} aria-pressed={mode === 'stack'}
+        <button type="button" className={`btn${mode === 'stack' ? '' : ' ghost'}`} aria-pressed={mode === 'stack'}
           onClick={() => setMode('stack')}>Stack</button>
       </div>
       {mode === 'binder'
