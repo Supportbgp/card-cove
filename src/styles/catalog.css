@@ -1,0 +1,240 @@
+/* The Catalog tab's list view: toolbar, desktop table (CatalogTable) and
+   the phone card list. Split out of index.css; shared tokens and base
+   styles (.btn, inputs, .badge, .thumb, table) still come from there. */
+
+/* Toolbar: one control height. On a phone the search runs full width and
+   the filters sit in an even two-column grid instead of ragged rows. */
+.catalog-toolbar input,
+.catalog-toolbar select {
+  height: 40px;
+}
+
+/* P/T/C platform-status chips: buttons (keyboard reachable), 20px to look
+   at, with an invisible 28px tap area. The 8px gap keeps neighbouring tap
+   areas from overlapping, and a near miss no longer falls through to the
+   row underneath (which selects it). */
+.platform-status {
+  display: flex;
+  gap: 8px;
+}
+
+.platform-chip {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1.5px dashed var(--border);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  user-select: none;
+  transition-property: background-color, border-color, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease-out;
+}
+
+.platform-chip::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+
+.platform-chip.done {
+  border-style: solid;
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.platform-status-none {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Name + details: the same hierarchy in the desktop table and the phone
+   cards. */
+.name-cell .n-name,
+.catalog-card .n-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.name-cell .n-sub,
+.catalog-card .n-sub {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin-top: 1px;
+  text-wrap: pretty;
+}
+
+/* Thumbnails get the faint pure-black edge, like the public pages' card
+   images, instead of the tinted border. */
+.catalog-table .thumb,
+.catalog-card .thumb {
+  border: 0;
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+/* Sort arrow: the space is always reserved, so a header doesn't change
+   width when it becomes the sort column. */
+.sort-arrow {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+}
+
+/* Header "select all": a bigger click area around the 13px box. */
+.select-all-hit {
+  display: inline-flex;
+  padding: 8px;
+  margin: -8px;
+  cursor: pointer;
+}
+
+/* Mobile stacked-card catalog view (CatalogTable, below the
+   useIsMobile breakpoint) — a compact summary row that expands on tap
+   instead of a wide table nobody can comfortably scroll sideways on a
+   phone. */
+.catalog-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.catalog-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.catalog-card.sold-row {
+  opacity: 0.6;
+}
+
+.catalog-card.row-selected {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+}
+
+.catalog-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+/* The card's checkbox sits between the expand area and the thumbnail
+   (which opens the image viewer); a 44px label around the 18px box makes
+   a near miss still select the card. Negative margins keep the layout as
+   it was. */
+.catalog-card-check {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -13px -8px -13px -13px;
+  cursor: pointer;
+}
+
+.catalog-card-check input[type=checkbox] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.catalog-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog-card-row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+  font-size: 12.5px;
+}
+
+/* One arrow, rotated when the card is open. */
+.catalog-card-chevron {
+  color: var(--ink-faint);
+  font-size: 11px;
+  flex-shrink: 0;
+  transition: rotate 0.15s ease-out;
+}
+
+.catalog-card-chevron.open {
+  rotate: 180deg;
+}
+
+.catalog-card-details {
+  padding: 0 12px 12px 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.catalog-cards-selectall {
+  margin-bottom: 10px;
+  padding: 0 4px;
+}
+
+@media (max-width: 640px) {
+  .catalog-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .catalog-toolbar .search-input,
+  .catalog-toolbar .btn {
+    grid-column: 1 / -1;
+  }
+
+  .catalog-toolbar input,
+  .catalog-toolbar select {
+    height: 44px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* The mobile catalog card's expanded view specifically — sync-status
+     chips and Edit were the two hardest-to-hit controls reported; the
+     desktop table's denser sizing is untouched. */
+  .catalog-card-details .platform-chip {
+    width: 34px;
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .catalog-card-details .platform-status {
+    gap: 10px;
+  }
+
+  .catalog-card-details .row-actions .btn {
+    min-height: 42px;
+    padding: 9px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-chip,
+  .catalog-card-chevron {
+    transition: none;
+  }
+}

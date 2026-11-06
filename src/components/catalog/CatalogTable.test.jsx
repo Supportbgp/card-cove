@@ -185,3 +185,30 @@ describe('CatalogTable — source link safety', () => {
     expect(screen.queryByTitle('Open source link')).toBeNull();
   });
 });
+
+describe('CatalogTable — polish pass controls', () => {
+  it('platform chips are buttons with their state, and clicking one toggles it without selecting the row', () => {
+    const props = baseProps();
+    render(<CatalogTable {...props} />);
+    const pos = screen.getByRole('button', { name: 'POS: up to date' });
+    expect(pos).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'TCG Player: needs updating' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(pos);
+    expect(props.onTogglePlatformStatus).toHaveBeenCalledWith('sku-1', 'posSynced');
+    expect(props.onToggleSelected).not.toHaveBeenCalled();
+  });
+
+  it('on a phone, tapping the area around a card checkbox selects the card without expanding it', () => {
+    useIsMobileMock.mockReturnValue(true);
+    const props = baseProps();
+    render(<CatalogTable {...props} />);
+    fireEvent.click(document.querySelector('.catalog-card-check'));
+    expect(props.onToggleSelected).toHaveBeenCalledWith('sku-1', true);
+    expect(document.querySelector('.catalog-card-details')).toBeNull();
+  });
+
+  it('reserves the sort arrow space on every sortable header', () => {
+    render(<CatalogTable {...baseProps()} />);
+    expect(document.querySelectorAll('thead th.sortable .sort-arrow')).toHaveLength(5);
+  });
+});

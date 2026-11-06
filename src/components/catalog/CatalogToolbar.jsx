@@ -12,7 +12,7 @@ export default function CatalogToolbar({
   onAddItem,
 }) {
   return (
-    <div className="toolbar">
+    <div className="toolbar catalog-toolbar">
       <input
         type="text" className="search-input" placeholder="Search name, set, or SKU…"
         value={search} onChange={(e) => setSearch(e.target.value)}

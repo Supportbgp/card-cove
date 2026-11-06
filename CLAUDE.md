@@ -6310,6 +6310,53 @@ staging.
   unchanged. Visual check via a throwaway Playwright screenshot spec
   (not committed).
 
+## Catalog list polish (Make Interfaces Feel Better, second pass)
+
+Second screen of the MIFB pass (see "Public pages polish"): the Catalog
+tab's list view (toolbar, selection bar, desktop table, phone cards). The
+Edit window gets its own pass later.
+
+- **CSS split, continued.** The Catalog list's own rules (P/T/C chips,
+  `.name-cell`, the phone `.catalog-card*` list and their mobile overrides)
+  moved out of `index.css` into **`src/styles/catalog.css`**, imported in
+  `main.jsx` after `public.css`. The toolbar gets a `.catalog-toolbar`
+  class so its sizing doesn't touch the other tabs' `.toolbar`s.
+- **Fixes (5 medium, 5 low), from a quick review with measured sizes:**
+  - Phone cards had no hierarchy: `.n-name`/`.n-sub` were only styled
+    inside the desktop table's `.name-cell`, so a card's name was regular
+    weight and its expanded details line was bigger than the name. Both
+    layouts now share the same styles.
+  - Phone card checkbox (18px, between the expand area and the thumbnail
+    that opens the image viewer): wrapped in a 44px `.catalog-card-check`
+    label with negative margins, so a near miss selects the card instead
+    of opening something else. Layout unchanged.
+  - P/T/C chips were 20px `<span>`s 4px apart, and a miss fell through to
+    the row, which selects it. Now `<button>`s (keyboard reachable,
+    `aria-pressed`, a spoken label), still 20px to look at, with a 28px
+    invisible tap area (`::before`, `inset: -4px`) and an 8px gap so
+    neighbouring tap areas don't overlap.
+  - Selection bar buttons were `.btn.small` (25px on desktop); now normal
+    buttons (32px desktop, 44px phone).
+  - Toolbar: search 35px next to 37px dropdowns, under 44px on a phone, and
+    ragged wrapping there. Now one height (40px desktop, 44px phone), and on
+    a phone a full-width search and Add item with the filters in an even
+    two-column grid. Long option text ("Singles + Slabs + Bulk") is cut off
+    by the dropdown itself in a half-width column; accepted.
+  - Low: chip transitions name their properties instead of `transition:
+    all`; thumbnails get the faint pure-black edge instead of the tinted
+    border; the sort arrow's space is always reserved so headers don't
+    shift; the phone card's chevron is one ▼ rotated 180° (150ms, off for
+    reduced motion); the table's "select all" checkbox gets a bigger click
+    area.
+- Not done, still open: prices without a thousands separator (`$9000.00`)
+  across the app (`formatMoney` too, plus ~40 hand-formatted spots), and
+  screen-reader labels on the toolbar dropdowns.
+- Covered by three new `CatalogTable.test.jsx` cases (chip buttons and
+  their state, a chip click not selecting the row, the phone checkbox tap
+  area not expanding the card, reserved sort-arrow space); the existing
+  catalog/duplicate/undo-sale/price-alerts/lost-stolen/import-cost e2e
+  specs pass unchanged.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
