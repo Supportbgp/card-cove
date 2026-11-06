@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbLoadPublicWantList } from '../../lib/db.js';
 import { wantDetailLine } from '../../lib/wantList.js';
-import { keepSeparators } from './PublicCard.jsx';
+import { keepSeparators } from '../../lib/cardUtils.js';
 
 function WantedCard({ w, onZoom }) {
   const [broken, setBroken] = useState(false);

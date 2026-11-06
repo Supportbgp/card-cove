@@ -1,11 +1,5 @@
 import { useState } from 'react';
-import { activeImageSrc } from '../../lib/cardUtils.js';
-
-// Keeps each ' · ' attached to the word before it, so a wrapped details line
-// never starts with a dot.
-export function keepSeparators(text) {
-  return text.replaceAll(' · ', '\u00a0· ');
-}
+import { activeImageSrc, keepSeparators } from '../../lib/cardUtils.js';
 
 // One card on the public pages (the binder QR page and the public stock
 // page). Read-only: image, name, set/condition/printing, stock and price.

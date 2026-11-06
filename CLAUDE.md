@@ -6284,8 +6284,9 @@ staging.
     (this also styles the staff Want list search), and the public filters
     get a 40px minimum height (44px on a phone) plus a top margin.
   - The In stock / Wanted toggle and "Search all stock" were `.btn.small`
-    (24px tall on desktop); now normal buttons with a 40px minimum on the
-    public pages. "Search all stock" is a link, so it's `inline-flex` (for
+    (24px tall on desktop); now normal buttons with a 40px minimum (44px on a
+    phone) on the public pages. `.public-page .btn` outranks index.css's
+    mobile `.btn` rule, so the 44px has to be restated in `public.css`. "Search all stock" is a link, so it's `inline-flex` (for
     the min-height) with no underline, and the public topbar centers
     instead of using baselines so the taller button lines up with the logo.
   - Card tile corners are concentric: card radius 16 = image 6 + padding 10
@@ -6297,7 +6298,7 @@ staging.
     transitioned, off for reduced motion); the Lightbox (shared with the
     staff app) fades in over 160ms with the image settling from 0.96.
   - `text-wrap: pretty` started lines with "· Holofoil", so
-    `keepSeparators` (`PublicCard.jsx`, also used by the Wanted cards)
+    `keepSeparators` (`cardUtils.js`, used by the stock and Wanted cards)
     joins each " · " to the word before it with a no-break space.
   - **Bug found along the way:** a slab's grade was glued on without a
     space ("Holofoil· PSA 10") because `.trim()` ran on a string that began

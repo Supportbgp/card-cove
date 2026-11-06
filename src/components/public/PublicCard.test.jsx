@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import PublicCard, { keepSeparators } from './PublicCard.jsx';
+import PublicCard from './PublicCard.jsx';
+import { keepSeparators } from '../../lib/cardUtils.js';
 
 describe('keepSeparators', () => {
   it('binds each " · " to the word before it with a no-break space', () => {

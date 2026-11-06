@@ -97,8 +97,11 @@ img.binder-card-img {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 10px 0 8px;
+  margin-bottom: 8px;
 }
+/* Wanted view: space below its intro line (the stock view's toggle already
+   has a bottom margin). */
+.status-line + .shop-filters { margin-top: 10px; }
 .shop-filters input { flex: 2 1 220px; min-width: 0; }
 .shop-filters select { flex: 1 1 140px; min-width: 0; }
 
@@ -115,7 +118,8 @@ img.binder-card-img {
 }
 
 /* Press feedback on the public pages' buttons, and a 40px minimum hit
-   area on desktop (the mobile breakpoint in index.css already gives 44). */
+   area (44 on a phone, below; this selector outranks index.css's mobile
+   .btn rule, so it has to be restated). */
 .public-page .btn {
   min-height: 40px;
   transition-property: scale, opacity;
@@ -134,6 +138,7 @@ img.binder-card-img {
 }
 
 @media (max-width: 640px) {
+  .public-page .btn,
   .public-page .shop-filters input,
   .public-page .shop-filters select {
     min-height: 44px;
