@@ -13,9 +13,9 @@ export default function ImportExportPanel({ catalog, queue, locations, quotes = 
   return (
     <div>
       <div className="scan-mode-toggle" role="group" aria-label="What to import">
-        <button type="button" className={`btn small${mode === 'cards' ? '' : ' ghost'}`} aria-pressed={mode === 'cards'}
+        <button type="button" className={`btn${mode === 'cards' ? '' : ' ghost'}`} aria-pressed={mode === 'cards'}
           onClick={() => setMode('cards')}>Cards</button>
-        <button type="button" className={`btn small${mode === 'quotes' ? '' : ' ghost'}`} aria-pressed={mode === 'quotes'}
+        <button type="button" className={`btn${mode === 'quotes' ? '' : ' ghost'}`} aria-pressed={mode === 'quotes'}
           onClick={() => setMode('quotes')}>Quotes</button>
       </div>
       {mode === 'cards'

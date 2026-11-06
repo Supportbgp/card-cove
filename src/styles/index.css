@@ -763,36 +763,6 @@
       margin-bottom: 6px;
     }
 
-    .map-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin: 16px 0;
-    }
-
-    .map-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      font-size: 13px;
-    }
-
-    .map-row label {
-      color: var(--ink-soft);
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 12px;
-      flex-shrink: 0;
-    }
-
-    /* Flex items default to a content-based min-width, so a <select> with a
-       long option (a real column header) could otherwise force this row —
-       and the whole page — wider than the viewport instead of shrinking. */
-    .map-row select {
-      flex: 1;
-      min-width: 0;
-    }
-
     .status-line {
       font-size: 13px;
       color: var(--ink-soft);
@@ -866,86 +836,6 @@
 
     .quote-source-meta {
       color: var(--ink-soft);
-    }
-
-    /* Import/Export → Quotes: one box per quote found in the spreadsheet. */
-    .quote-import-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin: 14px 0 10px;
-      font-size: 13px;
-    }
-
-    .quote-import-toolbar select,
-    .quote-import-controls select {
-      min-width: 0;
-    }
-
-    .quote-import-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-
-    .quote-import-item {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      background: var(--surface);
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .quote-import-item.unselected {
-      background: var(--surface-alt);
-      opacity: 0.75;
-    }
-
-    .quote-import-head {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .quote-import-title {
-      margin: 0;
-      font-family: 'Inter', sans-serif;
-      text-transform: none;
-      letter-spacing: normal;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--ink);
-    }
-
-    .quote-import-meta {
-      font-size: 12.5px;
-      color: var(--ink-soft);
-    }
-
-    .quote-import-warn {
-      font-size: 12px;
-      color: var(--amber);
-    }
-
-    .quote-import-controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      font-size: 13px;
-    }
-
-    .quote-import-controls label {
-      margin: 0;
-    }
-
-    .quote-import-cards {
-      font-size: 12px;
     }
 
     /* Staging builds only (StagingBanner.jsx): a strip across the top of
@@ -1481,28 +1371,6 @@
       }
     }
 
-    .sheet-picker {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 12px;
-      padding: 10px;
-      background: var(--surface-alt);
-      border-radius: 8px;
-    }
-
-    .sheet-picker label {
-      flex-shrink: 0;
-    }
-
-    /* Same overflow bug as .map-row select — a flex item's content width is
-       otherwise a floor it won't shrink below, which could push this whole
-       picker wide enough to visually disappear off a phone screen. */
-    .sheet-picker select {
-      flex: 1;
-      min-width: 0;
-    }
-
     /* Want list (CLAUDE.md "Want list") */
     .want-share {
       display: flex;
@@ -1767,8 +1635,14 @@
         padding: 10px;
       }
 
-      .field-row2,
-      .map-grid {
+      /* Drop zones (Import, quote import, Scan Binder): smaller text and
+         padding, so the instructions don't run to five lines on a phone. */
+      .drop {
+        padding: 22px 14px;
+        font-size: 13px;
+      }
+
+      .field-row2 {
         grid-template-columns: 1fr;
       }
 
@@ -1781,10 +1655,6 @@
       .img-preview-empty {
         width: 72px;
         height: 100px;
-      }
-
-      .sheet-picker {
-        flex-wrap: wrap;
       }
 
 

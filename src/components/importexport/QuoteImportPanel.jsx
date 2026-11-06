@@ -191,7 +191,7 @@ export default function QuoteImportPanel({ quotes, onSaveQuote }) {
                       {GAMES.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
                     {p.items.length > 0 && (
-                      <button type="button" className="btn ghost small" onClick={() => updateEntry(e.key, { open: !e.open })}>
+                      <button type="button" className="btn ghost" onClick={() => updateEntry(e.key, { open: !e.open })}>
                         {e.open ? 'Hide cards' : 'Show cards'}
                       </button>
                     )}
