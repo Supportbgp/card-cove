@@ -3,6 +3,7 @@ import { normalizeCard, DEFAULT_CONDITION_MULTIPLIERS } from './cardUtils.js';
 import { DEFAULT_QUOTE_TIER_PCTS } from './quoteUtils.js';
 import { DEFAULT_PRICE_TRACKING } from './priceAlertUtils.js';
 import { rowToWant, wantToRow } from './wantList.js';
+import { rowToMetaCard, rowToHotCard, hotCardToRow, rowToPriceMover } from './hotCards.js';
 
 // Supabase/PostgREST caps a bare `.select()` at the project's configured
 // Max Rows (1000 by default) — past that point a table's real total is
@@ -780,4 +781,41 @@ export async function dbLoadPublicWantList() {
   const { data, error } = await fetchAllRows('public_want_list', 'created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(rowToWant);
+}
+
+// --- Hot cards (phase21) --------------------------------------------------
+
+// Tournament play counts, rebuilt daily by the meta-check Edge Function.
+// A failed load just means no meta reasons; nothing else depends on it.
+export async function dbLoadMetaCards(toast) {
+  const { data, error } = await fetchAllRows('meta_cards', 'name_key');
+  if (error) { toast('Failed to load tournament data: ' + error.message, true); return []; }
+  return (data || []).map(rowToMetaCard);
+}
+
+export async function dbLoadHotList(toast) {
+  const { data, error } = await fetchAllRows('hot_cards', 'created_at', { ascending: false });
+  if (error) { toast('Failed to load the hot list: ' + error.message, true); return []; }
+  return (data || []).map(rowToHotCard);
+}
+
+// Returns the saved entry, or null when the write failed.
+export async function dbAddHotCard(hot, toast) {
+  const { data, error } = await supabaseClient.from('hot_cards')
+    .insert({ ...hotCardToRow(hot), created_at: new Date().toISOString() }).select().single();
+  if (error) { toast('Adding to the hot list failed: ' + error.message, true); return null; }
+  return rowToHotCard(data);
+}
+
+export async function dbDeleteHotCard(id, toast) {
+  const { error } = await supabaseClient.from('hot_cards').delete().eq('id', id);
+  if (error) { toast('Removing from the hot list failed: ' + error.message, true); return false; }
+  return true;
+}
+
+// Tracked cards whose market price moved this month (price_movers view).
+export async function dbLoadPriceMovers(toast) {
+  const { data, error } = await fetchAllRows('price_movers', 'sku');
+  if (error) { toast('Failed to load price changes: ' + error.message, true); return []; }
+  return (data || []).map(rowToPriceMover);
 }

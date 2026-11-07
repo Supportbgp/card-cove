@@ -1,0 +1,136 @@
+/* Hot cards (CLAUDE.md "Hot cards"): the "Sought after" notice on a quote
+   row (HotNotice) and the Quote tab's Hot cards window (HotCardsModal). */
+
+/* Amber: "pay attention", like pending sync. Sits next to the want-list
+   notice (blue), so the two read as different things. */
+.hot-notice {
+  background: var(--amber-soft);
+  border: 1px solid color-mix(in srgb, var(--amber-soft) 65%, var(--amber) 35%);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.hot-notice-title {
+  color: var(--amber);
+}
+
+.hot-notice-reasons {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  text-wrap: pretty;
+}
+
+.hot-notice-reasons li + li {
+  margin-top: 2px;
+}
+
+.hot-notice-credit,
+.hot-credit {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.hot-notice-credit a,
+.hot-credit a {
+  color: var(--blue);
+}
+
+/* Hot cards window */
+.hot-add-row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 1.4fr) 10rem;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.hot-add-row input,
+.hot-add-row select {
+  width: 100%;
+  min-width: 0;
+}
+
+.hot-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hot-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.hot-list-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.hot-list-game,
+.hot-list-by {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.hot-list-reason {
+  flex-basis: 100%;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.hot-empty {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.hot-meta-game {
+  max-width: 14rem;
+  margin-bottom: 10px;
+}
+
+.hot-meta-table .num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hot-meta-of {
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .hot-add-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hot-add-row input,
+  .hot-add-row select {
+    height: 44px;
+  }
+
+  .hot-list li .btn {
+    min-height: 44px;
+  }
+
+  .hot-meta-game {
+    max-width: none;
+  }
+}

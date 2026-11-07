@@ -42,5 +42,8 @@ export function catalogSeed(rows) {
     public_binders: [],
     public_binder_list: [],
     want_requests: [],
+    meta_cards: [],
+    hot_cards: [],
+    price_movers: [],
   };
 }

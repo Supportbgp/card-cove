@@ -192,6 +192,38 @@ export default function QuoteSection() {
         color-tinted by outcome. Quotes are never shown or referenced from
         Catalog — every quote lives only in its own view here.
       </p>
+
+      <h3>"Sought after" cards</h3>
+      <p>
+        A card row shows an amber <strong>Sought after</strong> note, with
+        the reasons, when the card is in demand. It never changes a price;
+        it's a heads-up so you don't have to check a list while quoting.
+        Reasons:
+      </p>
+      <ul>
+        <li>
+          <strong>Tournament play</strong>: the card is in at least 10% of
+          the last 30 days of tournament decklists (from Limitless and
+          TopDeck.gg, updated daily). Covers Pokemon, Magic, One Piece,
+          Riftbound and Yu-Gi-Oh best; SWU, Gundam and Lorcana have fewer
+          online events, so less shows up. For <strong>One Piece and
+          Gundam</strong>, fill in the card's Set and Number (e.g. OP13 /
+          016): one name covers many different cards there, so the note
+          only appears for the exact card.
+        </li>
+        <li><strong>Selling fast</strong>: we sold 3 or more in the last 30 days.</li>
+        <li>
+          <strong>Price climbing</strong>: a copy we track rose 20% or more
+          in market price this month (from the daily price check, so only
+          cards priced $25 and up).
+        </li>
+        <li><strong>Hot list</strong>: staff added it by hand.</li>
+      </ul>
+      <p>
+        <strong>Hot cards…</strong> (top of the Quote tab) shows the hot list
+        (add a card with a reason, or remove one), the most-played cards per
+        game, and what's selling fast or climbing.
+      </p>
     </DocsSection>
   );
 }

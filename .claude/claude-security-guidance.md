@@ -34,7 +34,9 @@ any of these rules.
   URL and publishable/anon key. Anything else secret there is a finding.
 - `.staging-db.local` holds database passwords: never read, print, log or
   commit it. `.staging-copy/` holds real customer data: never commit it.
-- `ANTHROPIC_API_KEY` lives only in Supabase Edge Function secrets.
+- `ANTHROPIC_API_KEY` and `TOPDECK_API_KEY` live only in Supabase Edge
+  Function secrets (TopDeck.gg's terms forbid the key in a browser). The
+  local `.topdeck-key.local` (gitignored) is for testing: never print it.
 
 ## Edge Functions (`supabase/functions/*`)
 - Functions called from the browser must check the caller is staff on the
@@ -47,8 +49,12 @@ any of these rules.
   in `auth.ts`), checked before anything else. It must
   not become callable with arbitrary request bodies that widen what it
   reads or writes.
+- `meta-check` is the same: service-role bearer only (its own `auth.ts`),
+  called by GitHub Actions, and it only takes a job number. It stores card
+  counts only, never TopDeck/Limitless player names or details.
 - Don't send secrets, tokens or customer data to third-party card APIs
-  (Scryfall, TCGdex, YGOPRODeck, Lorcast, Egman, swu-db); they get card
+  (Scryfall, TCGdex, YGOPRODeck, Lorcast, Egman, swu-db, Limitless,
+  TopDeck.gg); they get card
   names and set/number hints only.
 
 ## Browser code
