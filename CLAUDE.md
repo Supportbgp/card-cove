@@ -6540,6 +6540,17 @@ list to import.
   matches by name across games. **Hot cards…** in the Quote tab
   (`HotCardsModal`) manages the hot list and shows most-played per game,
   selling fast and price climbing. Styles in `src/styles/hotcards.css`.
+- **First real run** (13 of 14 jobs succeeded): Pokemon 2,729 decklists,
+  One Piece 859, Riftbound (TopDeck) 1,580, Magic Legacy 110, Gundam 57;
+  Modern 8, Standard 2, Yu-Gi-Oh 8 (stored, but under the 20-decklist
+  minimum, so no notices); SWU, Lorcana and Pioneer 0. **Magic Commander
+  failed with `WORKER_RESOURCE_LIMIT`**: the 30-day TopDeck response is
+  70 MB (~7,200 decklists; the 5 MB figure in the research above was
+  wrong). Jobs now take an optional `windowDays`; Commander uses 7 days
+  (~11 MB, ~1,100 decklists, measured at ~0.6 s / 60 MB parsing locally).
+  The notice shows the real window ("last 7 days"). SWU has no tournament
+  source: Limitless had no events in 30 days and TopDeck.gg ("Star Wars
+  Unlimited", "Premier") had 3 events with no decklists.
 - Not flagged on Sorting rows or the Catalog yet (the ask was quoting).
 - Staff docs: '"Sought after" cards' in `QuoteSection.jsx`.
 - Tests: `hotCards.test.js`, `meta-check/decks.test.ts`, new `db.test.js`

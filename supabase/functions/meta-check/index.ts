@@ -38,16 +38,20 @@ const LIMITLESS_MIN_PLAYERS = 8;
 // Stop starting new requests after this, leaving time to write the rows.
 const TIME_BUDGET_MS = 110_000;
 
+// windowDays: how far back to count, when not WINDOW_DAYS.
 type Job =
-  | { source: "limitless"; id: string; game: string; format: string }
-  | { source: "topdeck"; tdGame: string; game: string; format: string };
+  | { source: "limitless"; id: string; game: string; format: string; windowDays?: number }
+  | { source: "topdeck"; tdGame: string; game: string; format: string; windowDays?: number };
 
 // Interleaved so consecutive jobs hit different APIs (each has its own
 // rate limit). Only the TopDeck game/format names confirmed against real
 // responses are listed; One Piece, SWU and Gundam come from Limitless.
 export const JOBS: Job[] = [
   { source: "limitless", id: "PTCG", game: "Pokemon", format: "STANDARD" },
-  { source: "topdeck", tdGame: "Magic: The Gathering", game: "Magic", format: "EDH" },
+  // Commander is huge: 30 days was a 70 MB response (~7,200 decklists) and
+  // ran out of Edge Function compute on the first real run. 7 days is ~11 MB
+  // and ~1,100 decklists, still plenty for a share.
+  { source: "topdeck", tdGame: "Magic: The Gathering", game: "Magic", format: "EDH", windowDays: 7 },
   { source: "limitless", id: "OP", game: "One Piece", format: "" },
   { source: "topdeck", tdGame: "Magic: The Gathering", game: "Magic", format: "Legacy" },
   { source: "limitless", id: "SWU", game: "SWU", format: "" },
@@ -83,7 +87,7 @@ async function limitlessGet(path: string) {
 }
 
 async function runLimitless(job: Extract<Job, { source: "limitless" }>, started: number) {
-  const cutoff = Date.now() - WINDOW_DAYS * 86400000;
+  const cutoff = Date.now() - (job.windowDays ?? WINDOW_DAYS) * 86400000;
   const events: { id: string; players: number }[] = [];
   for (let page = 1; page <= LIMITLESS_MAX_PAGES; page++) {
     const fmt = job.format ? `&format=${encodeURIComponent(job.format)}` : "";
@@ -115,7 +119,7 @@ async function runTopdeck(job: Extract<Job, { source: "topdeck" }>) {
   const res = await fetch(TOPDECK, {
     method: "POST",
     headers: { Authorization: key, "Content-Type": "application/json" },
-    body: JSON.stringify({ game: job.tdGame, format: job.format, last: WINDOW_DAYS, columns: ["decklist"] }),
+    body: JSON.stringify({ game: job.tdGame, format: job.format, last: job.windowDays ?? WINDOW_DAYS, columns: ["decklist"] }),
   });
   if (res.status === 429) throw new RateLimited("TopDeck.gg rate limit reached");
   if (!res.ok) throw new Error(`TopDeck.gg ${res.status}`);
@@ -156,7 +160,7 @@ Deno.serve(async (req) => {
     source: job.source, game: job.game, format: job.format,
     name: r.name, name_key: r.nameKey, code: r.code, decks: r.decks, copies: r.copies,
     total_decks: result.tally.totalDecks, events: result.events,
-    window_days: WINDOW_DAYS, updated_at: runAt,
+    window_days: job.windowDays ?? WINDOW_DAYS, updated_at: runAt,
   }));
 
   // Save this run's rows first, then remove the ones it didn't refresh
