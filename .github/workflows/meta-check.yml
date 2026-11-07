@@ -34,6 +34,7 @@ jobs:
           JOB=0
 
           call() {
+            rm -f response.json
             curl -sS -o response.json -w "%{http_code}" -X POST "$URL" \
               -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
               -H "apikey: $SERVICE_ROLE_KEY" \
@@ -43,13 +44,14 @@ jobs:
 
           while [ "$JOB" -lt "$MAX_JOBS" ]; do
             echo "=== Job $JOB ==="
-            STATUS=$(call || echo 000)
+            # curl prints 000 itself when it can't connect.
+            STATUS=$(call) || true
             if [ "$STATUS" = "429" ]; then
               echo "Rate limited, waiting and retrying once"
               sleep 120
-              STATUS=$(call || echo 000)
+              STATUS=$(call) || true
             fi
-            cat response.json; echo
+            if [ -f response.json ]; then cat response.json; echo; else echo "(no response, status $STATUS)"; fi
             if [ "$STATUS" = "400" ] && jq -e '.jobs' response.json >/dev/null 2>&1; then
               echo "No job $JOB: done."
               break

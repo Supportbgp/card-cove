@@ -30,7 +30,7 @@ export function hotNameKey(name: unknown): string {
   if (face > 0) n = n.slice(0, face);
   n = n.replace(/\([^)]*\)/g, " ").replace(/\[[^\]]*\]/g, " ");
   n = n.replace(/\s+/g, " ").trim();
-  n = n.replace(/\s*-?\s*#?\d+(\/\d+)?$/, "").trim();
+  n = n.replace(/(\s+|\s*-\s*)#?\d+(\/\d+)?$/, "").trim();
   n = n.replace(/-(ex|gx)\b/g, " $1");
   return n.replace(/\s+/g, " ").trim();
 }

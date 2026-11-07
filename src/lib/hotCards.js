@@ -32,7 +32,8 @@ export function hotNameKey(name) {
   if (face > 0) n = n.slice(0, face);
   n = n.replace(/\([^)]*\)/g, ' ').replace(/\[[^\]]*\]/g, ' ');
   n = n.replace(/\s+/g, ' ').trim();
-  n = n.replace(/\s*-?\s*#?\d+(\/\d+)?$/, '').trim();
+  // A number after a space or dash only, so "Porygon2" stays itself.
+  n = n.replace(/(\s+|\s*-\s*)#?\d+(\/\d+)?$/, '').trim();
   // Black & White-era "Virizion-EX" vs later "Dialga EX".
   n = n.replace(/-(ex|gx)\b/g, ' $1');
   return n.replace(/\s+/g, ' ').trim();
@@ -177,23 +178,36 @@ const KIND_ORDER = { list: 0, meta: 1, sales: 2, price: 3 };
 // Reasons a card is hot, list entries first. A quote row with no game yet
 // still gets a heads-up, from any game with the same card name (except
 // tournament play in code-matched games, which needs the card's code).
+// The index grouped by name key, built once per index (quote rows ask on
+// every render).
+const byNameCache = new WeakMap();
+function entriesByName(index) {
+  let byName = byNameCache.get(index);
+  if (!byName) {
+    byName = new Map();
+    for (const [k, reasons] of index) {
+      const bar = k.indexOf('|');
+      const rest = k.slice(bar + 1);
+      const hash = rest.indexOf('#');
+      const nameKey = hash >= 0 ? rest.slice(0, hash) : rest;
+      if (!byName.has(nameKey)) byName.set(nameKey, []);
+      byName.get(nameKey).push({ game: k.slice(0, bar), code: hash >= 0 ? rest.slice(hash + 1) : null, reasons });
+    }
+    byNameCache.set(index, byName);
+  }
+  return byName;
+}
+
 export function hotReasonsForCard(card, index) {
   if (!card || !index || !hotNameKey(card.name)) return [];
   const nameKey = hotNameKey(card.name);
   const code = cardCode(card.set, card.number);
-  const games = card.game ? [card.game, ''] : null;
   const reasons = [];
-  for (const [k, v] of index) {
-    const bar = k.indexOf('|');
-    const game = k.slice(0, bar);
-    if (games && !games.includes(game)) continue;
-    const rest = k.slice(bar + 1);
-    const hash = rest.indexOf('#');
-    if (hash >= 0) {
-      // Code-matched entry: only its own meta reasons live here.
-      if (rest.slice(0, hash) !== nameKey || !code || rest.slice(hash + 1) !== code) continue;
-    } else if (rest !== nameKey) continue;
-    reasons.push(...v);
+  for (const e of entriesByName(index).get(nameKey) || []) {
+    if (card.game && e.game !== card.game && e.game !== '') continue;
+    // Code-matched entry (One Piece/Gundam tournament play): needs the card's code.
+    if (e.code !== null && (!code || e.code !== code)) continue;
+    reasons.push(...e.reasons);
   }
   return reasons.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
 }

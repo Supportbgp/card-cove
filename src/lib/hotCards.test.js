@@ -23,6 +23,8 @@ describe('hotNameKey', () => {
     expect(hotNameKey('Charizard 4/102')).toBe('charizard');
     expect(hotNameKey('Snorlax - 051')).toBe('snorlax');
     expect(hotNameKey('Virizion-EX')).toBe('virizion ex');
+    // A digit that's part of the name stays.
+    expect(hotNameKey('Porygon2')).toBe('porygon2');
   });
 
   it('matches a double-faced card by its front face', () => {
@@ -30,7 +32,7 @@ describe('hotNameKey', () => {
   });
 
   it('is the same function meta-check uses for meta_cards.name_key', () => {
-    for (const n of ['Pokémon Trader', 'Sol Ring (CMR)', 'Charizard 4/102', 'Virizion-EX', 'A // B', "Boss’s Orders"]) {
+    for (const n of ['Pokémon Trader', 'Sol Ring (CMR)', 'Charizard 4/102', 'Virizion-EX', 'A // B', "Boss’s Orders", 'Porygon2', 'Mewtwo - 052']) {
       expect(edgeHotNameKey(n)).toBe(hotNameKey(n));
     }
   });

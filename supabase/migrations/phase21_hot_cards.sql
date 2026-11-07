@@ -28,7 +28,6 @@ create table if not exists public.meta_cards (
   updated_at timestamptz not null default now(),
   primary key (source, game, format, name_key, code)
 );
-create index if not exists meta_cards_name_key on public.meta_cards (name_key);
 
 create table if not exists public.hot_cards (
   id uuid primary key default gen_random_uuid(),

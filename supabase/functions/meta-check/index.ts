@@ -170,6 +170,9 @@ Deno.serve(async (req) => {
   const { error: delError } = await admin.from("meta_cards").delete()
     .eq("source", job.source).eq("game", job.game).eq("format", job.format).lt("updated_at", runAt);
   if (delError) return json({ ...label, error: "Removing old rows failed: " + delError.message }, 500);
+  // Rows no job has refreshed in 3 days (a job dropped from JOBS, or one
+  // failing every day) are out of date: remove them so they stop flagging.
+  await admin.from("meta_cards").delete().lt("updated_at", new Date(Date.now() - 3 * 86400000).toISOString());
 
   return json({ ...label, events: result.events, decks: result.tally.totalDecks, stored: rows.length, ms: Date.now() - started });
 });

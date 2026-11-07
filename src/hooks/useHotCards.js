@@ -14,11 +14,15 @@ export function useHotCards({ enabled, toast, salesRevision = 0 }) {
   const [movers, setMovers] = useState([]);
   const [sales, setSales] = useState([]);
 
+  // The notices are a nice-to-have: a failed load (say phase21 isn't run
+  // yet) shouldn't put error toasts in front of staff at every sign-in.
+  const quiet = (msg) => console.warn(msg);
+
   useEffect(() => {
     if (!enabled) return;
-    dbLoadMetaCards(toast).then(setMeta);
-    dbLoadHotList(toast).then(setHotList);
-    dbLoadPriceMovers(toast).then(setMovers);
+    dbLoadMetaCards(quiet).then(setMeta);
+    dbLoadHotList(quiet).then(setHotList);
+    dbLoadPriceMovers(quiet).then(setMovers);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
@@ -26,7 +30,7 @@ export function useHotCards({ enabled, toast, salesRevision = 0 }) {
     if (!enabled) return;
     const to = new Date(Date.now() + 60000).toISOString();
     const from = new Date(Date.now() - SALES_WINDOW_DAYS * 86400000).toISOString();
-    dbLoadSales(from, to, toast).then(setSales);
+    dbLoadSales(from, to, quiet).then(setSales);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, salesRevision]);
 

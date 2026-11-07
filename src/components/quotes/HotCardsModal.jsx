@@ -18,8 +18,14 @@ export default function HotCardsModal({ hot, onClose }) {
   const { meta, hotList, index, addHotCard, removeHotCard } = hot;
   const [form, setForm] = useState({ game: '', name: '', reason: '', addedBy: '' });
   const [saving, setSaving] = useState(false);
-  const firstGameWithData = META_GAMES.find(g => topMetaCards(meta, g, 1).length > 0) || META_GAMES[0];
-  const [metaGame, setMetaGame] = useState(firstGameWithData);
+  // Until staff pick one, the first game that has data (which can change
+  // once the data finishes loading).
+  const [pickedGame, setMetaGame] = useState('');
+  const firstGameWithData = useMemo(
+    () => META_GAMES.find(g => topMetaCards(meta, g, 1).length > 0) || META_GAMES[0],
+    [meta]
+  );
+  const metaGame = pickedGame || firstGameWithData;
 
   const topCards = useMemo(() => topMetaCards(meta, metaGame), [meta, metaGame]);
   const updated = useMemo(() => metaUpdatedAt(meta), [meta]);
