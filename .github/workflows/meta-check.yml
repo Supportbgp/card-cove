@@ -1,0 +1,68 @@
+name: Daily tournament meta check
+
+# Hot cards (CLAUDE.md "Hot cards"): calls the meta-check Edge Function once
+# per job (one source + game + format), which counts how often each card
+# shows up in the last 30 days of tournament decklists from Limitless and
+# TopDeck.gg and saves the counts to meta_cards. Uses the same
+# SUPABASE_SERVICE_ROLE_KEY repository secret as the price check (never
+# log or echo it). The TopDeck.gg key is an Edge Function secret
+# (TOPDECK_API_KEY), not a GitHub one: it never leaves Supabase.
+#
+# Jobs run one at a time with a pause between them, so neither API's rate
+# limit is reached (Limitless: 50 requests / 5 minutes; TopDeck.gg: 5
+# searches / minute). A full run takes about 20 minutes.
+on:
+  schedule:
+    # 13:37 UTC daily, after the price check (13:07).
+    - cron: "37 13 * * *"
+  workflow_dispatch:
+
+jobs:
+  meta-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Call meta-check Edge Function for each job
+        env:
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -u
+          URL="https://pkyeytypgifgyiartgii.supabase.co/functions/v1/meta-check"
+          MAX_JOBS=30   # safety stop; the function lists fewer
+          PAUSE=75
+          FAILED=0
+          JOB=0
+
+          call() {
+            curl -sS -o response.json -w "%{http_code}" -X POST "$URL" \
+              -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+              -H "apikey: $SERVICE_ROLE_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"job\": $JOB}"
+          }
+
+          while [ "$JOB" -lt "$MAX_JOBS" ]; do
+            echo "=== Job $JOB ==="
+            STATUS=$(call || echo 000)
+            if [ "$STATUS" = "429" ]; then
+              echo "Rate limited, waiting and retrying once"
+              sleep 120
+              STATUS=$(call || echo 000)
+            fi
+            cat response.json; echo
+            if [ "$STATUS" = "400" ] && jq -e '.jobs' response.json >/dev/null 2>&1; then
+              echo "No job $JOB: done."
+              break
+            fi
+            if [ "$STATUS" != "200" ]; then
+              FAILED=$((FAILED + 1))
+            fi
+            if jq -e '.last == true' response.json >/dev/null 2>&1; then
+              break
+            fi
+            JOB=$((JOB + 1))
+            sleep "$PAUSE"
+          done
+
+          echo "=== Finished: $FAILED job(s) failed ==="
+          if [ "$FAILED" -gt 0 ]; then exit 1; fi

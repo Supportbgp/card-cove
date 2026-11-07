@@ -6465,6 +6465,92 @@ Export/QR modals weren't reviewed; they stay desktop-oriented.
   quote-import/import-source-url/public-binders/quotes e2e specs pass
   unchanged.
 
+## Hot cards: "Sought after" notices while quoting
+
+Staff ask (via the user): while quoting, flag cards that are sought after
+("meta cards, or cards people are buying a lot in recent sales") instead
+of checking a list by hand. Decided with the user: both automatic signals
+and a staff-kept list; the automatic part from real online data
+(tournament play and market movement), not just our own sales; the notice
+explains why and never changes a price. There was no existing hand-kept
+list to import.
+
+- **Sources, researched and tested live before building** (not guessed):
+  - **Limitless** (`play.limitlesstcg.com/api`): no key, CORS `*`, 50
+    requests per 5 minutes. Standings carry structured decklists (`{ section:
+    [{ count, name, set, number }] }`) for Pokemon (very busy: ~50 events in
+    3 days), One Piece (good), SWU/Gundam/Lorcana/Riftbound (sparse:
+    their last 50 events stretch back months or years).
+  - **TopDeck.gg** (`topdeck.gg/api/v2`): free key the user created
+    (stored as the Edge Function secret `TOPDECK_API_KEY`; a local
+    gitignored `.topdeck-key.local` was used for testing). 5 searches per
+    minute. Their developer terms: key must stay server-side, a visible
+    "Data provided by TopDeck.gg" credit with a link wherever the data
+    shows, no reselling. 30-day decklist counts seen: Magic Commander 7,232,
+    Legacy 110, Modern 8, Standard 2; Riftbound Constructed 1,580; Yu-Gi-Oh
+    Advanced 8; Lorcana Core Constructed 0. Decklists come as a structured
+    `deckObj` (preferred; it also carries a `metadata` block that isn't
+    cards) and a text list with literal `
+`/`'` escapes.
+  - **Ruled out**: MTGTop8/MTGGoldfish (no API; scraping breaks their
+    terms), Melee.gg (organizer-only), YGOPRODeck (no tournament endpoint).
+    No price source we use has history, so market movement comes from our
+    own `price_history` (the daily price check).
+- **`phase21_hot_cards.sql`**: `meta_cards` (per source/game/format/card:
+  decks playing it, total decks, copies; key includes `code`), `hot_cards`
+  (staff list: game, name, reason, added by), and the `price_movers` view
+  (`security_invoker`, so price_history's staff rule applies): per tracked
+  sku, first vs latest price in the last 30 days, at least 7 days apart.
+  Staff-only per phase18. Verified on a throwaway local Postgres (run
+  twice; staff read/write, a non-staff login sees nothing and can't write,
+  anon denied; the view's 7-day and 30-day rules).
+- **`meta-check` Edge Function** (`supabase/functions/meta-check/`): one
+  job per call (source + game + format, `JOBS` in `index.ts`), service-role
+  bearer only (its own copy of `auth.ts`). Limitless jobs read up to 4 pages
+  of recent events and the 12 biggest within 30 days; TopDeck jobs make one
+  30-day search. Each job upserts its rows and then deletes the ones it
+  didn't refresh, so a failed save never empties a game. Only card counts
+  are stored, never player data. **`.github/workflows/meta-check.yml`** runs
+  it daily at 13:37 UTC (after the price check), one job every 75 seconds
+  (both rate limits), retrying a 429 once; ~20 minutes.
+  - **`decks.ts`** (pure, Vitest-tested): parses both decklist shapes;
+    leaves out basic energy, basic lands and Riftbound runes (they'd read
+    as "in 90% of decks"); counts each card once per deck; stores cards in
+    5%+ of decks (the app shows 10%+).
+  - **One Piece and Gundam are counted per printed card code**
+    (`CODE_GAMES`, `cardCode`: "OP13" + "016" -> "OP13-16"), since one name
+    covers dozens of different cards there (the first dry run showed
+    "Nami" at 34%). A quote row needs Set + Number filled in for those.
+  - `hotNameKey` (case, accents, curly apostrophes, `(...)`/`[...]` notes,
+    a trailing collector number, a DFC's back face, `-EX`/` EX`) and
+    `cardCode` are duplicated between `decks.ts` and `src/lib/hotCards.js`;
+    a unit test asserts both give the same results.
+  - Verified by running the parser against live data: Pokemon's top cards
+    (Boss's Orders 91%, Ultra Ball 84%, no basic energy), One Piece per
+    code, Commander (Sol Ring 97%).
+- **App**: `useHotCards` (hook, so App.jsx barely grows) loads meta,
+  hot list and price movers at sign-in plus the last 30 days of sales
+  (reloaded on `salesRevision`), and builds one index (`buildHotIndex`).
+  `QuoteLineItemRow` shows `HotNotice` (amber, above the want-list
+  notice) with every reason, crediting Limitless/TopDeck.gg when a reason
+  came from them. Rules (constants in `hotCards.js`): tournament play 10%+
+  of decks with at least 20 decklists, best format per source; 3+ copies
+  sold in 30 days (refunds left out); price up 20%+; anything on the hot
+  list (an entry with no game matches every game). A row with no game yet
+  matches by name across games. **Hot cards…** in the Quote tab
+  (`HotCardsModal`) manages the hot list and shows most-played per game,
+  selling fast and price climbing. Styles in `src/styles/hotcards.css`.
+- Not flagged on Sorting rows or the Catalog yet (the ask was quoting).
+- Staff docs: '"Sought after" cards' in `QuoteSection.jsx`.
+- Tests: `hotCards.test.js`, `meta-check/decks.test.ts`, new `db.test.js`
+  cases, and `e2e/hot-cards.spec.js` (Desktop + Mobile).
+
+**Requires, in order**: running `phase21_hot_cards.sql`; `supabase secrets
+set TOPDECK_API_KEY=...`; `supabase functions deploy meta-check` (staging
+first with `--project-ref`); then one manual run of the "Daily tournament
+meta check" workflow. The workflow calls production only; to try it on
+staging, call the function by hand with staging's service-role key.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
@@ -6541,6 +6627,10 @@ than repeated.
   - The review rows are tall on a phone (one field per line) — fine for a
     handful of cards, long for a 50-card stack; consider a compact
     collapsed row once real stacks show whether it's a problem.
+- **Hot cards, next steps (see "Hot cards" above)**: flag on Sorting rows
+  and in Catalog too if staff want it; TopDeck.gg game names for One Piece,
+  SWU and Gundam weren't confirmed, so those come from Limitless only;
+  Lorcana tournament data is thin on both sources.
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a

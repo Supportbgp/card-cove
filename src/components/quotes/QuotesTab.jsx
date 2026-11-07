@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { computeQuoteTotals } from '../../lib/quoteUtils.js';
 import QuoteDetail from './QuoteDetail.jsx';
+import HotCardsModal from './HotCardsModal.jsx';
 
 const STATUS_LABELS = {
   accepted_cash: 'Accepted Cash',
@@ -42,7 +43,7 @@ const QUOTE_SORT_COLUMNS = {
 // (resume an in-progress collection, or start a brand-new one), and the
 // single-quote detail view (QuoteDetail) for whichever quote is open.
 export default function QuotesTab({
-  quotes, catalog, wantRequests, locations, multipliers, tierSettings, onSaveQuote, onDeleteQuote, onSaveTierSettings,
+  quotes, catalog, wantRequests, hot = null, locations, multipliers, tierSettings, onSaveQuote, onDeleteQuote, onSaveTierSettings,
   openRequest = null, onOpenRequestHandled = () => {},
 }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -59,6 +60,7 @@ export default function QuotesTab({
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [newName, setNewName] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showHotCards, setShowHotCards] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortState, setSortState] = useState({ col: 'dateQuoted', dir: -1 });
@@ -133,6 +135,7 @@ export default function QuotesTab({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <div className="section-label" style={{ marginBottom: 0 }}>Quotes</div>
           <div style={{ display: 'flex', gap: '8px' }}>
+            {hot && <button className="btn secondary small" onClick={() => setShowHotCards(true)}>Hot cards…</button>}
             <button className="btn secondary small" onClick={() => setShowSettings(true)}>Quote settings</button>
             <button className="btn" onClick={() => setShowNewFlow(true)}>+ New Quote</button>
           </div>
@@ -243,6 +246,7 @@ export default function QuotesTab({
           quote={openQuote}
           catalog={catalog}
           wantRequests={wantRequests}
+          hotIndex={hot?.index}
           locations={locations}
           multipliers={multipliers}
           tierSettings={tierSettings}
@@ -251,6 +255,8 @@ export default function QuotesTab({
           onClose={closeOpenQuote}
         />
       )}
+
+      {showHotCards && hot && <HotCardsModal hot={hot} onClose={() => setShowHotCards(false)} />}
 
       {showSettings && (
         <QuoteSettingsModal

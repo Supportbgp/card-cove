@@ -22,6 +22,7 @@ import {
 import { buildCatalogItemsFromQuoteItems, buildSortingItemsFromQuoteItems, computeQuoteItemCosts, DEFAULT_QUOTE_TIER_PCTS } from './lib/quoteUtils.js';
 import { useUI } from './context/UIContext.jsx';
 import { useRealtimeSync } from './hooks/useRealtimeSync.js';
+import { useHotCards } from './hooks/useHotCards.js';
 import Login from './components/Login.jsx';
 import logoIcon from './assets/logo-icon.png';
 import CatalogPanel from './components/catalog/CatalogPanel.jsx';
@@ -210,6 +211,8 @@ export default function App() {
   }
 
   useRealtimeSync({ enabled: signedIn && isStaff, setCatalog, setQueue, setQuotes, setSorting });
+  // "Sought after" notices on quote rows (CLAUDE.md "Hot cards").
+  const hot = useHotCards({ enabled: signedIn && isStaff, toast, salesRevision });
 
   const locations = useMemo(
     () => Array.from(new Set(catalog.map(c => c.location).filter(Boolean))).sort(),
@@ -889,6 +892,7 @@ export default function App() {
           quotes={quotes}
           catalog={catalog}
           wantRequests={wantRequests}
+          hot={hot}
           locations={locations}
           multipliers={multipliers}
           tierSettings={tierSettings}

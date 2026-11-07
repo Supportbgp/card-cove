@@ -52,6 +52,7 @@ const {
   dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, rowToLoss, dbFindLossForTicket,
   dbLoadPublicStock, dbLoadPublicImages, dbLoadPublicBinderList, publicItemKey, dbLoadPublicBinders, dbSetPublicBinders,
+  dbLoadMetaCards, dbLoadHotList, dbAddHotCard, dbDeleteHotCard, dbLoadPriceMovers,
 } = await import('./db.js');
 
 beforeEach(() => {
@@ -668,5 +669,42 @@ describe('public binders', () => {
     const toast = vi.fn();
     expect(await dbSetPublicBinders(['A'], [], toast)).toBe(false);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('denied'), true);
+  });
+});
+
+describe('hot cards', () => {
+  it('maps tournament counts, hot list entries and price movers', async () => {
+    tableResults.meta_cards = { data: [{ source: 'limitless', game: 'One Piece', format: '', name: 'Nami', name_key: 'nami', code: 'OP13-16', decks: 120, total_decks: 400, copies: 400, events: 12, window_days: 30, updated_at: '2026-11-06T13:40:00Z' }], error: null };
+    tableResults.hot_cards = { data: [{ id: 'h1', game: 'Magic', name: 'Sol Ring', reason: 'staple', added_by: 'Shawn', created_at: '2026-11-06T00:00:00Z' }], error: null };
+    tableResults.price_movers = { data: [{ sku: 'a', name: 'Mew ex', game: 'Pokemon', first_price: '10', last_price: '15', pct_change: '50', first_at: 'x', last_at: 'y' }], error: null };
+    expect((await dbLoadMetaCards(vi.fn()))[0]).toMatchObject({ source: 'limitless', code: 'OP13-16', decks: 120, totalDecks: 400, windowDays: 30 });
+    expect((await dbLoadHotList(vi.fn()))[0]).toMatchObject({ id: 'h1', name: 'Sol Ring', reason: 'staple', addedBy: 'Shawn' });
+    expect((await dbLoadPriceMovers(vi.fn()))[0]).toMatchObject({ name: 'Mew ex', firstPrice: 10, lastPrice: 15, pctChange: 50 });
+  });
+
+  it('a failed load toasts and returns nothing', async () => {
+    tableResults.meta_cards = { data: null, error: { message: 'nope' } };
+    const toast = vi.fn();
+    expect(await dbLoadMetaCards(toast)).toEqual([]);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('nope'), true);
+  });
+
+  it('adds a trimmed hot-list entry and returns it; a failure returns null', async () => {
+    tableResults.hot_cards = { data: { id: 'h2', game: 'Lorcana', name: 'Circle of Life', reason: 'asked for', added_by: '' }, error: null };
+    const saved = await dbAddHotCard({ game: 'Lorcana', name: ' Circle of Life ', reason: ' asked for ', addedBy: '' }, vi.fn());
+    const builder = fromMock.mock.results[0].value;
+    expect(builder.insert.mock.calls[0][0]).toMatchObject({ game: 'Lorcana', name: 'Circle of Life', reason: 'asked for', added_by: '' });
+    expect(saved).toMatchObject({ id: 'h2', name: 'Circle of Life' });
+
+    tableResults.hot_cards = { data: null, error: { message: 'denied' } };
+    const toast = vi.fn();
+    expect(await dbAddHotCard({ name: 'X' }, toast)).toBe(null);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('denied'), true);
+  });
+
+  it('removes a hot-list entry by id', async () => {
+    tableResults.hot_cards = { data: null, error: null };
+    expect(await dbDeleteHotCard('h1', vi.fn())).toBe(true);
+    expect(fromMock.mock.results[0].value.eq).toHaveBeenCalledWith('id', 'h1');
   });
 });

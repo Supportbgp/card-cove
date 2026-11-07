@@ -7,6 +7,8 @@ import { resizeImageFile } from '../../lib/image.js';
 import CatalogItemPicker from './CatalogItemPicker.jsx';
 import SelectWithCustom from '../SelectWithCustom.jsx';
 import { wantsForCard, wantedByLine, WANTED_PAY_BUMP_PCT } from '../../lib/wantList.js';
+import { hotReasonsForCard } from '../../lib/hotCards.js';
+import HotNotice from './HotNotice.jsx';
 
 // Same url/data convention as cardUtils.js's own (unexported) resolveSrc —
 // url === 'local' means the real image lives in the data field, otherwise
@@ -33,11 +35,13 @@ function resolveImgSrc(url, data) {
 // the same live external search (Scryfall/TCGdex/etc.) EditModal/
 // Scanner already use, scoped locally to this one row (self-contained
 // search state, same pattern as EditModal's own candidates/candidateMode).
-export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers, wantRequests, flagMissingGame = false }) {
+export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers, wantRequests, hotIndex, flagMissingGame = false }) {
   const { openLightbox } = useUI();
   // Customers on the want list who asked for this card (CLAUDE.md "Want list").
   const wanted = wantsForCard(item, wantRequests);
   const wantBumpApplied = item.pctAltered && Number(item.pctDelta) >= WANTED_PAY_BUMP_PCT;
+  // Why this card is in demand (CLAUDE.md "Hot cards").
+  const hotReasons = hotReasonsForCard(item, hotIndex);
   const [candidates, setCandidates] = useState([]);
   const [candidateMode, setCandidateMode] = useState('image'); // 'image' | 'price'
   const [activeSearch, setActiveSearch] = useState(null); // null | 'image' | 'price'
@@ -348,6 +352,7 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
             <button className="icon-btn" title="Remove" onClick={onRemove}>✕</button>
           </div>
         </div>
+        <HotNotice reasons={hotReasons} />
         {wanted.length > 0 && (
           <div className="want-notice" role="note">
             <span>

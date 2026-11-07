@@ -26,6 +26,9 @@ const PRIMARY_KEY = {
   public_binder_list: 'location',
   want_requests: 'id',
   public_want_list: 'id',
+  meta_cards: 'name_key',
+  hot_cards: 'id',
+  price_movers: 'sku',
 };
 
 function defaultSeed() {
@@ -44,6 +47,9 @@ function defaultSeed() {
     public_binders: [],
     public_binder_list: [],
     want_requests: [],
+    meta_cards: [],
+    hot_cards: [],
+    price_movers: [],
   };
 }
 
