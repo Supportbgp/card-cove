@@ -211,7 +211,13 @@ export default function QuoteSection() {
           016): one name covers many different cards there, so the note
           only appears for the exact card.
         </li>
-        <li><strong>Selling fast</strong>: we sold 3 or more in the last 30 days.</li>
+        <li>
+          <strong>Selling fast</strong>: we sold 3 or more of this exact card
+          in the last 30 days (same name as written, and same Set when both
+          have one). The note lists the sales it counted. It looks back 30
+          days, so to find them in Reports pick a Custom range, not just
+          "This month".
+        </li>
         <li>
           <strong>Price climbing</strong>: a copy we track rose 20% or more
           in market price this month (from the daily price check, so only

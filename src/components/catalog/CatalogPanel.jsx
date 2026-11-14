@@ -221,7 +221,7 @@ export default function CatalogPanel({
           multipliers={multipliers}
           priceAlert={editingSku ? priceAlertsBySku.get(editingSku) : null}
           onClose={closeEdit}
-          onSave={async (record, prevSku) => { await onSaveCard(record, prevSku); closeEdit(); }}
+          onSave={async (record, prevSku, opened) => { await onSaveCard(record, prevSku, opened); closeEdit(); }}
           onDelete={async (sku) => { await onDeleteCard(sku); closeEdit(); }}
         />
       )}

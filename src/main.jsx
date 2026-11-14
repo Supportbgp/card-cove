@@ -13,6 +13,7 @@ import './styles/catalog.css';
 import './styles/scanner.css';
 import './styles/importexport.css';
 import './styles/hotcards.css';
+import './styles/history.css';
 
 // A binder QR code links to ?binder=<location>, the public stock page is
 // ?shop=1, and the staff docs page

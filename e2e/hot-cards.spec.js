@@ -90,7 +90,7 @@ test('our own recent sales and a price climb show up too', async ({ page }) => {
   await openNewQuoteRow(page);
   await page.getByPlaceholder('Card name').fill('Charizard ex');
   const notice = page.locator('.hot-notice');
-  await expect(notice).toContainText('We sold 3 in the last 30 days, last at $45.00');
+  await expect(notice).toContainText('We sold 3 of this card in the last 30 days, last at $45.00');
   await expect(notice).toContainText('Market price up 30% this month ($40.00 → $52.00)');
   // No tournament data behind these, so nothing to credit.
   await expect(notice.locator('.hot-notice-credit')).toHaveCount(0);

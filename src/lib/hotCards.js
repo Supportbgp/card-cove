@@ -109,8 +109,31 @@ export function formatLabel(format) {
   return format.charAt(0) + format.slice(1);
 }
 
+// Sales and price changes are about one exact print, so they match on the
+// whole name as written (only case, accents, curly apostrophes and spacing
+// ignored), not hotNameKey: that one drops notes and numbers, which lumped
+// "Snorlax 143/165", "Snorlax (JP)" and a plain "Snorlax" together and
+// showed sales of prints staff had never seen (CLAUDE.md "Change history
+// and safer saves").
+export function exactNameKey(name) {
+  return String(name ?? '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2018\u2019]/g, "'").toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function sameSet(a, b) {
+  const x = exactNameKey(a);
+  const y = exactNameKey(b);
+  return !x || !y || x === y;
+}
+
+function shortDate(ms) {
+  return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 // One lookup built from all four signals; quote rows ask it per card.
-export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = [], now = Date.now() } = {}) {
+// `catalog` gives a sale or a tracked price its print's Set (by sku), since
+// the sales and price history rows don't keep one.
+export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = [], catalog = [], now = Date.now() } = {}) {
   const index = new Map();
   const add = (k, reason) => {
     if (!index.has(k)) index.set(k, []);
@@ -135,42 +158,69 @@ export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = []
     });
   }
 
-  // Sales: copies sold recently, refunds left out (they came back).
+  const setBySku = new Map(catalog.map(c => [c.sku, c.set || '']));
+
+  // Sales in the window (refunds left out: they came back), one entry per
+  // sale, matched against a card when it's asked about.
   const since = now - SALES_WINDOW_DAYS * 86400000;
-  const sold = new Map();
+  const salesEntries = [];
   for (const s of sales) {
     if (s.refundedAt || !s.name) continue;
     if ((s.soldAt || 0) < since) continue;
-    const k = key(s.game, s.name);
-    const prev = sold.get(k) || { copies: 0, lastPrice: null, lastAt: 0, name: s.name, game: s.game || '' };
-    prev.copies += Number(s.qtySold) || 0;
-    if ((s.soldAt || 0) >= prev.lastAt) { prev.lastAt = s.soldAt || 0; prev.lastPrice = s.salePrice; }
-    sold.set(k, prev);
-  }
-  for (const [k, v] of sold) {
-    if (v.copies < SALES_MIN_COPIES) continue;
-    const last = v.lastPrice == null ? '' : `, last at $${Number(v.lastPrice).toFixed(2)}`;
-    add(k, { kind: 'sales', name: v.name, game: v.game, copies: v.copies, text: `We sold ${v.copies} in the last ${SALES_WINDOW_DAYS} days${last}` });
+    salesEntries.push({
+      game: s.game || '', name: s.name, exact: exactNameKey(s.name), set: setBySku.get(s.sku) || '',
+      qty: Number(s.qtySold) || 0, price: s.salePrice, soldAt: s.soldAt || 0,
+    });
   }
 
-  // Price: the biggest rise among our tracked copies of the card.
-  const rise = new Map();
+  const moverEntries = [];
   for (const p of movers) {
     if (!Number.isFinite(p.pctChange) || p.pctChange < PRICE_MIN_RISE_PCT) continue;
-    const k = key(p.game, p.name);
-    if (!rise.has(k) || p.pctChange > rise.get(k).pctChange) rise.set(k, p);
-  }
-  for (const [k, p] of rise) {
-    add(k, {
-      kind: 'price', name: p.name, game: p.game, pct: p.pctChange,
-      text: `Market price up ${Math.round(p.pctChange)}% this month ($${p.firstPrice.toFixed(2)} → $${p.lastPrice.toFixed(2)})`,
-    });
+    moverEntries.push({ ...p, exact: exactNameKey(p.name), set: setBySku.get(p.sku) || '' });
   }
 
   for (const h of hotList) {
     add(key(h.game, h.name), { kind: 'list', text: h.reason ? `Hot list: ${h.reason}` : 'On the hot list', hotId: h.id });
   }
+  index.salesEntries = salesEntries;
+  index.moverEntries = moverEntries;
   return index;
+}
+
+function salesReason(entries) {
+  const copies = entries.reduce((n, e) => n + e.qty, 0);
+  if (copies < SALES_MIN_COPIES) return null;
+  const recent = entries.slice().sort((a, b) => b.soldAt - a.soldAt);
+  const last = recent[0];
+  const lastText = last.price == null ? '' : `, last at $${Number(last.price).toFixed(2)}`;
+  return {
+    kind: 'sales', name: last.name, game: last.game, copies,
+    text: `We sold ${copies} of this card in the last ${SALES_WINDOW_DAYS} days${lastText}`,
+    details: recent.slice(0, 4).map(e => [
+      shortDate(e.soldAt), e.name, e.set, `${e.qty} × ${e.price == null ? 'no price' : `$${Number(e.price).toFixed(2)}`}`,
+    ].filter(Boolean).join(' · ')),
+  };
+}
+
+function priceReason(p) {
+  return {
+    kind: 'price', name: p.name, game: p.game, pct: p.pctChange,
+    text: `Market price up ${Math.round(p.pctChange)}% this month ($${p.firstPrice.toFixed(2)} → $${p.lastPrice.toFixed(2)})`,
+    details: [[p.name, p.set].filter(Boolean).join(' · ')],
+  };
+}
+
+// Sales and price changes for this exact print: same game (when both have
+// one), same name as written, same Set when both have one.
+function exactReasons(card, index) {
+  const exact = exactNameKey(card.name);
+  const fits = (e) => e.exact === exact && (!card.game || !e.game || e.game === card.game) && sameSet(card.set, e.set);
+  const out = [];
+  const sold = salesReason((index.salesEntries || []).filter(fits));
+  if (sold) out.push(sold);
+  const rises = (index.moverEntries || []).filter(fits).sort((a, b) => b.pctChange - a.pctChange);
+  if (rises.length) out.push(priceReason(rises[0]));
+  return out;
 }
 
 const KIND_ORDER = { list: 0, meta: 1, sales: 2, price: 3 };
@@ -209,6 +259,7 @@ export function hotReasonsForCard(card, index) {
     if (e.code !== null && (!code || e.code !== code)) continue;
     reasons.push(...e.reasons);
   }
+  reasons.push(...exactReasons(card, index));
   return reasons.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
 }
 
@@ -233,11 +284,26 @@ export function topMetaCards(meta, game, limit = 40) {
   return [...best.values()].sort((a, b) => b.share - a.share || a.name.localeCompare(b.name)).slice(0, limit);
 }
 
-// Every reason of one kind ('sales' or 'price'), biggest first, for the
-// Hot cards window.
+// Every print that's selling fast ('sales') or climbing ('price'), biggest
+// first, for the Hot cards window. Grouped by game + exact name + Set, the
+// same way a quote row is matched.
 export function reasonsOfKind(index, kind) {
+  const groups = new Map();
+  const entries = kind === 'sales' ? (index.salesEntries || []) : (index.moverEntries || []);
+  for (const e of entries) {
+    const k = `${e.game}|${e.exact}|${exactNameKey(e.set)}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
+  }
   const out = [];
-  for (const reasons of index.values()) for (const r of reasons) if (r.kind === kind) out.push(r);
+  for (const list of groups.values()) {
+    if (kind === 'sales') {
+      const r = salesReason(list);
+      if (r) out.push(r);
+    } else {
+      out.push(priceReason(list.slice().sort((a, b) => b.pctChange - a.pctChange)[0]));
+    }
+  }
   const size = r => (kind === 'sales' ? r.copies : r.pct);
   return out.sort((a, b) => size(b) - size(a));
 }

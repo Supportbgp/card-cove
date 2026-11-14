@@ -1,3 +1,4 @@
+import CardHistorySection from '../history/CardHistorySection.jsx';
 import { useEffect, useState } from 'react';
 import { useUI } from '../../context/UIContext.jsx';
 import { normalizeCard, channelDefaultsForLocation, marketValueForCondition, canonicalizeCondition, roundPriceUp, roundPriceDown, RARITY_OPTIONS_BY_GAME, CONDITION_OPTIONS, PRINTING_OPTIONS_BY_GAME, GAMES } from '../../lib/cardUtils.js';
@@ -90,6 +91,9 @@ export default function EditModal({ card, template, catalog, locations, multipli
   // duplicated.
   const tpl = card ? null : template || null;
   const [form, setForm] = useState(() => (tpl ? initFormFromTemplate(tpl) : initForm(card)));
+  // The card as this screen opened it: saving sends only what changed since
+  // then, so a change made elsewhere meanwhile isn't overwritten.
+  const [openedCard] = useState(card);
   // A duplicate keeps the original's channels rather than switching to the
   // binder's majority, so treat them as already chosen.
   const [channelsTouched, setChannelsTouched] = useState(!!tpl);
@@ -349,7 +353,7 @@ export default function EditModal({ card, template, catalog, locations, multipli
     });
 
     setSaving(true);
-    await onSave(record, card ? card.sku : null);
+    await onSave(record, card ? card.sku : null, openedCard);
     setSaving(false);
   }
 
@@ -779,6 +783,7 @@ export default function EditModal({ card, template, catalog, locations, multipli
                 </span>
               </div>
             )}
+            {card && <CardHistorySection sku={card.sku} />}
           </div>
           <div className="updated-note">
             {card && card.lastUpdated ? ("Last updated: " + new Date(card.lastUpdated).toLocaleString()) : "New item — not saved yet"}

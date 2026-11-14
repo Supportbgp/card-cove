@@ -6562,6 +6562,121 @@ first with `--project-ref`); then one manual run of the "Daily tournament
 meta check" workflow. The workflow calls production only; to try it on
 staging, call the function by hand with staging's service-role key.
 
+## Change history and safer saves
+
+Staff report (2026-11-12): cards Noah moved to a new "Power Packs" binder
+weren't there later (the location vanished; Kangaskhan EX was back in the
+Card Show Binder), and Sought after said "we sold 3 Snorlax, last at $16"
+for a Snorlax nobody had seen. Checked before changing anything:
+
+- **The moves never reached the database.** Kangaskhan EX, Rayquaza V and
+  Poliwrath all had `last_updated` in mid-October, before Noah moved them.
+  Two ways that happens, both real in the code: the move was made on the
+  **staging copy** (up Oct 31 to Nov 3, from the deploy runs' "Build
+  staging" step; anything done there is wiped at `staging-down`), or the
+  **save failed** (a red "Save failed" toast, then the change only existed
+  on screen until a reload). A third way to lose a move was also found:
+  every save except the P/T/C chips wrote the **whole row** from that
+  device's own copy, and a tab or phone that slept missed live updates and
+  never reloaded, so selling/editing a card from an old copy put back its
+  old binder. There was no way to see any of this afterwards: no change
+  history, and the free plan's API logs keep one day.
+- **The Snorlax numbers** were real sales, lumped: the sales reason matched
+  on `hotNameKey`, which drops `(...)`/`[...]` notes and trailing numbers,
+  so "Snorlax 143/165", "Snorlax (JP)" etc. all counted as "Snorlax". It
+  also counts the last 30 days while Reports opens on this calendar month,
+  so late-October sales weren't visible there. The "$80 Clefairy ex" was
+  the tournament deck count (811 of 2,872 decks), not a price.
+
+Four fixes, decided with the user:
+
+- **`phase22_catalog_history.sql`: `catalog_history`**, filled by an AFTER
+  INSERT/UPDATE/DELETE trigger on `catalog` (`catalog_history_log`,
+  `security definer`), so SQL Editor changes, imports and Reset all data
+  are logged too, and the app can't forget to. Update rows keep only the
+  changed columns as `{col: {from, to}}`; insert/delete rows keep the
+  whole row. `image_data`/`photo_data` are never copied (logged as
+  `{"changed": true}`), `last_updated` is left out, and a save that changed
+  nothing else writes no row. `changed_by` is the login's email (one
+  shared login, so mostly the same) or the role. Staff can read it (a
+  `"staff read"` select policy); nobody gets write grants, so history
+  can't be edited or deleted from the app (re-running phase18 swaps the
+  policy for "staff full access", but there are still no write grants).
+  Verified on a throwaway local Postgres: run twice; insert, move, image
+  change and delete logged as described; a timestamp-only save not logged;
+  staff can't delete history; a non-staff login sees nothing; anon denied.
+  - **UI**: "Show change history" on a card's Edit screen
+    (`CardHistorySection`, loaded on click) and Import / Export → **Change
+    history…** (`ChangeHistoryModal`): the latest 300 changes, searchable
+    by card name, SKU or binder (`dbLoadRecentHistory` uses an `or()` over
+    `name`, `sku`, `changes->>location` and `changes->location->>to/from`,
+    so deleted cards and moves into or out of a binder are found).
+    `cardHistory.js` turns rows into "Binder / case: Card Show Binder →
+    Power Packs". Starts empty: nothing before the migration is recorded.
+- **Retry queue (`src/lib/writeQueue.js`)**: catalog writes, Sync Queue
+  ticket inserts/deletes/stamps and sales inserts go through `runWrite`. A
+  failure with no real answer (postgrest-js's status 0 network failure,
+  408, 429, 5xx) is kept in localStorage (separate keys for staging and
+  production, which share an origin) and retried in order: every 20
+  seconds, on the `online` event, when a tab wakes, and on a tap of the red
+  **N changes waiting to save** badge in the topbar (`useWriteQueue`). A
+  rejected write (4xx: a constraint, a permission) isn't retried and shows
+  its error as before. Once something is waiting, new writes queue behind
+  it to keep their order. Every queued write is safe to send twice:
+  updates/deletes match a key, ticket inserts are upserts on the ticket's
+  own id, and sales now get a client-generated uuid (`dbInsertSales`,
+  upsert with `ignoreDuplicates`), so a request that reached the database
+  but lost its answer can't record a sale twice. Not queued: quotes,
+  sorting, losses, want list, public binders, settings (they need the
+  saved row back, or weren't part of the report). Accepted: the queue
+  lives on that device only, and clearing site data there loses it (the
+  staff docs say so).
+- **Saves send only what changed (`dbSaveCardChanges`/`cardRowChanges` in
+  `db.js`)**: an existing card is saved with an `update` of just the
+  columns that differ between the copy the change was made from and the
+  result (plus `last_updated`); nothing at all if only the time changed.
+  Used by Edit (diffed against the card as the Edit screen *opened* it,
+  `openedCard` in `EditModal`, so a move made elsewhere while it was open
+  survives), Mark sold, partial sell, Undo sale, report/undo lost, and
+  sorting into an existing Bulk row. Whole-row upserts remain only for new
+  rows (Add item, Duplicate, a sorted quote card, a new Bulk row) and
+  imports (Merge still overwrites whole rows by design; see Backlog).
+  Quantity is still written as a number from that device's copy, not as
+  "+1/-1"; the reload below keeps that copy fresh.
+- **Reload when a tab wakes (`useRealtimeSync`'s `onResync`)**: after the
+  page was hidden 30+ seconds, or when the live connection recovers from
+  CHANNEL_ERROR/TIMED_OUT/CLOSED, `useWriteQueue`'s `resync` sends anything
+  waiting first, then reloads catalog/queue/quotes/sorting. While saves
+  are still waiting it doesn't reload (that would hide them on screen).
+- **Sought after sales and price climbs match the exact print**
+  (`exactNameKey` in `hotCards.js`: only case, accents, curly apostrophes
+  and spacing ignored; `hotNameKey`'s note/number stripping stays for
+  tournament play and the hot list). Same game when both have one, and the
+  same Set when both have one (a sale's Set comes from its catalog row by
+  sku, since `sales` has no set column; `useHotCards` now gets `catalog`).
+  The reason reads "We sold 3 of this card in the last 30 days" and lists
+  up to four sales it counted (date · name · Set · qty × price); a price
+  climb names the tracked copy. The Hot cards window's Selling fast and
+  Price climbing lists group the same way. Staff docs say the window is
+  30 days, not "This month".
+- Tests: the write queue and `cardRowChanges` in `db.test.js`,
+  `cardHistory.test.js`, new `hotCards.test.js` cases (the Snorlax
+  lumping, set matching, listed sales), and `e2e/safe-saves.spec.js`
+  (Desktop + Mobile): selling and editing from an out-of-date copy keep a
+  move made elsewhere; a save with no connection waits (3 changes: card,
+  ticket, sale), is kept in localStorage and goes through from the badge;
+  the history window and the Edit section, with a binder search. The
+  harness gained `catalog_history`, an `or()` filter and
+  `__HARNESS_FAIL_WRITES__` (fail the next N writes like a dropped
+  connection).
+- Staff docs: Saving / Change history / "Changes waiting to save" in
+  `EditingItemSection.jsx`, Change history in `ImportExportSection.jsx`,
+  and the Selling fast wording in `QuoteSection.jsx`.
+
+**Requires running `phase22_catalog_history.sql`** (staging first). Until
+it runs, the app works but the history views show a load error. No Edge
+Function deploy.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
@@ -6642,6 +6757,10 @@ than repeated.
   and in Catalog too if staff want it; TopDeck.gg game names for One Piece,
   SWU and Gundam weren't confirmed, so those come from Limitless only;
   Lorcana tournament data is thin on both sources.
+- **Change history, next steps (see "Change history and safer saves")**:
+  `catalog_history` grows forever (one small row per change); add a
+  cleanup of rows older than a year or two if it gets big. History covers
+  catalog only, not quotes, sorting or the want list.
 - **Provisional feature, keep-or-drop pending actual usage**: Import's
   "Skip automatic image search" checkbox (see "Known constraints" above)
   — shipped for one specific bulk/test-data import, never decided as a

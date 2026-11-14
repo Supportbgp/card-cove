@@ -105,7 +105,7 @@ describe('buildHotIndex / hotReasonsForCard', () => {
     ];
     const index = buildHotIndex({ sales, now: NOW });
     const reasons = hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon' }, index);
-    expect(reasons).toEqual([expect.objectContaining({ kind: 'sales', copies: 3, text: 'We sold 3 in the last 30 days, last at $45.00' })]);
+    expect(reasons).toEqual([expect.objectContaining({ kind: 'sales', copies: 3, text: 'We sold 3 of this card in the last 30 days, last at $45.00' })]);
     expect(hotReasonsForCard({ name: 'Gengar', game: 'Pokemon' }, index)).toEqual([]);
     expect(reasonsOfKind(index, 'sales')).toHaveLength(1);
   });
@@ -150,5 +150,67 @@ describe('topMetaCards', () => {
       meta({ game: 'Pokemon', name: 'Ultra Ball', name_key: 'ultra ball' }),
     ], 'Magic');
     expect(rows.map(r => [r.name, r.share, r.format])).toEqual([['Sol Ring', 90, 'Legacy'], ['Mana Crypt', 80, 'EDH']]);
+  });
+});
+
+describe('sales and price changes match the exact print', () => {
+  const NOW2 = Date.UTC(2026, 10, 14);
+  const ago = (n) => NOW2 - n * 86400000;
+  const sale = (o) => ({ name: 'Snorlax', game: 'Pokemon', qtySold: 1, salePrice: 16, soldAt: ago(3), refundedAt: null, ...o });
+
+  it("doesn't lump different prints that share a name (the Snorlax report)", () => {
+    const index = buildHotIndex({
+      sales: [
+        sale({ name: 'Snorlax 143/165', sku: 'a' }), sale({ name: 'Snorlax (JP)', sku: 'b' }),
+        sale({ name: 'Snorlax [Stamped]', sku: 'c' }), sale({ name: 'Snorlax - 051', sku: 'd' }),
+      ],
+      now: NOW2,
+    });
+    expect(hotReasonsForCard({ name: 'Snorlax', game: 'Pokemon' }, index)).toEqual([]);
+  });
+
+  it('counts the same print, ignoring case and spacing, and lists what it counted', () => {
+    const index = buildHotIndex({
+      sales: [sale({ sku: 'a', qtySold: 2, salePrice: 15, soldAt: ago(20) }), sale({ sku: 'b', name: 'snorlax ', soldAt: ago(2) })],
+      catalog: [{ sku: 'a', set: 'Base Set' }, { sku: 'b', set: 'Base Set' }],
+      now: NOW2,
+    });
+    const [r] = hotReasonsForCard({ name: 'Snorlax', game: 'Pokemon', set: 'Base Set' }, index);
+    expect(r).toMatchObject({ kind: 'sales', copies: 3 });
+    expect(r.text).toBe('We sold 3 of this card in the last 30 days, last at $16.00');
+    expect(r.details).toHaveLength(2);
+    expect(r.details[0]).toContain('Base Set');
+    expect(r.details[0]).toContain('1 × $16.00');
+  });
+
+  it('keeps prints from different sets apart when both have a Set', () => {
+    const index = buildHotIndex({
+      sales: [sale({ sku: 'a', qtySold: 3 })],
+      catalog: [{ sku: 'a', set: 'Jungle' }],
+      now: NOW2,
+    });
+    expect(hotReasonsForCard({ name: 'Snorlax', game: 'Pokemon', set: 'Base Set' }, index)).toEqual([]);
+    expect(hotReasonsForCard({ name: 'Snorlax', game: 'Pokemon', set: 'Jungle' }, index)).toHaveLength(1);
+    // No Set typed on the quote row yet: still a heads-up.
+    expect(hotReasonsForCard({ name: 'Snorlax', game: 'Pokemon' }, index)).toHaveLength(1);
+  });
+
+  it('matches a price climb to the exact print too', () => {
+    const index = buildHotIndex({
+      movers: [{ sku: 'm', name: 'Clefairy ex (SIR)', game: 'Pokemon', firstPrice: 60, lastPrice: 80, pctChange: 33 }],
+      now: NOW2,
+    });
+    expect(hotReasonsForCard({ name: 'Clefairy ex', game: 'Pokemon' }, index)).toEqual([]);
+    expect(hotReasonsForCard({ name: 'Clefairy ex (SIR)', game: 'Pokemon' }, index)[0].kind).toBe('price');
+  });
+
+  it('groups the Hot cards window lists the same way', () => {
+    const index = buildHotIndex({
+      sales: [sale({ sku: 'a', name: 'Snorlax 143/165', qtySold: 3 }), sale({ sku: 'b', name: 'Snorlax', qtySold: 1 })],
+      now: NOW2,
+    });
+    const rows = reasonsOfKind(index, 'sales');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('Snorlax 143/165');
   });
 });

@@ -117,11 +117,22 @@ export default function ImportExportSection() {
         private, and Bulk lots are never shown. Every binder starts private.
       </p>
 
+      <h3>Change history</h3>
+      <p>
+        <strong>Change history…</strong> lists the latest changes to catalog
+        cards, newest first: added, moved, edited, sold or deleted, with the
+        old and new value and the time. Search by card name, SKU or binder to
+        answer "where did this card go?". Deleted cards show up here too, with
+        what they were. The history starts from when it was turned on; older
+        moves weren't recorded.
+      </p>
+
       <h3>Reset all data</h3>
       <DocsCallout kind="warn">
         This wipes the entire catalog and sync queue for <em>everyone</em>{' '}
         sharing this Card Cove login — not just your own session. It asks you
-        to type a confirmation password first. There's no undo.
+        to type a confirmation password first. There's no undo (the Change
+        history still records what each deleted card was).
       </DocsCallout>
     </DocsSection>
   );
