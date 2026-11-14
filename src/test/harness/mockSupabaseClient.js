@@ -87,7 +87,7 @@ function readPath(row, path) {
 // Just the "a.ilike.%x%,b.ilike.%y%" shape db.js sends (dbLoadRecentHistory).
 function orMatches(row, expr) {
   return expr.split(',').some((part) => {
-    const m = part.match(/^(.+?)\.ilike\.%(.*)%$/);
+    const m = part.match(/^(.+?)\.ilike\."?%(.*)%"?$/);
     if (!m) return false;
     const v = readPath(row, m[1]);
     return typeof v === 'string' && v.toLowerCase().includes(m[2].toLowerCase());

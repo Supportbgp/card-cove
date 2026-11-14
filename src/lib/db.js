@@ -3,7 +3,7 @@ import { normalizeCard, DEFAULT_CONDITION_MULTIPLIERS } from './cardUtils.js';
 import { DEFAULT_QUOTE_TIER_PCTS } from './quoteUtils.js';
 import { DEFAULT_PRICE_TRACKING } from './priceAlertUtils.js';
 import { rowToWant, wantToRow } from './wantList.js';
-import { runWrite } from './writeQueue.js';
+import { runWrite, pendingWriteCount } from './writeQueue.js';
 import { rowToHistory } from './cardHistory.js';
 import { rowToMetaCard, rowToHotCard, hotCardToRow, rowToPriceMover } from './hotCards.js';
 
@@ -220,6 +220,16 @@ export async function dbDeleteTickets(ids, toast) {
 // removed (0 if the sale was edited to a different date in Reports, or
 // never existed), so the caller can say so instead of claiming success.
 export async function dbDeleteSaleForTicket(ticket, toast) {
+  // While saves are waiting (this sale's own insert may be one of them),
+  // the delete waits behind them too, so it can't run first and miss it.
+  // The count isn't known until it goes through, so it's taken as found.
+  if (pendingWriteCount()) {
+    await runWrite({
+      table: 'sales', action: 'delete', label: 'Removing the sale from Reports',
+      match: { sku: ticket.sku, sold_at: new Date(ticket.timestamp).toISOString() },
+    }, reportTo(toast));
+    return 1;
+  }
   const { data, error } = await supabaseClient.from('sales').delete()
     .eq('sku', ticket.sku)
     .eq('sold_at', new Date(ticket.timestamp).toISOString())
@@ -270,9 +280,9 @@ export async function dbInsertSales(sales, toast) {
 // the table's own RLS policy already grants `authenticated` full update
 // access, so this needed no migration. Reuses `saleToRow` so an edit is
 // mapped onto the same columns an insert already uses.
+// Through the retry queue, so it can't run ahead of the sale's own insert.
 export async function dbUpdateSale(sale, toast) {
-  const { error } = await supabaseClient.from('sales').update(saleToRow(sale)).eq('id', sale.id);
-  if (error) toast('Failed to update sale: ' + error.message, true);
+  await runWrite({ table: 'sales', action: 'update', values: saleToRow(sale), match: { id: sale.id }, label: 'Updating the sale' }, reportTo(toast));
 }
 
 export function rowToSale(r) {
@@ -314,9 +324,10 @@ export async function dbLoadSalesForSku(sku, toast) {
 // Marks a sale refunded (refundedAt = a time) or not (null): a refunded sale
 // drops out of Reports' revenue/cost/units (see computeSalesReport).
 export async function dbSetSaleRefunded(id, refundedAt, toast) {
-  const { error } = await supabaseClient.from('sales')
-    .update({ refunded_at: refundedAt ? new Date(refundedAt).toISOString() : null }).eq('id', id);
-  if (error) toast('Failed to update the sale: ' + error.message, true);
+  await runWrite({
+    table: 'sales', action: 'update', match: { id }, label: 'Updating the sale',
+    values: { refunded_at: refundedAt ? new Date(refundedAt).toISOString() : null },
+  }, reportTo(toast));
 }
 
 // --- Lost / stolen cards (inventory_losses, phase17) ----------------------
@@ -888,13 +899,15 @@ export async function dbLoadCardHistory(sku, toast) {
 // SKU or binder matches `search`. Includes deleted cards.
 export async function dbLoadRecentHistory(search, toast, limit = 300) {
   let q = supabaseClient.from('catalog_history').select('*').order('changed_at', { ascending: false }).limit(limit);
-  const term = String(search || '').trim().replace(/[%,()]/g, ' ').trim();
+  // Each value is double-quoted, since names can hold characters PostgREST
+  // reserves in or() (dots, colons: "Monkey.D.Luffy"); quotes, backslashes
+  // and the structural characters are dropped from what was typed.
+  const term = String(search || '').replace(/["\\%,()]/g, ' ').replace(/\s+/g, ' ').trim();
   // Binder: a card added or deleted there, or moved into or out of it.
   if (term) {
     q = q.or([
-      `name.ilike.%${term}%`, `sku.ilike.%${term}%`, `changes->>location.ilike.%${term}%`,
-      `changes->location->>to.ilike.%${term}%`, `changes->location->>from.ilike.%${term}%`,
-    ].join(','));
+      'name', 'sku', 'changes->>location', 'changes->location->>to', 'changes->location->>from',
+    ].map(col => `${col}.ilike."%${term}%"`).join(','));
   }
   const { data, error } = await q;
   if (error) { toast('Failed to load the change history: ' + error.message, true); return []; }

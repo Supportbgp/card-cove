@@ -17,6 +17,7 @@ function makeQueryBuilder(table) {
     eq: vi.fn(() => builder),
     in: vi.fn(() => builder),
     neq: vi.fn(() => builder),
+    or: vi.fn(() => builder),
     gte: vi.fn(() => builder),
     lt: vi.fn(() => builder),
     order: vi.fn(() => builder),
@@ -52,7 +53,7 @@ const {
   dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, rowToLoss, dbFindLossForTicket,
   dbLoadPublicStock, dbLoadPublicImages, dbLoadPublicBinderList, publicItemKey, dbLoadPublicBinders, dbSetPublicBinders,
-  dbLoadMetaCards, dbLoadHotList, dbAddHotCard, dbDeleteHotCard, dbLoadPriceMovers,
+  dbLoadMetaCards, dbLoadHotList, dbAddHotCard, dbDeleteHotCard, dbLoadPriceMovers, dbLoadRecentHistory,
 } = await import('./db.js');
 const { __resetWriteQueueForTests, pendingWriteCount, flushWriteQueue } = await import('./writeQueue.js');
 const { cardRowChanges, dbSaveCardChanges } = await import('./db.js');
@@ -266,7 +267,7 @@ describe('dbUpdateSale', () => {
   });
 
   it('reports an update error to the toast instead of throwing', async () => {
-    tableResults.sales = { data: null, error: { message: 'boom' } };
+    tableResults.sales = { data: null, error: { message: 'boom' }, status: 400 };
     const toast = vi.fn();
     await dbUpdateSale({ id: 's1', sku: 's', name: 'n', soldAt: Date.now() }, toast);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('boom'), true);
@@ -807,5 +808,36 @@ describe('retry queue for saves that never reached the database', () => {
     expect(await flushWriteQueue(onError)).toBe(0);
     expect(pendingWriteCount()).toBe(0);
     expect(onError).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
+  });
+});
+
+describe('sales changes wait behind a queued sale', () => {
+  it("an undo made while the sale is still waiting waits too, instead of missing it", async () => {
+    tableResults.sales = { data: null, error: { message: 'Failed to fetch' }, status: 0 };
+    await dbInsertSales([{ sku: 'k1', name: 'Kangaskhan EX', soldAt: Date.parse('2026-11-14T10:00:00Z') }], vi.fn());
+    expect(pendingWriteCount()).toBe(1);
+    const removed = await dbDeleteSaleForTicket({ sku: 'k1', timestamp: Date.parse('2026-11-14T10:00:00Z') }, vi.fn());
+    expect(removed).toBe(1);
+    expect(pendingWriteCount()).toBe(2);
+    const ops = JSON.parse(localStorage.getItem('card-cove-write-queue'));
+    expect(ops.map(o => o.action)).toEqual(['upsert', 'delete']);
+    expect(ops[1].match).toEqual({ sku: 'k1', sold_at: '2026-11-14T10:00:00.000Z' });
+  });
+});
+
+describe('dbLoadRecentHistory', () => {
+  it('quotes the search so names with dots work, and drops characters that would break the filter', async () => {
+    tableResults.catalog_history = { data: [], error: null };
+    await dbLoadRecentHistory('Monkey.D.Luffy, "x"', vi.fn());
+    const expr = fromMock.mock.results[0].value.or.mock.calls[0][0];
+    expect(expr).toContain('name.ilike."%Monkey.D.Luffy x%"');
+    expect(expr).toContain('changes->location->>to.ilike."%Monkey.D.Luffy x%"');
+  });
+
+  it('loads the latest changes with no search', async () => {
+    tableResults.catalog_history = { data: [{ id: 1, sku: 'k1', name: 'K', action: 'update', changes: {}, changed_at: '2026-11-14T00:00:00Z' }], error: null };
+    const rows = await dbLoadRecentHistory('', vi.fn());
+    expect(fromMock.mock.results[0].value.or).not.toHaveBeenCalled();
+    expect(rows[0]).toMatchObject({ sku: 'k1', action: 'update' });
   });
 });

@@ -23,13 +23,17 @@ export function useWriteQueue({ enabled, toast, reload }) {
 
   const reportFailure = useCallback((msg) => toastRef.current(msg, true), []);
 
-  useEffect(() => subscribeWriteQueue((count) => {
-    setPending(prev => {
-      if (prev === 0 && count > 0) {
-        toastRef.current("Couldn't reach the database. Your change is saved on this device and will be sent automatically.", true);
-      }
-      return count;
-    });
+  const lastRef = useRef({ count: pendingWriteCount(), stored: true });
+  useEffect(() => subscribeWriteQueue((count, stored) => {
+    const last = lastRef.current;
+    if (last.count === 0 && count > 0) {
+      toastRef.current("Couldn't reach the database. Your change is saved on this device and will be sent automatically.", true);
+    }
+    if (last.stored && !stored && count > 0) {
+      toastRef.current("This device's storage is full, so waiting changes are only kept while this tab stays open. Don't close it until they're saved.", true);
+    }
+    lastRef.current = { count, stored };
+    setPending(count);
   }), []);
 
   const retryNow = useCallback(async () => {

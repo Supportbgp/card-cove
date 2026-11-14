@@ -26,6 +26,9 @@ const STORAGE_KEY = IS_STAGING ? 'card-cove-staging-write-queue' : 'card-cove-wr
 
 let queue = loadQueue();
 let flushing = null;
+// False once this device's storage refused the queue (full or blocked):
+// waiting saves then only live in this tab.
+let stored = true;
 const listeners = new Set();
 
 function loadQueue() {
@@ -41,17 +44,25 @@ function loadQueue() {
 function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
+    stored = true;
   } catch {
-    // Full or blocked storage: the queue still works for this session.
+    // Full (queued rows can carry inline images) or blocked: the queue
+    // still works in this tab, and useWriteQueue warns staff to keep it open.
+    stored = false;
   }
-  for (const fn of listeners) fn(queue.length);
+  for (const fn of listeners) fn(queue.length, stored);
+}
+
+export function writeQueueIsStored() {
+  return stored;
 }
 
 export function pendingWriteCount() {
   return queue.length;
 }
 
-// fn(count) runs whenever the number of waiting writes changes.
+// fn(count, stored) runs whenever the waiting writes change; `stored` is
+// false when they couldn't be kept on the device.
 export function subscribeWriteQueue(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
