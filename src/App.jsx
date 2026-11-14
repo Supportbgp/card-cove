@@ -4,7 +4,7 @@ import { loadSession, isStaffUser } from './lib/staffAccess.js';
 import NoStaffAccess from './components/NoStaffAccess.jsx';
 import { lossReasonLabel } from './lib/reportUtils.js';
 import {
-  dbLoadAll, dbUpsertCard, dbUpsertCards, dbDeleteCard, dbDeleteCards, dbClearCatalog,
+  dbLoadAll, dbUpsertCard, dbUpsertCards, dbSaveCardChanges, dbSaveCardsChanges, dbDeleteCard, dbDeleteCards, dbClearCatalog,
   dbInsertTickets, dbUpdateTicketStamp, dbClearQueue, dbUpdatePlatformStatus, dbInsertSales, dbLoadSales, dbUpdateSale,
   dbDeleteTickets, dbDeleteSaleForTicket,
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, dbFindLossForTicket,
@@ -23,6 +23,7 @@ import { buildCatalogItemsFromQuoteItems, buildSortingItemsFromQuoteItems, compu
 import { useUI } from './context/UIContext.jsx';
 import { useRealtimeSync } from './hooks/useRealtimeSync.js';
 import { useHotCards } from './hooks/useHotCards.js';
+import { useWriteQueue } from './hooks/useWriteQueue.js';
 import Login from './components/Login.jsx';
 import logoIcon from './assets/logo-icon.png';
 import CatalogPanel from './components/catalog/CatalogPanel.jsx';
@@ -210,9 +211,20 @@ export default function App() {
     setQuoteOpenRequest({ id });
   }
 
-  useRealtimeSync({ enabled: signedIn && isStaff, setCatalog, setQueue, setQuotes, setSorting });
+  // Saves that couldn't get through are retried; a woken tab reloads first
+  // (CLAUDE.md "Change history and safer saves").
+  const writes = useWriteQueue({
+    enabled: signedIn && isStaff, toast,
+    reload: async () => {
+      const { catalog: c, queue: q } = await dbLoadAll(toast);
+      setCatalog(c); setQueue(q);
+      dbLoadQuotes(toast).then(setQuotes);
+      dbLoadSortingQueue(toast).then(setSorting);
+    },
+  });
+  useRealtimeSync({ enabled: signedIn && isStaff, setCatalog, setQueue, setQuotes, setSorting, onResync: writes.resync });
   // "Sought after" notices on quote rows (CLAUDE.md "Hot cards").
-  const hot = useHotCards({ enabled: signedIn && isStaff, toast, salesRevision });
+  const hot = useHotCards({ enabled: signedIn && isStaff, toast, salesRevision, catalog });
 
   const locations = useMemo(
     () => Array.from(new Set(catalog.map(c => c.location).filter(Boolean))).sort(),
@@ -259,7 +271,7 @@ export default function App() {
     return ok;
   }
 
-  async function handleSaveCard(record, prevSku) {
+  async function handleSaveCard(record, prevSku, opened = null) {
     const idx = catalog.findIndex(c => c.sku === prevSku);
     const existing = prevSku && idx >= 0 ? catalog[idx] : null;
     if (needsPlatformStatusReset(existing, record)) {
@@ -308,7 +320,10 @@ export default function App() {
       nextCatalog = catalog.concat([record]);
     }
     setCatalog(nextCatalog);
-    await dbUpsertCard(record, toast);
+    // Only what this save changed, compared with the copy the Edit screen
+    // opened with (CLAUDE.md "Change history and safer saves").
+    if (existing && record.sku === prevSku) await dbSaveCardChanges(opened || existing, record, toast);
+    else await dbUpsertCard(record, toast);
     if (newTicket) {
       setQueue(prev => [...prev, newTicket]);
       await dbInsertTickets([newTicket], toast);
@@ -340,6 +355,7 @@ export default function App() {
   async function handleBatchSell(skus) {
     let affected = 0;
     const updatedList = [];
+    const changedPairs = [];
     const newTickets = [];
     const newSales = [];
     const snapshots = {};
@@ -353,6 +369,7 @@ export default function App() {
         posSynced: false, tcgplayerSynced: false, collectrSynced: false,
       };
       updatedList.push(updated);
+      changedPairs.push({ before: c, after: updated });
       newTickets.push({
         id: 't' + Date.now() + Math.random().toString(36).slice(2, 7),
         sku: c.sku, name: c.name, set: c.set, condition: c.condition, printing: c.printing, price: c.price,
@@ -371,7 +388,7 @@ export default function App() {
     });
     setCatalog(nextCatalog);
     setQueue(prev => [...prev, ...newTickets]);
-    await dbUpsertCards(updatedList, toast);
+    await dbSaveCardsChanges(changedPairs, toast);
     await dbInsertTickets(newTickets, toast);
     await dbInsertSales(newSales, toast);
     if (!affected) { toast('Nothing to mark sold'); return; }
@@ -412,7 +429,7 @@ export default function App() {
     };
     setCatalog(prev => prev.map(x => (x.sku === sku ? updated : x)));
     setQueue(prev => [...prev, newTicket]);
-    await dbUpsertCard(updated, toast);
+    await dbSaveCardChanges(c, updated, toast);
     await dbInsertTickets([newTicket], toast);
     await dbInsertSales([newSale], toast);
     setSalesRevision(v => v + 1);
@@ -448,10 +465,12 @@ export default function App() {
     try {
       const now = Date.now();
       const restoredBySku = new Map();
+      const beforeBySku = new Map();
       let missing = 0;
       for (const t of live) {
         const base = restoredBySku.get(t.sku) || catalogRef.current.find(c => c.sku === t.sku);
         if (!base) { missing++; continue; }
+        if (!beforeBySku.has(t.sku)) beforeBySku.set(t.sku, base);
         const snap = snapshots[t.sku];
         restoredBySku.set(t.sku, {
           ...base,
@@ -465,7 +484,7 @@ export default function App() {
       const ids = live.map(t => t.id);
       setCatalog(prev => prev.map(c => restoredBySku.get(c.sku) || c));
       setQueue(prev => prev.filter(t => !ids.includes(t.id)));
-      await dbUpsertCards(restored, toast);
+      await dbSaveCardsChanges(restored.map(r => ({ before: beforeBySku.get(r.sku), after: r })), toast);
       await dbDeleteTickets(ids, toast);
       let salesRemoved = 0;
       for (const t of live) salesRemoved += await dbDeleteSaleForTicket(t, toast);
@@ -525,7 +544,7 @@ export default function App() {
 
     if (updated !== c) {
       setCatalog(prev => prev.map(x => (x.sku === c.sku ? updated : x)));
-      await dbUpsertCard(updated, toast);
+      await dbSaveCardChanges(c, updated, toast);
     }
     if (ticket) {
       setQueue(prev => [...prev, ticket]);
@@ -578,7 +597,7 @@ export default function App() {
             ...(snapshot ? { posSynced: snapshot.posSynced, tcgplayerSynced: snapshot.tcgplayerSynced, collectrSynced: snapshot.collectrSynced } : {}),
           };
           setCatalog(prev => prev.map(x => (x.sku === base.sku ? restored : x)));
-          await dbUpsertCard(restored, toast);
+          await dbSaveCardChanges(base, restored, toast);
           qtyRestored = true;
         }
       }
@@ -761,6 +780,7 @@ export default function App() {
       // instead of once per contributing item.
       let working = catalog;
       const bySku = new Map();
+      const original = new Map(catalog.map(c => [c.sku, c]));
       for (const item of items) {
         const existing = findBulkRow(working, destination.location, item.game);
         const resultCard = buildBulkCatalogItem(item, destination.location, existing);
@@ -769,7 +789,7 @@ export default function App() {
         bySku.set(resultCard.sku, resultCard);
       }
       resultCards = Array.from(bySku.values());
-      for (const resultCard of resultCards) await dbUpsertCard(resultCard, toast);
+      for (const resultCard of resultCards) await dbSaveCardChanges(original.get(resultCard.sku) || null, resultCard, toast);
     } else {
       resultCards = buildCatalogItemsFromQuoteItems(items, destination);
       await dbUpsertCards(resultCards, toast);
@@ -818,6 +838,12 @@ export default function App() {
           <span className="pending-dot"></span>
           <span>{pendingCount} pending sync</span>
         </div>
+        {writes.pending > 0 && (
+          <button type="button" className="waiting-saves-badge" onClick={writes.retryNow}
+            title="Changes saved on this device that haven't reached the database yet. Click to try now.">
+            {writes.pending} change{writes.pending === 1 ? '' : 's'} waiting to save
+          </button>
+        )}
         {visiblePriceAlerts.length > 0 && (
           <button
             type="button" className="price-alerts-badge"

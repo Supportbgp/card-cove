@@ -134,3 +134,12 @@
     max-width: none;
   }
 }
+
+/* The sales (or tracked copy) a reason counted, so it can be checked. */
+.hot-notice-details {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  list-style: circle;
+}

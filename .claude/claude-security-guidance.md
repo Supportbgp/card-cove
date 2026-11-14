@@ -38,6 +38,14 @@ any of these rules.
   Function secrets (TopDeck.gg's terms forbid the key in a browser). The
   local `.topdeck-key.local` (gitignored) is for testing: never print it.
 
+## Change history and the retry queue
+- `catalog_history` is written only by the `catalog_history_log` trigger
+  (security definer, `search_path = public`). Staff get select only: never
+  grant insert/update/delete on it, so history can't be rewritten.
+- `writeQueue.js` keeps failed writes in localStorage: card data only.
+  Never queue anything holding a token, password or key, and only retry
+  writes that are safe to send twice (keyed update/delete, upsert on an id).
+
 ## Edge Functions (`supabase/functions/*`)
 - Functions called from the browser must check the caller is staff on the
   auth server (`callerIsStaff`), not just that a token exists, before

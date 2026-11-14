@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabaseClient } from '../lib/supabase.js';
 import { rowToCard, rowToTicket, rowToQuote, rowToSortingItem } from '../lib/db.js';
 
@@ -27,9 +27,32 @@ function applyChange(prev, payload, mapRow, keyField) {
 // needing a manual reload. Requires the `catalog`, `sync_queue`, `quotes`,
 // and `sorting_queue` tables to be added to Supabase's `supabase_realtime`
 // publication (Database → Publications in the dashboard).
-export function useRealtimeSync({ enabled, setCatalog, setQueue, setQuotes, setSorting }) {
+// Live updates are missed while a tab is in the background or a phone is
+// locked (the connection drops and nothing is replayed), and an old copy is
+// what put moved cards back in their old binders. So when the page comes
+// back after RESYNC_AFTER_HIDDEN_MS, or the live connection recovers after
+// dropping, `onResync` reloads everything (useWriteQueue's resync).
+const RESYNC_AFTER_HIDDEN_MS = 30000;
+
+export function useRealtimeSync({ enabled, setCatalog, setQueue, setQuotes, setSorting, onResync }) {
+  const resyncRef = useRef(onResync);
+  resyncRef.current = onResync;
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let hiddenAt = document.visibilityState === 'hidden' ? Date.now() : null;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt >= RESYNC_AFTER_HIDDEN_MS && resyncRef.current) resyncRef.current();
+      hiddenAt = null;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [enabled]);
+
   useEffect(() => {
     if (!enabled) return;
+    let dropped = false;
     const channel = supabaseClient
       .channel('ledger-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog' }, (payload) => {
@@ -44,7 +67,13 @@ export function useRealtimeSync({ enabled, setCatalog, setQueue, setQuotes, setS
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sorting_queue' }, (payload) => {
         setSorting(prev => applyChange(prev, payload, rowToSortingItem, 'id'));
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') dropped = true;
+        else if (status === 'SUBSCRIBED' && dropped) {
+          dropped = false;
+          if (resyncRef.current) resyncRef.current();
+        }
+      });
 
     return () => {
       supabaseClient.removeChannel(channel);

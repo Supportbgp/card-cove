@@ -9,7 +9,16 @@ export default function HotNotice({ reasons }) {
     <div className="hot-notice" role="note">
       <strong className="hot-notice-title">Sought after</strong>
       <ul className="hot-notice-reasons">
-        {reasons.map((r, i) => <li key={i}>{r.text}</li>)}
+        {reasons.map((r, i) => (
+          <li key={i}>
+            {r.text}
+            {r.details && r.details.length > 0 && (
+              <ul className="hot-notice-details">
+                {r.details.map((d, j) => <li key={j}>{d}</li>)}
+              </ul>
+            )}
+          </li>
+        ))}
       </ul>
       {sources.length > 0 && (
         <div className="hot-notice-credit">

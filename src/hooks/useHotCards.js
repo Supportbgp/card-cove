@@ -8,7 +8,7 @@ import { buildHotIndex, SALES_WINDOW_DAYS } from '../lib/hotCards.js';
 // at sign-in; tournament data and price moves only change once a day, so
 // there's no realtime. Recent sales reload whenever salesRevision changes
 // (a sale or an undo).
-export function useHotCards({ enabled, toast, salesRevision = 0 }) {
+export function useHotCards({ enabled, toast, salesRevision = 0, catalog = [] }) {
   const [meta, setMeta] = useState([]);
   const [hotList, setHotList] = useState([]);
   const [movers, setMovers] = useState([]);
@@ -35,8 +35,8 @@ export function useHotCards({ enabled, toast, salesRevision = 0 }) {
   }, [enabled, salesRevision]);
 
   const index = useMemo(
-    () => buildHotIndex({ meta, hotList, sales, movers }),
-    [meta, hotList, sales, movers]
+    () => buildHotIndex({ meta, hotList, sales, movers, catalog }),
+    [meta, hotList, sales, movers, catalog]
   );
 
   async function addHotCard(entry) {

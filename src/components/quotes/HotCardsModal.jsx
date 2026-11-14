@@ -149,7 +149,8 @@ export default function HotCardsModal({ hot, onClose }) {
                 {selling.map((r, i) => (
                   <li key={i}><span className="hot-list-main"><strong>{r.name}</strong>
                     {r.game && <span className="hot-list-game">{r.game}</span>}
-                    <span className="hot-list-reason">{r.text}</span></span></li>
+                    <span className="hot-list-reason">{r.text}</span>
+                    {r.details.map((d, j) => <span key={j} className="hot-list-reason">{d}</span>)}</span></li>
                 ))}
               </ul>
             )}

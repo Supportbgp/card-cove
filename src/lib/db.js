@@ -3,6 +3,8 @@ import { normalizeCard, DEFAULT_CONDITION_MULTIPLIERS } from './cardUtils.js';
 import { DEFAULT_QUOTE_TIER_PCTS } from './quoteUtils.js';
 import { DEFAULT_PRICE_TRACKING } from './priceAlertUtils.js';
 import { rowToWant, wantToRow } from './wantList.js';
+import { runWrite, pendingWriteCount } from './writeQueue.js';
+import { rowToHistory } from './cardHistory.js';
 import { rowToMetaCard, rowToHotCard, hotCardToRow, rowToPriceMover } from './hotCards.js';
 
 // Supabase/PostgREST caps a bare `.select()` at the project's configured
@@ -119,27 +121,69 @@ export async function dbLoadAll(toast) {
   return { catalog, queue };
 }
 
+// Catalog writes go through writeQueue.js: a save that can't reach the
+// database is kept on this device and retried (CLAUDE.md "Change history
+// and safer saves"). `toast` only hears about a failure that won't be
+// retried; queued saves are announced by useWriteQueue.
+const reportTo = (toast) => (msg) => toast(msg, true);
+
+// The whole row. Only for a card that's new to the database (Add item, a
+// duplicate, a quote's card placed from Sorting, an import). An existing
+// card is saved with dbSaveCardChanges, so a device with an out-of-date copy
+// can't put back fields it didn't change.
 export async function dbUpsertCard(card, toast) {
-  const { error } = await supabaseClient.from('catalog').upsert(cardToRow(card));
-  if (error) toast('Save failed: ' + error.message, true);
+  await runWrite({ table: 'catalog', action: 'upsert', rows: [cardToRow(card)], label: `Saving ${card.name}` }, reportTo(toast));
 }
 
 export async function dbUpsertCards(cards, toast) {
   if (!cards.length) return;
-  const { error } = await supabaseClient.from('catalog').upsert(cards.map(cardToRow));
-  if (error) toast('Bulk save failed: ' + error.message, true);
+  await runWrite({ table: 'catalog', action: 'upsert', rows: cards.map(cardToRow), label: `Saving ${cards.length} item(s)` }, reportTo(toast));
+}
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == null && b == null;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// The catalog columns that differ between two versions of a card, or null
+// when nothing but the timestamp changed.
+export function cardRowChanges(before, after) {
+  const a = cardToRow(before);
+  const b = cardToRow(after);
+  const diff = {};
+  for (const [col, val] of Object.entries(b)) {
+    if (col === 'sku' || col === 'last_updated') continue;
+    if (!sameValue(a[col], val)) diff[col] = val;
+  }
+  if (!Object.keys(diff).length) return null;
+  diff.last_updated = b.last_updated;
+  return diff;
+}
+
+// Saves an existing card by sending only what changed between `before`
+// (the copy the change was made from) and `after`. Two devices editing
+// different fields of the same card no longer undo each other, and a tab
+// left open with an old copy can't move a card back to its old binder.
+export async function dbSaveCardChanges(before, after, toast) {
+  if (!before) return dbUpsertCard(after, toast);
+  const values = cardRowChanges(before, after);
+  if (!values) return;
+  await runWrite({ table: 'catalog', action: 'update', values, match: { sku: after.sku }, label: `Saving ${after.name}` }, reportTo(toast));
+}
+
+export async function dbSaveCardsChanges(pairs, toast) {
+  for (const { before, after } of pairs) await dbSaveCardChanges(before, after, toast);
 }
 
 export async function dbDeleteCard(sku, toast) {
-  const { error } = await supabaseClient.from('catalog').delete().eq('sku', sku);
-  if (error) toast('Delete failed: ' + error.message, true);
+  await runWrite({ table: 'catalog', action: 'delete', match: { sku }, label: 'Deleting an item' }, reportTo(toast));
 }
 
 export async function dbDeleteCards(skus, toast) {
   const list = Array.from(skus);
   if (!list.length) return;
-  const { error } = await supabaseClient.from('catalog').delete().in('sku', list);
-  if (error) toast('Delete failed: ' + error.message, true);
+  await runWrite({ table: 'catalog', action: 'delete', matchIn: { column: 'sku', values: list }, label: `Deleting ${list.length} item(s)` }, reportTo(toast));
 }
 
 export async function dbClearCatalog(toast) {
@@ -152,16 +196,19 @@ export async function dbInsertTicket(ticket, toast) {
   if (error) toast('Sync ticket failed: ' + error.message, true);
 }
 
+// An upsert on the ticket's own id, so replaying it from the retry queue
+// can't add a second ticket.
 export async function dbInsertTickets(tickets, toast) {
   if (!tickets.length) return;
-  const { error } = await supabaseClient.from('sync_queue').insert(tickets.map(ticketToRow));
-  if (error) toast('Sync tickets failed: ' + error.message, true);
+  await runWrite({
+    table: 'sync_queue', action: 'upsert', rows: tickets.map(ticketToRow), onConflict: 'id', ignoreDuplicates: true,
+    label: 'Saving the Sync Queue ticket',
+  }, reportTo(toast));
 }
 
 export async function dbDeleteTickets(ids, toast) {
   if (!ids.length) return;
-  const { error } = await supabaseClient.from('sync_queue').delete().in('id', ids);
-  if (error) toast('Removing sync ticket failed: ' + error.message, true);
+  await runWrite({ table: 'sync_queue', action: 'delete', matchIn: { column: 'id', values: ids }, label: 'Removing the Sync Queue ticket' }, reportTo(toast));
 }
 
 // Undo support: removes the sales row written by the same sell action as a
@@ -173,6 +220,16 @@ export async function dbDeleteTickets(ids, toast) {
 // removed (0 if the sale was edited to a different date in Reports, or
 // never existed), so the caller can say so instead of claiming success.
 export async function dbDeleteSaleForTicket(ticket, toast) {
+  // While saves are waiting (this sale's own insert may be one of them),
+  // the delete waits behind them too, so it can't run first and miss it.
+  // The count isn't known until it goes through, so it's taken as found.
+  if (pendingWriteCount()) {
+    await runWrite({
+      table: 'sales', action: 'delete', label: 'Removing the sale from Reports',
+      match: { sku: ticket.sku, sold_at: new Date(ticket.timestamp).toISOString() },
+    }, reportTo(toast));
+    return 1;
+  }
   const { data, error } = await supabaseClient.from('sales').delete()
     .eq('sku', ticket.sku)
     .eq('sold_at', new Date(ticket.timestamp).toISOString())
@@ -198,10 +255,19 @@ function saleToRow(s) {
   return row;
 }
 
+function newId() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
+}
+
+// Each sale gets its id here, not from the database, so replaying it from
+// the retry queue can't record the same sale twice.
 export async function dbInsertSales(sales, toast) {
   if (!sales.length) return;
-  const { error } = await supabaseClient.from('sales').insert(sales.map(saleToRow));
-  if (error) toast('Sales record failed: ' + error.message, true);
+  const rows = sales.map(s => ({ id: s.id || newId(), ...saleToRow(s) }));
+  await runWrite({
+    table: 'sales', action: 'upsert', rows, onConflict: 'id', ignoreDuplicates: true, label: 'Saving the sale for Reports',
+  }, reportTo(toast));
 }
 
 // Corrects a past sale (a typo'd Name/Condition/Qty, a wrong Price/Cost, a
@@ -214,9 +280,9 @@ export async function dbInsertSales(sales, toast) {
 // the table's own RLS policy already grants `authenticated` full update
 // access, so this needed no migration. Reuses `saleToRow` so an edit is
 // mapped onto the same columns an insert already uses.
+// Through the retry queue, so it can't run ahead of the sale's own insert.
 export async function dbUpdateSale(sale, toast) {
-  const { error } = await supabaseClient.from('sales').update(saleToRow(sale)).eq('id', sale.id);
-  if (error) toast('Failed to update sale: ' + error.message, true);
+  await runWrite({ table: 'sales', action: 'update', values: saleToRow(sale), match: { id: sale.id }, label: 'Updating the sale' }, reportTo(toast));
 }
 
 export function rowToSale(r) {
@@ -258,9 +324,10 @@ export async function dbLoadSalesForSku(sku, toast) {
 // Marks a sale refunded (refundedAt = a time) or not (null): a refunded sale
 // drops out of Reports' revenue/cost/units (see computeSalesReport).
 export async function dbSetSaleRefunded(id, refundedAt, toast) {
-  const { error } = await supabaseClient.from('sales')
-    .update({ refunded_at: refundedAt ? new Date(refundedAt).toISOString() : null }).eq('id', id);
-  if (error) toast('Failed to update the sale: ' + error.message, true);
+  await runWrite({
+    table: 'sales', action: 'update', match: { id }, label: 'Updating the sale',
+    values: { refunded_at: refundedAt ? new Date(refundedAt).toISOString() : null },
+  }, reportTo(toast));
 }
 
 // --- Lost / stolen cards (inventory_losses, phase17) ----------------------
@@ -319,16 +386,14 @@ const TICKET_STAMP_COLUMNS = { posDone: 'pos_done', tcgplayerDone: 'tcgplayer_do
 
 export async function dbUpdateTicketStamp(id, field, value, toast) {
   const col = TICKET_STAMP_COLUMNS[field];
-  const { error } = await supabaseClient.from('sync_queue').update({ [col]: value }).eq('id', id);
-  if (error) toast('Update failed: ' + error.message, true);
+  await runWrite({ table: 'sync_queue', action: 'update', values: { [col]: value }, match: { id }, label: 'Saving the Sync Queue stamp' }, reportTo(toast));
 }
 
 const PLATFORM_STATUS_COLUMNS = { posSynced: 'pos_synced', tcgplayerSynced: 'tcgplayer_synced', collectrSynced: 'collectr_synced' };
 
 export async function dbUpdatePlatformStatus(sku, field, value, toast) {
   const col = PLATFORM_STATUS_COLUMNS[field];
-  const { error } = await supabaseClient.from('catalog').update({ [col]: value }).eq('sku', sku);
-  if (error) toast('Update failed: ' + error.message, true);
+  await runWrite({ table: 'catalog', action: 'update', values: { [col]: value }, match: { sku }, label: 'Saving the status chip' }, reportTo(toast));
 }
 
 export async function dbClearQueue(toast) {
@@ -818,4 +883,33 @@ export async function dbLoadPriceMovers(toast) {
   const { data, error } = await fetchAllRows('price_movers', 'sku');
   if (error) { toast('Failed to load price changes: ' + error.message, true); return []; }
   return (data || []).map(rowToPriceMover);
+}
+
+// --- Change history (phase22) ----------------------------------------------
+
+// One card's history, newest first.
+export async function dbLoadCardHistory(sku, toast) {
+  const { data, error } = await supabaseClient.from('catalog_history').select('*')
+    .eq('sku', sku).order('changed_at', { ascending: false }).limit(200);
+  if (error) { toast('Failed to load the change history: ' + error.message, true); return []; }
+  return (data || []).map(rowToHistory);
+}
+
+// The latest changes across the catalog, optionally only cards whose name,
+// SKU or binder matches `search`. Includes deleted cards.
+export async function dbLoadRecentHistory(search, toast, limit = 300) {
+  let q = supabaseClient.from('catalog_history').select('*').order('changed_at', { ascending: false }).limit(limit);
+  // Each value is double-quoted, since names can hold characters PostgREST
+  // reserves in or() (dots, colons: "Monkey.D.Luffy"); quotes, backslashes
+  // and the structural characters are dropped from what was typed.
+  const term = String(search || '').replace(/["\\%,()]/g, ' ').replace(/\s+/g, ' ').trim();
+  // Binder: a card added or deleted there, or moved into or out of it.
+  if (term) {
+    q = q.or([
+      'name', 'sku', 'changes->>location', 'changes->location->>to', 'changes->location->>from',
+    ].map(col => `${col}.ilike."%${term}%"`).join(','));
+  }
+  const { data, error } = await q;
+  if (error) { toast('Failed to load the change history: ' + error.message, true); return []; }
+  return (data || []).map(rowToHistory);
 }

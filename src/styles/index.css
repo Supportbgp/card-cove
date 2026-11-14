@@ -153,6 +153,21 @@
     }
     .price-alerts-badge:hover { background: #BFDDF2; }
 
+    /* Saves kept on this device until they reach the database (writeQueue.js). */
+    .waiting-saves-badge {
+      display: inline-flex;
+      align-items: center;
+      background: var(--rust-soft);
+      color: var(--rust);
+      border: 1px solid color-mix(in srgb, var(--rust-soft) 65%, var(--rust) 35%);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
     .price-alert-marker {
       color: var(--blue);
       margin-left: 5px;

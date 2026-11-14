@@ -106,6 +106,31 @@ export default function EditingItemSection() {
         the modal without asking if you're adding a brand-new item you
         haven't saved yet.
       </p>
+      <p>
+        Saving only sends the fields you changed. If someone moved or edited
+        the same card on another device while you had it open, your save
+        keeps their change instead of putting the old value back.
+      </p>
+
+      <h3>Change history</h3>
+      <p>
+        <strong>Show change history</strong> (under Notes &amp; status) lists
+        every change to this card: when it was added, moved, edited, sold or
+        had its quantity change, with the old and new value and the time. To
+        look across the whole catalog, including deleted cards, use{' '}
+        <strong>Import / Export → Change history…</strong> and search by card
+        name, SKU or binder (e.g. "Power Packs").
+      </p>
+
+      <h3>"Changes waiting to save"</h3>
+      <p>
+        If a save can't reach the database (no Wi-Fi, a server hiccup), the
+        change is kept on that device and a red <strong>N changes waiting to
+        save</strong> badge shows at the top. It retries on its own every few
+        seconds and when the connection comes back; tap the badge to try right
+        away. Don't clear the browser's data on that device while the badge is
+        showing, or the waiting changes are lost.
+      </p>
     </DocsSection>
   );
 }

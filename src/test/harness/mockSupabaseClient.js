@@ -26,6 +26,7 @@ const PRIMARY_KEY = {
   public_binder_list: 'location',
   want_requests: 'id',
   public_want_list: 'id',
+  catalog_history: 'id',
   meta_cards: 'name_key',
   hot_cards: 'id',
   price_movers: 'sku',
@@ -50,6 +51,7 @@ function defaultSeed() {
     meta_cards: [],
     hot_cards: [],
     price_movers: [],
+    catalog_history: [],
   };
 }
 
@@ -72,7 +74,23 @@ function matchesFilters(row, filters) {
     // plain strings the same way Postgres compares them as timestamps.
     if (type === 'gte') return row[field] >= value;
     if (type === 'lt') return row[field] < value;
+    if (type === 'or') return orMatches(row, field);
     return true;
+  });
+}
+
+// A JSON path like changes->location->>to, read the way PostgREST does.
+function readPath(row, path) {
+  return path.split(/->>?/).reduce((v, k) => (v == null ? undefined : v[k]), row);
+}
+
+// Just the "a.ilike.%x%,b.ilike.%y%" shape db.js sends (dbLoadRecentHistory).
+function orMatches(row, expr) {
+  return expr.split(',').some((part) => {
+    const m = part.match(/^(.+?)\.ilike\."?%(.*)%"?$/);
+    if (!m) return false;
+    const v = readPath(row, m[1]);
+    return typeof v === 'string' && v.toLowerCase().includes(m[2].toLowerCase());
   });
 }
 
@@ -89,6 +107,12 @@ function publicWantList(db) {
 }
 
 function execute(table, op, filters, single, order, range) {
+  // A test can make the next N writes fail as if the connection dropped
+  // (window.__HARNESS_FAIL_WRITES__), the way postgrest-js reports it.
+  if (op.type !== 'select' && window.__HARNESS_FAIL_WRITES__ > 0) {
+    window.__HARNESS_FAIL_WRITES__ -= 1;
+    return { data: null, error: { message: 'TypeError: Failed to fetch' }, status: 0 };
+  }
   const db = getDb();
   const key = PRIMARY_KEY[table];
   const rows = table === 'public_want_list' ? publicWantList(db) : (db[table] || (db[table] = []));
@@ -179,6 +203,7 @@ function makeBuilder(table) {
     in(field, values) { filters.push(['in', field, values]); return builder; },
     gte(field, value) { filters.push(['gte', field, value]); return builder; },
     lt(field, value) { filters.push(['lt', field, value]); return builder; },
+    or(expr) { filters.push(['or', expr]); return builder; },
     order(field, opts) { order = { field, ascending: !(opts && opts.ascending === false) }; return builder; },
     range(from, to) { range = { from, to }; return builder; },
     limit(n) { range = { from: 0, to: n - 1 }; return builder; },

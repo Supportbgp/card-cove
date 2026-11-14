@@ -17,6 +17,7 @@ function makeQueryBuilder(table) {
     eq: vi.fn(() => builder),
     in: vi.fn(() => builder),
     neq: vi.fn(() => builder),
+    or: vi.fn(() => builder),
     gte: vi.fn(() => builder),
     lt: vi.fn(() => builder),
     order: vi.fn(() => builder),
@@ -52,10 +53,13 @@ const {
   dbLoadPriceTrackingSettings, dbSavePriceTrackingSettings,
   dbLoadSalesForSku, dbSetSaleRefunded, dbInsertLoss, dbDeleteLoss, dbLoadLosses, rowToLoss, dbFindLossForTicket,
   dbLoadPublicStock, dbLoadPublicImages, dbLoadPublicBinderList, publicItemKey, dbLoadPublicBinders, dbSetPublicBinders,
-  dbLoadMetaCards, dbLoadHotList, dbAddHotCard, dbDeleteHotCard, dbLoadPriceMovers,
+  dbLoadMetaCards, dbLoadHotList, dbAddHotCard, dbDeleteHotCard, dbLoadPriceMovers, dbLoadRecentHistory,
 } = await import('./db.js');
+const { __resetWriteQueueForTests, pendingWriteCount, flushWriteQueue } = await import('./writeQueue.js');
+const { cardRowChanges, dbSaveCardChanges } = await import('./db.js');
 
 beforeEach(() => {
+  __resetWriteQueueForTests();
   fromMock.mockClear();
   for (const key of Object.keys(tableResults)) delete tableResults[key];
 });
@@ -126,7 +130,7 @@ describe('dbUpsertCard (cardToRow via the real call)', () => {
     const builder = fromMock.mock.results[0].value;
     expect(fromMock).toHaveBeenCalledWith('catalog');
     expect(builder.upsert).toHaveBeenCalledTimes(1);
-    const sentRow = builder.upsert.mock.calls[0][0];
+    const sentRow = builder.upsert.mock.calls[0][0][0];
     expect(sentRow.image_url).toBe(''); // 'local' never writes a URL
     expect(sentRow.image_data).toBe('data:image/jpeg;base64,abc');
     expect(sentRow.base_price).toBe(50);
@@ -139,8 +143,8 @@ describe('dbUpsertCard (cardToRow via the real call)', () => {
     tableResults.catalog = { data: null, error: null };
     await dbUpsertCard({ sku: 'a', name: 'n', lastUpdated: Date.now(), sourceQuoteId: 'quote-uuid-1' }, vi.fn());
     await dbUpsertCard({ sku: 'b', name: 'n', lastUpdated: Date.now() }, vi.fn());
-    const withLink = fromMock.mock.results[0].value.upsert.mock.calls[0][0];
-    const without = fromMock.mock.results[1].value.upsert.mock.calls[0][0];
+    const withLink = fromMock.mock.results[0].value.upsert.mock.calls[0][0][0];
+    const without = fromMock.mock.results[1].value.upsert.mock.calls[0][0][0];
     expect(withLink.source_quote_id).toBe('quote-uuid-1');
     expect('source_quote_id' in without).toBe(false);
     expect(rowToCard({ sku: 'a', name: 'n', source_quote_id: 'quote-uuid-1' }).sourceQuoteId).toBe('quote-uuid-1');
@@ -148,7 +152,7 @@ describe('dbUpsertCard (cardToRow via the real call)', () => {
   });
 
   it('reports a save error to the toast instead of throwing', async () => {
-    tableResults.catalog = { data: null, error: { message: 'boom' } };
+    tableResults.catalog = { data: null, error: { message: 'boom' }, status: 400 };
     const toast = vi.fn();
     await dbUpsertCard({ sku: 's', name: 'n', lastUpdated: Date.now() }, toast);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('boom'), true);
@@ -183,7 +187,11 @@ describe('dbInsertSales (saleToRow via the real call)', () => {
     await dbInsertSales([sale], vi.fn());
     const builder = fromMock.mock.results[0].value;
     expect(fromMock).toHaveBeenCalledWith('sales');
-    const sentRows = builder.insert.mock.calls[0][0];
+    // An upsert on an id the app picks, so a retried save can't record the
+    // sale twice.
+    const sentRows = builder.upsert.mock.calls[0][0];
+    expect(builder.upsert.mock.calls[0][1]).toEqual({ onConflict: 'id', ignoreDuplicates: true });
+    expect(sentRows[0].id).toMatch(/^[0-9a-f-]{36}$/);
     expect(sentRows[0]).toMatchObject({
       sku: 'sku-1', name: 'Charizard', game: 'Pokemon', condition: 'NM',
       qty_sold: 2, sale_price: 45,
@@ -197,7 +205,7 @@ describe('dbInsertSales (saleToRow via the real call)', () => {
   });
 
   it('reports an insert error to the toast instead of throwing', async () => {
-    tableResults.sales = { data: null, error: { message: 'boom' } };
+    tableResults.sales = { data: null, error: { message: 'boom' }, status: 400 };
     const toast = vi.fn();
     await dbInsertSales([{ sku: 's', name: 'n', soldAt: Date.now() }], toast);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('boom'), true);
@@ -259,7 +267,7 @@ describe('dbUpdateSale', () => {
   });
 
   it('reports an update error to the toast instead of throwing', async () => {
-    tableResults.sales = { data: null, error: { message: 'boom' } };
+    tableResults.sales = { data: null, error: { message: 'boom' }, status: 400 };
     const toast = vi.fn();
     await dbUpdateSale({ id: 's1', sku: 's', name: 'n', soldAt: Date.now() }, toast);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('boom'), true);
@@ -585,7 +593,7 @@ describe('lost / stolen cards', () => {
   it('only sends refunded_at on a sale, and kind on a ticket, when they matter', async () => {
     tableResults.sales = { data: null, error: null };
     await dbInsertSales([{ sku: 'a', name: 'n', game: 'g', condition: '', qtySold: 1, salePrice: 1, soldAt: Date.now() }], vi.fn());
-    expect('refunded_at' in fromMock.mock.results[0].value.insert.mock.calls[0][0][0]).toBe(false);
+    expect('refunded_at' in fromMock.mock.results[0].value.upsert.mock.calls[0][0][0]).toBe(false);
     await dbUpdateSale({ id: 's1', sku: 'a', name: 'n', game: 'g', condition: '', qtySold: 1, salePrice: 1, soldAt: Date.now(), refundedAt: Date.parse('2026-10-28T10:00:00.000Z') }, vi.fn());
     expect(fromMock.mock.results[1].value.update.mock.calls[0][0].refunded_at).toBe('2026-10-28T10:00:00.000Z');
     expect(rowToSale({ id: 's', refunded_at: '2026-10-28T10:00:00.000Z' }).refundedAt).toBe(Date.parse('2026-10-28T10:00:00.000Z'));
@@ -706,5 +714,130 @@ describe('hot cards', () => {
     tableResults.hot_cards = { data: null, error: null };
     expect(await dbDeleteHotCard('h1', vi.fn())).toBe(true);
     expect(fromMock.mock.results[0].value.eq).toHaveBeenCalledWith('id', 'h1');
+  });
+});
+
+describe('saving only what changed (dbSaveCardChanges)', () => {
+  const card = {
+    sku: 'k1', name: 'Kangaskhan EX', set: 'Flashfire', game: 'Pokemon', condition: 'NM', qty: 1, price: 25,
+    location: 'Card Show Binder', lastUpdated: Date.parse('2026-10-15T00:00:00Z'), imageUrl: '', photoUrl: '',
+  };
+
+  it('sends only the changed columns plus the time, matched by sku', async () => {
+    tableResults.catalog = { data: null, error: null };
+    await dbSaveCardChanges(card, { ...card, price: 30, lastUpdated: Date.parse('2026-11-14T00:00:00Z') }, vi.fn());
+    const b = fromMock.mock.results[0].value;
+    expect(b.upsert).not.toHaveBeenCalled();
+    expect(b.update).toHaveBeenCalledWith({ price: 30, last_updated: '2026-11-14T00:00:00.000Z' });
+    expect(b.eq).toHaveBeenCalledWith('sku', 'k1');
+  });
+
+  it("never sends a field it didn't change, so an old copy can't move a card back", () => {
+    // This device still thinks the card is in Card Show Binder; another
+    // device already moved it. Selling it here changes qty and sold only.
+    const sold = { ...card, qty: 0, sold: true, lastUpdated: Date.now() };
+    const changes = cardRowChanges(card, sold);
+    expect(Object.keys(changes).sort()).toEqual(['last_updated', 'qty', 'sold']);
+    expect('location' in changes).toBe(false);
+  });
+
+  it('writes nothing when nothing but the time changed', async () => {
+    expect(cardRowChanges(card, { ...card, lastUpdated: Date.now() })).toBe(null);
+    await dbSaveCardChanges(card, { ...card, lastUpdated: Date.now() }, vi.fn());
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('saves a new card (no earlier copy) whole', async () => {
+    tableResults.catalog = { data: null, error: null };
+    await dbSaveCardChanges(null, card, vi.fn());
+    expect(fromMock.mock.results[0].value.upsert).toHaveBeenCalled();
+  });
+});
+
+describe('retry queue for saves that never reached the database', () => {
+  const card = { sku: 'k1', name: 'Kangaskhan EX', location: 'Card Show Binder', lastUpdated: Date.now() };
+
+  it('keeps a save that failed with no connection, and sends it later', async () => {
+    tableResults.catalog = [
+      { data: null, error: { message: 'TypeError: Failed to fetch' }, status: 0 },
+      { data: null, error: null, status: 204 },
+    ];
+    const toast = vi.fn();
+    await dbSaveCardChanges(card, { ...card, location: 'Power Packs' }, toast);
+    expect(toast).not.toHaveBeenCalled();
+    expect(pendingWriteCount()).toBe(1);
+    expect(JSON.parse(localStorage.getItem('card-cove-write-queue'))[0]).toMatchObject({
+      table: 'catalog', action: 'update', match: { sku: 'k1' },
+    });
+
+    const sent = await flushWriteQueue(vi.fn());
+    expect(sent).toBe(1);
+    expect(pendingWriteCount()).toBe(0);
+    const retried = fromMock.mock.results[1].value;
+    expect(retried.update.mock.calls[0][0].location).toBe('Power Packs');
+  });
+
+  it('also keeps server errors (5xx) and timeouts, but not a rejected value', async () => {
+    tableResults.catalog = { data: null, error: { message: 'bad gateway' }, status: 502 };
+    await dbUpsertCard(card, vi.fn());
+    expect(pendingWriteCount()).toBe(1);
+    __resetWriteQueueForTests();
+    tableResults.catalog = { data: null, error: { message: 'violates check constraint' }, status: 400 };
+    const toast = vi.fn();
+    await dbUpsertCard(card, toast);
+    expect(pendingWriteCount()).toBe(0);
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('violates check constraint'), true);
+  });
+
+  it('queues later saves behind a waiting one so they keep their order', async () => {
+    tableResults.catalog = { data: null, error: { message: 'Failed to fetch' }, status: 0 };
+    await dbUpsertCard(card, vi.fn());
+    await dbSaveCardChanges(card, { ...card, location: 'Power Packs' }, vi.fn());
+    expect(pendingWriteCount()).toBe(2);
+    await flushWriteQueue(vi.fn()); // the retry the second save started, still offline
+    expect(pendingWriteCount()).toBe(2);
+    tableResults.catalog = { data: null, error: null, status: 204 };
+    expect(await flushWriteQueue(vi.fn())).toBe(2);
+  });
+
+  it('drops a waiting save the database rejects, and says so', async () => {
+    tableResults.catalog = { data: null, error: { message: 'Failed to fetch' }, status: 0 };
+    await dbUpsertCard(card, vi.fn());
+    tableResults.catalog = { data: null, error: { message: 'permission denied' }, status: 403 };
+    const onError = vi.fn();
+    expect(await flushWriteQueue(onError)).toBe(0);
+    expect(pendingWriteCount()).toBe(0);
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
+  });
+});
+
+describe('sales changes wait behind a queued sale', () => {
+  it("an undo made while the sale is still waiting waits too, instead of missing it", async () => {
+    tableResults.sales = { data: null, error: { message: 'Failed to fetch' }, status: 0 };
+    await dbInsertSales([{ sku: 'k1', name: 'Kangaskhan EX', soldAt: Date.parse('2026-11-14T10:00:00Z') }], vi.fn());
+    expect(pendingWriteCount()).toBe(1);
+    const removed = await dbDeleteSaleForTicket({ sku: 'k1', timestamp: Date.parse('2026-11-14T10:00:00Z') }, vi.fn());
+    expect(removed).toBe(1);
+    expect(pendingWriteCount()).toBe(2);
+    const ops = JSON.parse(localStorage.getItem('card-cove-write-queue'));
+    expect(ops.map(o => o.action)).toEqual(['upsert', 'delete']);
+    expect(ops[1].match).toEqual({ sku: 'k1', sold_at: '2026-11-14T10:00:00.000Z' });
+  });
+});
+
+describe('dbLoadRecentHistory', () => {
+  it('quotes the search so names with dots work, and drops characters that would break the filter', async () => {
+    tableResults.catalog_history = { data: [], error: null };
+    await dbLoadRecentHistory('Monkey.D.Luffy, "x"', vi.fn());
+    const expr = fromMock.mock.results[0].value.or.mock.calls[0][0];
+    expect(expr).toContain('name.ilike."%Monkey.D.Luffy x%"');
+    expect(expr).toContain('changes->location->>to.ilike."%Monkey.D.Luffy x%"');
+  });
+
+  it('loads the latest changes with no search', async () => {
+    tableResults.catalog_history = { data: [{ id: 1, sku: 'k1', name: 'K', action: 'update', changes: {}, changed_at: '2026-11-14T00:00:00Z' }], error: null };
+    const rows = await dbLoadRecentHistory('', vi.fn());
+    expect(fromMock.mock.results[0].value.or).not.toHaveBeenCalled();
+    expect(rows[0]).toMatchObject({ sku: 'k1', action: 'update' });
   });
 });
