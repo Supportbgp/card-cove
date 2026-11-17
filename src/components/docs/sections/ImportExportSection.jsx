@@ -33,17 +33,22 @@ export default function ImportExportSection() {
         untouched. <strong>Replace</strong> wipes the entire catalog first —
         only use it if you actually mean to start over.
       </p>
-      <DocsCallout kind="warn">
-        Merge replaces a matching SKU's whole row with what's in the file. A
-        card whose Cost was typed in by hand loses it if its Cost cell is
-        blank or the Cost column is skipped, so include Cost when re-importing
-        cards that already have one.
+      <DocsCallout kind="note">
+        With Merge, a row whose SKU is already in the catalog only changes
+        what that row fills in. A blank cell or a skipped column keeps the
+        card's current value, so a Cost, a photo or notes typed in by hand
+        aren't lost when the file doesn't have them. The Channels checkboxes
+        and the batch's Binder/case apply to new cards; an existing card
+        keeps its channels, and only moves to another binder if the file has
+        a location column with a value for it.
       </DocsCallout>
       <DocsCallout kind="note">
         Rows with no image already found get one searched automatically in
         the background — there's no review step here (unlike the Scanner),
         so double-check a few afterward in Catalog if the source names were
-        unusual.
+        unusual. A card already in the catalog that has a picture isn't
+        searched again. Tick <strong>Skip automatic image search</strong>
+        for a big import you'll add pictures to later.
       </DocsCallout>
 
       <h3>Importing old quote spreadsheets</h3>

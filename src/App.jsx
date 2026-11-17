@@ -665,8 +665,22 @@ export default function App() {
   async function handleImport(newRows, mode) {
     if (mode === "replace") {
       await dbClearCatalog(toast);
+      await dbUpsertCards(newRows, toast);
+    } else {
+      // A row that matches a card already in the catalog is saved as only
+      // the columns it changed (ImportPanel already kept what the file left
+      // blank), the same way Edit saves; new rows are inserted whole.
+      const bySku = new Map(catalogRef.current.map(c => [c.sku, c]));
+      const pairs = [];
+      const fresh = [];
+      for (const row of newRows) {
+        const before = bySku.get(row.sku);
+        if (before) pairs.push({ before, after: row });
+        else fresh.push(row);
+      }
+      await dbUpsertCards(fresh, toast);
+      await dbSaveCardsChanges(pairs, toast);
     }
-    await dbUpsertCards(newRows, toast);
     const { catalog: c, queue: q } = await dbLoadAll(toast);
     setCatalog(c);
     setQueue(q);

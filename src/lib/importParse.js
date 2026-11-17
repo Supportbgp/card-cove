@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { needsPlatformStatusReset } from './cardUtils.js';
 
 // Loaded lazily — xlsx is a large dependency and most sessions never touch
 // the Excel import path, so it shouldn't sit in the main bundle.
@@ -35,6 +36,53 @@ export const FIELD_TARGETS = [
   { key: "sold", label: "Sold (true/false)", aliases: ["sold", "status"] },
   { key: "lastUpdated", label: "Last Updated", aliases: ["last updated", "lastupdated", "updated", "date"] },
 ];
+
+// Merge imports (CLAUDE.md "Merge imports keep what the file leaves out"):
+// a row whose SKU is already in the catalog only changes the fields that
+// row actually gives a value for. A skipped column, a blank cell, or a
+// cell that didn't read as a real value (a price like "n/a", a link that
+// isn't http/https) leaves the card's current value alone, and so does
+// everything an import never carries (photos, base price, rarity, the
+// channels, the quote link). The import's own Binder / case field and
+// Channels checkboxes are for new cards: for an xlsx the Binder / case
+// field starts as the sheet name, so applying it here would move every
+// matched card into a binder named after the sheet. An existing card only
+// moves when its row's own location cell says so. Before this, the whole row was rebuilt from
+// the file, so a blank cell wiped a Cost or a photo typed in by hand.
+export const MERGE_FIELDS = [
+  'name', 'set', 'game', 'condition', 'printing', 'qty', 'price', 'cost', 'notes',
+  'imageUrl', 'itemType', 'grader', 'grade', 'certNumber', 'sourceUrl', 'location', 'sold',
+];
+
+// Which card fields one file row actually sets. `card` is that row after
+// normalizeCard; `gradingFromName` means the slab fields were read from the name (no
+// Type/Grader/Grade column mapped) and grading text was found there.
+export function providedImportFields(row, mapping, card, { gradingFromName = false } = {}) {
+  const out = new Set();
+  for (const key of MERGE_FIELDS) {
+    const col = mapping[key];
+    if (!col || String(row[col] ?? '').trim() === '') continue;
+    const v = card[key];
+    if (v === null || v === undefined || v === '') continue;
+    out.add(key);
+  }
+  if (gradingFromName) ['itemType', 'grader', 'grade'].forEach(k => out.add(k));
+  return out;
+}
+
+// The card as it should be saved: the existing card with only `provided`
+// fields taken from the import. P/T/C status chips reset the same way an
+// Edit save resets them (price, qty, condition or sold changed).
+export function mergeImportedCard(existing, imported, provided) {
+  const merged = { ...existing, lastUpdated: imported.lastUpdated };
+  for (const key of provided) merged[key] = imported[key];
+  if (needsPlatformStatusReset(existing, merged)) {
+    merged.posSynced = false;
+    merged.tcgplayerSynced = false;
+    merged.collectrSynced = false;
+  }
+  return merged;
+}
 
 export function guessHeader(aliases, headers) {
   for (const h of headers) { if (aliases.indexOf(h.trim().toLowerCase()) !== -1) return h; }
