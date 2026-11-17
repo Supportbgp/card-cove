@@ -172,8 +172,20 @@ export async function dbSaveCardChanges(before, after, toast) {
   await runWrite({ table: 'catalog', action: 'update', values, match: { sku: after.sku }, label: `Saving ${after.name}` }, reportTo(toast));
 }
 
+// A few at a time: a Merge import can change hundreds of cards, and each is
+// its own request. Every pair is a different card, so order between them
+// doesn't matter (the retry queue still keeps any that wait in order).
+const SAVE_CHANGES_CONCURRENCY = 6;
+
 export async function dbSaveCardsChanges(pairs, toast) {
-  for (const { before, after } of pairs) await dbSaveCardChanges(before, after, toast);
+  let next = 0;
+  const worker = async () => {
+    while (next < pairs.length) {
+      const { before, after } = pairs[next++];
+      await dbSaveCardChanges(before, after, toast);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(SAVE_CHANGES_CONCURRENCY, pairs.length) }, worker));
 }
 
 export async function dbDeleteCard(sku, toast) {

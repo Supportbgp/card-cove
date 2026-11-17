@@ -662,11 +662,25 @@ export default function App() {
     await dbUpdatePlatformStatus(sku, field, nextVal, toast);
   }
 
-  async function handleImport(newRows, mode) {
+  // mergeBases: sku -> the catalog copy ImportPanel merged that row from.
+  async function handleImport(newRows, mode, mergeBases = new Map()) {
     if (mode === "replace") {
       await dbClearCatalog(toast);
+      await dbUpsertCards(newRows, toast);
+    } else {
+      // A card already in the catalog saves only the columns it changed, diffed
+      // against the copy it was merged from (like Edit); new rows go in whole.
+      const bySku = new Map(catalogRef.current.map(c => [c.sku, c]));
+      const pairs = [];
+      const fresh = [];
+      for (const row of newRows) {
+        const before = mergeBases.get(row.sku) || bySku.get(row.sku);
+        if (before) pairs.push({ before, after: row });
+        else fresh.push(row);
+      }
+      await dbUpsertCards(fresh, toast);
+      await dbSaveCardsChanges(pairs, toast);
     }
-    await dbUpsertCards(newRows, toast);
     const { catalog: c, queue: q } = await dbLoadAll(toast);
     setCatalog(c);
     setQueue(q);

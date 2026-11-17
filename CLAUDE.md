@@ -6677,6 +6677,62 @@ Four fixes, decided with the user:
 it runs, the app works but the history views show a load error. No Edge
 Function deploy.
 
+## Merge imports keep what the file leaves out
+
+The Backlog's "needs a decision" item, decided by the user: a Merge import
+used to rebuild a matching SKU's whole row from the file (`normalizeCard`
+on the row, then a whole-row upsert), so a blank cell or a skipped column
+wiped whatever was there: a Cost typed in by hand (flagged under "CSV/XLSX
+import: a Cost column"), photos, base price, rarity, notes, and even qty
+(an unmapped Qty column reset it to 1). Now a row whose SKU is already in
+the catalog only changes what that row actually fills in.
+
+- **`providedImportFields(row, mapping, card, { gradingFromName })`**
+  (`importParse.js`): the card fields a row really sets. A field counts
+  when its column is mapped, the cell isn't blank, and the cell read as a
+  real value (a price like "n/a" or a non-http(s) link normalizes to
+  null/'' and doesn't count). An explicit `0` qty or "false" sold does
+  count. Grading read from the name (no Type/Grader/Grade column mapped,
+  and grading text found) counts for itemType/grader/grade.
+- **`mergeImportedCard(existing, imported, provided)`**: the existing card
+  with only those fields taken from the import, plus the file's
+  `lastUpdated`; P/T/C chips reset by the same `needsPlatformStatusReset`
+  rule an Edit save uses. Everything an import never carries (photos,
+  base price, rarity, channels, the quote link) is simply kept.
+- **The batch Binder / case field and Channels checkboxes apply to new
+  cards only.** For an `.xlsx` the Binder / case field starts as the sheet
+  name, so applying it to matched cards would move every one of them into
+  a binder named after the sheet on a plain price update. An existing card
+  moves only when its row's own location cell says so. The panel says this
+  under both fields and in a note under Import rows.
+- `ImportPanel` builds the merged card for matched SKUs (only for the real
+  Import tab's Merge, never Replace and never the Quote tab's embedded
+  import, which builds quote rows, not catalog rows), and only for a row
+  with a real SKU: a row with none gets a made-up `noSKU-<n>`, which can
+  match an unrelated card from an earlier import, so those are saved whole
+  as before rather than mixed with that card. A matched card that
+  already has any picture (stock or photo, URL or upload) is no longer
+  image-searched. The status line says how many rows were already in the
+  catalog.
+- `App.handleImport` (Merge) saves matched rows with `dbSaveCardsChanges`,
+  diffed against the exact catalog copy ImportPanel merged each row from
+  (passed along as `mergeBases`), so only changed columns are sent (same as
+  Edit since "Change history and safer saves") and a card another device
+  moved while the import's image search ran isn't moved back. New rows are
+  inserted whole. `dbSaveCardsChanges` now runs 6 cards at a time instead
+  of one by one, since a big re-import can change hundreds of cards. SKU
+  cells are trimmed, so a stray space from a spreadsheet still matches. Replace is unchanged. The Scanner's import (always new SKUs) goes
+  down the insert path as before.
+- **"Skip automatic image search" is kept as a permanent option** (it was
+  "provisional, keep or drop" under "Known constraints"): rarely used, but
+  the user would rather have it than need it and not have it.
+- Covered by new `importParse.test.js` cases and `e2e/import-merge.spec.js`
+  (Desktop + Mobile): a blank Cost cell and missing Qty/Notes columns keep
+  the card's Cost/qty/notes/photo/channels, the batch binder doesn't move
+  it, and a new row in the same file gets the batch binder and channels.
+  Staff docs: `ImportExportSection.jsx` (the old warning that Merge wipes a
+  hand-typed Cost replaced by how Merge works now).
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
@@ -6761,16 +6817,6 @@ than repeated.
   `catalog_history` grows forever (one small row per change); add a
   cleanup of rows older than a year or two if it gets big. History covers
   catalog only, not quotes, sorting or the want list.
-- **Provisional feature, keep-or-drop pending actual usage**: Import's
-  "Skip automatic image search" checkbox (see "Known constraints" above)
-  — shipped for one specific bulk/test-data import, never decided as a
-  permanent feature either way.
-- **Possible follow-up, needs a decision**: a Merge import overwrites a
-  matching SKU's whole row, so values typed in by hand (Cost, photos, base
-  price, rarity) are lost when the file leaves them blank or a column is
-  skipped (see "CSV/XLSX import: a Cost column" above). Keeping existing
-  values for skipped columns would change what Merge means; confirm with
-  the user first.
 
 **Dropped from this list by the user (2026-10-28), not just parked**:
 Cumulus POS import, a Collectr bulk-upload export, and TCGPlayer's own

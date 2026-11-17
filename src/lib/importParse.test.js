@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   guessHeader, isLikelyImageUrl, looksNumeric, guessGameFromSheetName,
   runWithConcurrency, parseCsvFile, FIELD_TARGETS,
+  providedImportFields, mergeImportedCard,
 } from './importParse.js';
+import { normalizeCard } from './cardUtils.js';
 
 // Note: loadXlsxSheet/loadBinderPageFormat/readWorkbook (the .xlsx-specific
 // parsing paths) aren't covered here — they need a real workbook fixture and
@@ -119,5 +121,75 @@ describe('parseCsvFile', () => {
   it('rejects a file with no rows instead of resolving with an empty result', async () => {
     const file = makeFile('Name,Qty,Price\n');
     await expect(parseCsvFile(file)).rejects.toThrow('No rows found');
+  });
+});
+
+describe('Merge imports keep what the file leaves out', () => {
+  const existing = normalizeCard({
+    sku: 's1', name: 'Charizard', set: 'Base Set', game: 'Pokemon', condition: 'Near Mint',
+    qty: 2, price: 300, cost: 120, notes: 'top loader', imageUrl: 'https://img/old.png',
+    photoData: 'data:image/jpeg;base64,AAA', basePrice: 310, rarity: 'Rare Holo',
+    location: 'Case A', posChannel: false, posSynced: true, tcgplayerSynced: true, lastUpdated: 1,
+  });
+  const mapping = { sku: 'SKU', name: 'Name', price: 'Price', cost: 'Cost', qty: 'Qty' };
+
+  it('only counts mapped columns with a real value in this row', () => {
+    const row = { SKU: 's1', Name: 'Charizard', Price: '350', Cost: '', Qty: '' };
+    const card = normalizeCard({ sku: 's1', name: 'Charizard', price: '350', cost: '', qty: '' });
+    expect([...providedImportFields(row, mapping, card)].sort()).toEqual(['name', 'price']);
+  });
+
+  it('ignores a cell that did not read as a value (bad price, unsafe link)', () => {
+    const row = { SKU: 's1', Name: 'X', Price: 'n/a', Link: 'javascript:alert(1)' };
+    const card = normalizeCard({ sku: 's1', name: 'X', price: 'n/a', sourceUrl: 'javascript:alert(1)' });
+    const fields = providedImportFields(row, { ...mapping, sourceUrl: 'Link' }, card);
+    expect(fields.has('price')).toBe(false);
+    expect(fields.has('sourceUrl')).toBe(false);
+  });
+
+  it('counts a location cell in the row itself', () => {
+    const card = normalizeCard({ sku: 's1', name: 'X', location: 'Power Packs' });
+    const fields = providedImportFields({ SKU: 's1', Name: 'X', Binder: 'Power Packs' },
+      { ...mapping, location: 'Binder' }, card);
+    expect(fields.has('location')).toBe(true);
+  });
+
+  it('keeps an explicit 0 quantity and an explicit "not sold"', () => {
+    const row = { SKU: 's1', Name: 'X', Qty: '0', Sold: 'false' };
+    const card = normalizeCard({ sku: 's1', name: 'X', qty: '0', sold: 'false' });
+    const fields = providedImportFields(row, { ...mapping, sold: 'Sold' }, card);
+    expect(fields.has('qty')).toBe(true);
+    expect(fields.has('sold')).toBe(true);
+  });
+
+  it('counts grading read from the name, but not the batch Binder / case', () => {
+    // The card's location came from the import's own Binder / case field
+    // (no location column), which only applies to new cards.
+    const card = normalizeCard({ sku: 's1', name: 'Charizard', location: 'Slab Case' });
+    const fields = providedImportFields({ SKU: 's1', Name: 'Charizard PSA 10' }, mapping, card,
+      { gradingFromName: true });
+    expect(fields.has('location')).toBe(false);
+    expect(fields.has('grader')).toBe(true);
+    expect(fields.has('grade')).toBe(true);
+    expect(fields.has('itemType')).toBe(true);
+  });
+
+  it('changes only the provided fields and keeps everything else', () => {
+    const imported = normalizeCard({ sku: 's1', name: 'Charizard', price: '350', lastUpdated: 99 });
+    const merged = mergeImportedCard(existing, imported, new Set(['name', 'price']));
+    expect(merged).toMatchObject({
+      price: 350, cost: 120, qty: 2, notes: 'top loader', imageUrl: 'https://img/old.png',
+      photoData: 'data:image/jpeg;base64,AAA', basePrice: 310, rarity: 'Rare Holo',
+      location: 'Case A', posChannel: false, condition: 'Near Mint', lastUpdated: 99,
+    });
+  });
+
+  it('resets the P/T/C chips only when price, qty, condition or sold changed', () => {
+    const notes = normalizeCard({ sku: 's1', notes: 'new note' });
+    expect(mergeImportedCard(existing, notes, new Set(['notes'])).posSynced).toBe(true);
+    const price = normalizeCard({ sku: 's1', price: '1' });
+    const merged = mergeImportedCard(existing, price, new Set(['price']));
+    expect(merged.posSynced).toBe(false);
+    expect(merged.tcgplayerSynced).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import { detectGrading, normalizeCard, channelDefaultsForLocation } from '../../
 import { searchCardImage } from '../../lib/cardSearch.js';
 import {
   FIELD_TARGETS, guessHeader, parseCsvFile, readWorkbook, loadXlsxSheet, runWithConcurrency,
+  providedImportFields, mergeImportedCard,
 } from '../../lib/importParse.js';
 import LocationPicker from '../LocationPicker.jsx';
 
@@ -163,13 +164,24 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
     // auto image search below. Never attached to the normalizeCard objects
     // themselves so it can't leak into what actually gets saved.
     const rarityHints = rows.map(r => (mapping.rarity ? (r[mapping.rarity] || "").trim() : ""));
+    // Merge into the real catalog (not Replace, and not the Quote tab's
+    // embedded import, which only builds quote rows): a row whose SKU is
+    // already there keeps every value its own row leaves blank or that the
+    // file doesn't have a column for (see mergeImportedCard).
+    const mergeIntoCatalog = !embedded && importMode === "merge";
+    const bySku = new Map(mergeIntoCatalog ? catalog.map(c => [c.sku, c]) : []);
+    // The catalog copy each merged row was built from: App saves the
+    // difference against this same copy, so a change another device made
+    // to that card while this import ran isn't written back over.
+    const mergeBases = new Map();
     const newRows = rows.map((r, i) => {
       const rawName = mapping.name ? r[mapping.name] : "Unnamed";
       let detected = { name: rawName, itemType: "single", grader: "", grade: "" };
       if (autoGrade) detected = detectGrading(rawName);
       const perRowLocation = mapping.location ? (r[mapping.location] || "").trim() : "";
-      return normalizeCard({
-        sku: (mapping.sku ? r[mapping.sku] : "") || ("noSKU-" + i),
+      const card = normalizeCard({
+        // Trimmed, so a stray space from a spreadsheet export still matches.
+        sku: (mapping.sku ? String(r[mapping.sku] ?? "").trim() : "") || ("noSKU-" + i),
         name: autoGrade ? detected.name : rawName,
         set: mapping.set ? r[mapping.set] : "",
         game: mapping.game ? r[mapping.game] : "",
@@ -197,10 +209,21 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
           return isNaN(parsed) ? Date.now() : parsed;
         })(),
       });
+      // Only a SKU the file really has: a made-up "noSKU-<n>" can match an
+      // unrelated card from an earlier import, and merging would mix the two.
+      const fileSku = mapping.sku ? String(r[mapping.sku] ?? "").trim() : "";
+      const existing = fileSku ? bySku.get(card.sku) : null;
+      if (!existing) return card;
+      mergeBases.set(card.sku, existing);
+      const provided = providedImportFields(r, mapping, card, {
+        gradingFromName: autoGrade && detected.itemType === "slab",
+      });
+      return mergeImportedCard(existing, card, provided);
     });
 
     // Rows with no image already (no mapped column, or that column was
-    // blank for this row) get an auto-search, same lookup the Scanner and
+    // blank for this row, and no image already saved on the catalog card a
+    // Merge row matched) get an auto-search, same lookup the Scanner and
     // Edit modal use — this is the only thing the backlog asked for here,
     // so unlike those two, there's no price/listing backfill and no per-row
     // review step: the top result just fills the image slot directly,
@@ -210,7 +233,7 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
     // checked — see its own state comment above for why that exists.
     const needsImage = skipImageSearch ? [] : newRows
       .map((card, i) => ({ card, rarityHint: rarityHints[i] }))
-      .filter(({ card }) => !card.imageUrl);
+      .filter(({ card }) => !card.imageUrl && !card.imageData && !card.photoUrl && !card.photoData);
     let foundCount = 0;
     if (needsImage.length) {
       setStatus({ text: `Searching for card images for ${needsImage.length} row(s) without one…`, kind: "" });
@@ -228,10 +251,12 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
     }
 
     setStatus({ text: "Saving…", kind: "" });
-    await onImport(newRows, embedded ? "merge" : importMode);
+    await onImport(newRows, embedded ? "merge" : importMode, mergeBases);
     const slabCount = newRows.filter(r => r.itemType === "slab").length;
+    const keptCount = mergeBases.size;
     setStatus({
       text: `Imported ${newRows.length} rows.`
+        + (keptCount ? ` ${keptCount} ${keptCount === 1 ? "was" : "were"} already in the catalog and only changed where the file had a value.` : "")
         + (autoGrade ? ` Auto-detected ${slabCount} slab(s) from grading text in the name.` : "")
         + (needsImage.length ? ` Found images for ${foundCount} of ${needsImage.length} row(s) that didn't already have one.` : ""),
       kind: "ok",
@@ -295,7 +320,8 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
             <label>Binder / case / collection for this import</label>
             <LocationPicker locations={locations} value={importLocation} onChange={setImportLocation} />
             <div style={{ fontSize: '11.5px', color: 'var(--ink-faint)', marginTop: '4px' }}>
-              Applied to every row in this import. Type a new name to create a new binder/case, or pick an existing one.
+              Applied to every new row in this import. Type a new name to create a new binder/case, or pick an existing one.
+              {!embedded && importMode === "merge" && " Cards already in the catalog stay where they are unless a location column says otherwise."}
             </div>
           </div>
           <div className="field-group" style={{ maxWidth: '420px' }}>
@@ -315,7 +341,8 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
               </div>
             </div>
             <div style={{ fontSize: '11.5px', color: 'var(--ink-faint)', marginTop: '4px' }}>
-              Applies to every row in this import — edit an individual item afterward if one differs.
+              Applies to every new row in this import — edit an individual item afterward if one differs.
+              {!embedded && importMode === "merge" && " Cards already in the catalog keep their own."}
             </div>
           </div>
           <div className="field-group" style={{ maxWidth: '420px' }}>
@@ -343,6 +370,12 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
               </select>
             )}
           </div>
+          {!embedded && importMode === "merge" && (
+            <div className="import-merge-note">
+              A row whose SKU is already in the catalog only changes what that row fills in. Blank cells and
+              skipped columns keep the card's current value (Cost, photos, notes and so on).
+            </div>
+          )}
         </div>
       )}
       {status.text && <div className={`status-line ${status.kind}`}>{status.text}</div>}
