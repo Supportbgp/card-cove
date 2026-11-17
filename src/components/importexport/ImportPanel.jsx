@@ -170,14 +170,18 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
     // file doesn't have a column for (see mergeImportedCard).
     const mergeIntoCatalog = !embedded && importMode === "merge";
     const bySku = new Map(mergeIntoCatalog ? catalog.map(c => [c.sku, c]) : []);
-    let keptCount = 0;
+    // The catalog copy each merged row was built from: App saves the
+    // difference against this same copy, so a change another device made
+    // to that card while this import ran isn't written back over.
+    const mergeBases = new Map();
     const newRows = rows.map((r, i) => {
       const rawName = mapping.name ? r[mapping.name] : "Unnamed";
       let detected = { name: rawName, itemType: "single", grader: "", grade: "" };
       if (autoGrade) detected = detectGrading(rawName);
       const perRowLocation = mapping.location ? (r[mapping.location] || "").trim() : "";
       const card = normalizeCard({
-        sku: (mapping.sku ? r[mapping.sku] : "") || ("noSKU-" + i),
+        // Trimmed, so a stray space from a spreadsheet export still matches.
+        sku: (mapping.sku ? String(r[mapping.sku] ?? "").trim() : "") || ("noSKU-" + i),
         name: autoGrade ? detected.name : rawName,
         set: mapping.set ? r[mapping.set] : "",
         game: mapping.game ? r[mapping.game] : "",
@@ -207,10 +211,10 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
       });
       // Only a SKU the file really has: a made-up "noSKU-<n>" can match an
       // unrelated card from an earlier import, and merging would mix the two.
-      const fileSku = mapping.sku ? String(r[mapping.sku] || "").trim() : "";
+      const fileSku = mapping.sku ? String(r[mapping.sku] ?? "").trim() : "";
       const existing = fileSku ? bySku.get(card.sku) : null;
       if (!existing) return card;
-      keptCount++;
+      mergeBases.set(card.sku, existing);
       const provided = providedImportFields(r, mapping, card, {
         gradingFromName: autoGrade && detected.itemType === "slab",
       });
@@ -247,8 +251,9 @@ export default function ImportPanel({ catalog, locations, onImport, embedded = f
     }
 
     setStatus({ text: "Saving…", kind: "" });
-    await onImport(newRows, embedded ? "merge" : importMode);
+    await onImport(newRows, embedded ? "merge" : importMode, mergeBases);
     const slabCount = newRows.filter(r => r.itemType === "slab").length;
+    const keptCount = mergeBases.size;
     setStatus({
       text: `Imported ${newRows.length} rows.`
         + (keptCount ? ` ${keptCount} ${keptCount === 1 ? "was" : "were"} already in the catalog and only changed where the file had a value.` : "")

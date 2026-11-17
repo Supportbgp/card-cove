@@ -6714,10 +6714,14 @@ the catalog only changes what that row actually fills in.
   already has any picture (stock or photo, URL or upload) is no longer
   image-searched. The status line says how many rows were already in the
   catalog.
-- `App.handleImport` (Merge) saves matched rows with `dbSaveCardsChanges`
-  against the current catalog copy, so only changed columns are sent (same
-  as Edit since "Change history and safer saves"), and inserts new rows
-  whole. Replace is unchanged. The Scanner's import (always new SKUs) goes
+- `App.handleImport` (Merge) saves matched rows with `dbSaveCardsChanges`,
+  diffed against the exact catalog copy ImportPanel merged each row from
+  (passed along as `mergeBases`), so only changed columns are sent (same as
+  Edit since "Change history and safer saves") and a card another device
+  moved while the import's image search ran isn't moved back. New rows are
+  inserted whole. `dbSaveCardsChanges` now runs 6 cards at a time instead
+  of one by one, since a big re-import can change hundreds of cards. SKU
+  cells are trimmed, so a stray space from a spreadsheet still matches. Replace is unchanged. The Scanner's import (always new SKUs) goes
   down the insert path as before.
 - **"Skip automatic image search" is kept as a permanent option** (it was
   "provisional, keep or drop" under "Known constraints"): rarely used, but
