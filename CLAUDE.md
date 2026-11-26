@@ -6733,6 +6733,96 @@ the catalog only changes what that row actually fills in.
   Staff docs: `ImportExportSection.jsx` (the old warning that Merge wipes a
   hand-typed Cost replaced by how Merge works now).
 
+## Hot cards: more tournament sources, and fewer false alarms
+
+Follow-up to "Hot cards" after its first weeks of daily runs. The last run
+before this (2026-11-16) counted, per job, the decklists below; several
+games had nothing:
+
+| Game | Before | Now (source) |
+|---|---|---|
+| Pokemon | 3,057 (Limitless) | unchanged |
+| Magic Commander | 1,711 (TopDeck.gg, 7 days) | unchanged |
+| Riftbound | 1,328 (TopDeck.gg) | unchanged |
+| One Piece | 913 (Limitless) | unchanged |
+| Magic Legacy | 134 (TopDeck.gg) | unchanged |
+| Gundam | 57 (Limitless) | ~870 (Egman Events) |
+| Magic Modern / Standard / Pioneer | 22 / 2 / 0 (TopDeck.gg) | ~2,570 / ~1,460 / ~725 (MTGO cache) |
+| Yu-Gi-Oh | 4 (TopDeck.gg) | ~330 (Yu-Gi-Oh! Meta) |
+| SWU | 0 (Limitless) | ~2,790 (SWU Meta Stats) |
+| Lorcana | 0 | still none |
+
+Sources were researched and tested live first (not guessed). The user
+confirmed **permission to use Egman's tournament data, Yu-Gi-Oh! Meta and
+the MTGO decklist cache**; SWU Meta Stats is a documented public API.
+Every source is credited by name with a link wherever its data shows
+(`META_SOURCES` in `hotCards.js`).
+
+- **New `meta-check` jobs** (`supabase/functions/meta-check/index.ts`,
+  parsers in `decks.ts`):
+  - **Egman** (`deckbuilder.egmanevents.com/api`): `/tournaments/gundam`
+    (top cuts, including the Limitless Gundam events, so the Limitless
+    Gundam job was dropped to avoid counting them twice) plus
+    `/standalone/gundam` (store events and power rankings, mostly Japanese
+    Bandai TCG+ events). A decklist is a link whose `deck` parameter lists
+    `CODE:COUNT` pairs (`egmanDeckCards`); names come from `/cards/gundam`
+    by code. GD06 was checked: it's already played at English events, so
+    no set filter.
+  - **Yu-Gi-Oh! Meta** (`yugiohmeta.com/api/v1/top-decks?created[$gte]=`):
+    one call; `main`/`extra`/`side` with card names. Only decks with
+    `ocg`, `genesys`, `illegal` and `incomplete` all false count
+    (`isYgoAdvancedDeck`): about 330 of 715 in a month. YGOProDeck's
+    tournament decks (passcodes only, no dates) were the alternative.
+  - **SWU Meta Stats** (`swumetastats.com/api`, OpenAPI documented):
+    `/cards?type=all&includeUsage=true&sortBy=usage` already counts usage
+    per card (`appearances`, and `pct1/2/3` = share of decks with 1/2/3
+    copies), so this job makes rows directly (`swuUsageRows`) instead of
+    tallying decklists; the deck total comes from `/decklists?take=1`'s
+    `totalCount`. Premier format.
+  - **MTGODecklistCache** (`github.com/Jiliac/MTGODecklistCache`,
+    `Tournaments/mtgo.com_limited_data/YYYY/MM/DD/<format>-....json`):
+    Modern, Standard, Pioneer (`{ Decks: [{ Mainboard, Sideboard }] }`).
+    Updated weekly, so these lag by up to a week. **The workflow lists the
+    files, not the function**: GitHub's API limits calls without a login
+    per IP address, and Supabase's outgoing IPs are shared with other
+    customers, so the function could run out. `meta-check.yml` lists this
+    month's and last month's files with its own `GITHUB_TOKEN` (read-only,
+    `permissions: contents: read`) and sends only the paths in every job's
+    body (`mtgoFiles`); the token never leaves GitHub. The function accepts
+    only paths of exactly the cache's shape (`mtgoPathsFor`, a strict
+    regex) and builds the `raw.githubusercontent.com` URL itself.
+- **Jobs dropped** (they returned 0 decklists on real runs): Limitless
+  SWU/Gundam/Lorcana/Riftbound and TopDeck.gg Modern/Standard/Pioneer/
+  Yu-Gi-Oh/Lorcana. Their old rows age out by the existing "not refreshed
+  in 3 days" cleanup. 11 jobs now, about 15 minutes a day.
+- **Name matching**: `hotNameKey` (both copies) now also treats SWU's
+  `Name | Subtitle` as `Name - Subtitle` (how other sources and the
+  catalog write it) and drops zero-width characters (Egman's data has a
+  zero-width space in "Airframe Seizure").
+- **Fewer false alarms**:
+  - **Stale counts are ignored** in the app (`META_MAX_AGE_DAYS` = 4):
+    if a source stops working, its old numbers stop flagging cards instead
+    of showing forever (the function only cleans old rows when some job
+    runs).
+  - **Cheap staples** (`META_MIN_CARD_VALUE` = $2): a quote row whose
+    price (else market price) is known and under $2 gets no tournament
+    reason, since Ultra Ball or Ash Blossom being in 90% of decks doesn't
+    change what we'd pay. Hot list, sales and price reasons still show.
+  - **Not done: weighting by placement.** Most new sources are already
+    top-cut or leaderboard lists, and weighting would turn "in 52% of
+    decks" into a score staff can't check against anything.
+- The Hot cards window credits every source with its last update date.
+- Tests: new `decks.test.ts` cases (each parser on real-shaped data, the
+  MTGO path check rejecting `../`, URLs and query strings, SWU rows) and
+  `hotCards.test.js` cases (the new name-key rules match on both sides,
+  stale counts and cheap cards). Each parser was also run against live
+  responses: Gundam 872 decklists (Overflowing Affection 56%), Yu-Gi-Oh
+  330 (Ash Blossom 98%), SWU 2,786 (No Glory, Only Results 35%).
+
+**Requires redeploying `meta-check`** (`supabase functions deploy
+meta-check`, staging first with `--project-ref`); the workflow change
+ships with the merge. No migration, no new secret.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
@@ -6809,10 +6899,11 @@ than repeated.
   - The review rows are tall on a phone (one field per line) — fine for a
     handful of cards, long for a 50-card stack; consider a compact
     collapsed row once real stacks show whether it's a problem.
-- **Hot cards, next steps (see "Hot cards" above)**: flag on Sorting rows
-  and in Catalog too if staff want it; TopDeck.gg game names for One Piece,
-  SWU and Gundam weren't confirmed, so those come from Limitless only;
-  Lorcana tournament data is thin on both sources.
+- **Hot cards, next steps (see "Hot cards" and "Hot cards: more
+  tournament sources")**: flag on Sorting rows and in Catalog too if staff
+  want it; Lorcana has no tournament source (Limitless and TopDeck.gg
+  empty, inkdecks forbids bots, dreamborn blocks its API), so only sales,
+  price and the hot list cover it.
 - **Change history, next steps (see "Change history and safer saves")**:
   `catalog_history` grows forever (one small row per change); add a
   cleanup of rows older than a year or two if it gets big. History covers

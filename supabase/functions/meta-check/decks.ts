@@ -26,9 +26,13 @@ export function cardCode(set: unknown, number: unknown): string {
 export function hotNameKey(name: unknown): string {
   let n = String(name ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "");
   n = n.replace(/[‘’]/g, "'").toLowerCase();
+  // Invisible characters some sources leave in names (a zero-width space in "Airframe Seizure").
+  n = n.replace(/[\u200b-\u200d\u2060\ufeff]/g, "");
   const face = n.indexOf(" // ");
   if (face > 0) n = n.slice(0, face);
   n = n.replace(/\([^)]*\)/g, " ").replace(/\[[^\]]*\]/g, " ");
+  // SWU's "Name | Subtitle" (SWU Meta Stats) is "Name - Subtitle" elsewhere.
+  n = n.replace(/\s*\|\s*/g, " - ");
   n = n.replace(/\s+/g, " ").trim();
   n = n.replace(/(\s+|\s*-\s*)#?\d+(\/\d+)?$/, "").trim();
   n = n.replace(/-(ex|gx)\b/g, " $1");
@@ -153,4 +157,96 @@ export function tallyRows(tally: Tally, minSharePct = 5, cap = 400) {
     .sort((a, b) => b[1].decks - a[1].decks)
     .slice(0, cap)
     .map(([, c]) => ({ nameKey: c.nameKey, code: c.code, name: c.name, decks: c.decks, copies: c.copies }));
+}
+
+// Egman's deckbuilder (deckbuilder.egmanevents.com): a decklist is a link
+// whose "deck" parameter lists "CODE:COUNT" pairs ("GD05-069:4,ST12-013:1").
+// Names come from the same site's card list, by code.
+export function egmanDeckCards(url: unknown, nameByCode: Map<string, string>): DeckCard[] {
+  const out: DeckCard[] = [];
+  let deck = "";
+  try {
+    deck = new URL(String(url ?? "")).searchParams.get("deck") || "";
+  } catch {
+    return out;
+  }
+  for (const part of deck.split(",")) {
+    const m = part.trim().match(/^([A-Za-z0-9]+-[A-Za-z0-9]+):(\d+)$/);
+    if (!m) continue;
+    const code = cardCode("", m[1]);
+    addCard(out, nameByCode.get(code) || m[1], m[2], code);
+  }
+  return out;
+}
+
+// Yu-Gi-Oh! Meta (yugiohmeta.com /api/v1/top-decks): { main, extra, side:
+// [{ card: { name }, amount }] }.
+export function ygometaDeckCards(deck: unknown): DeckCard[] {
+  const out: DeckCard[] = [];
+  if (!deck || typeof deck !== "object") return out;
+  for (const section of ["main", "extra", "side"]) {
+    const list = (deck as any)[section];
+    if (!Array.isArray(list)) continue;
+    for (const c of list) addCard(out, c?.card?.name, c?.amount);
+  }
+  return out;
+}
+
+// A Yu-Gi-Oh! Meta deck from the paper TCG's Advanced format: not OCG,
+// not Genesys (a separate format), not flagged illegal or incomplete.
+export function isYgoAdvancedDeck(deck: any): boolean {
+  return !!deck && deck.ocg === false && deck.genesys === false && !deck.illegal && !deck.incomplete;
+}
+
+// MTGO results via MTGODecklistCache: { Mainboard, Sideboard: [{ Count, CardName }] }.
+export function mtgoDeckCards(deck: unknown): DeckCard[] {
+  const out: DeckCard[] = [];
+  if (!deck || typeof deck !== "object") return out;
+  for (const section of ["Mainboard", "Sideboard"]) {
+    const list = (deck as any)[section];
+    if (!Array.isArray(list)) continue;
+    for (const c of list) addCard(out, c?.CardName, c?.Count);
+  }
+  return out;
+}
+
+// MTGODecklistCache paths (relative to Tournaments/mtgo.com_limited_data/)
+// look like "2026/11/01/modern-challenge-32-2026-11-0112857398.json". Only
+// paths of exactly this shape are fetched; the workflow supplies the list.
+const MTGO_PATH = /^(\d{4})\/(\d{2})\/(\d{2})\/([a-z]+)-[a-z0-9-]+\.json$/;
+
+export function mtgoPathsFor(paths: unknown, formatPrefix: string, cutoffMs: number): string[] {
+  if (!Array.isArray(paths)) return [];
+  const out: string[] = [];
+  for (const p of paths.slice(0, 5000)) {
+    if (typeof p !== "string") continue;
+    const m = p.match(MTGO_PATH);
+    if (!m || m[4] !== formatPrefix) continue;
+    if (Date.UTC(+m[1], +m[2] - 1, +m[3]) < cutoffMs) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+// SWU Meta Stats (swumetastats.com /api/cards?includeUsage=true) already
+// counts usage per card: appearances = decks playing it, pct1/2/3 = share of
+// all decks playing 1/2/3 copies. Turned into the same rows as a tally.
+export function swuUsageRows(cards: unknown, totalDecks: number, minSharePct = 5, cap = 400) {
+  if (!Array.isArray(cards) || totalDecks <= 0) return [];
+  const min = (totalDecks * minSharePct) / 100;
+  const out: { nameKey: string; code: string; name: string; decks: number; copies: number }[] = [];
+  const seen = new Set<string>();
+  for (const c of cards) {
+    const u = c?.usage;
+    const decks = Math.trunc(Number(u?.appearances) || 0);
+    const name = String(c?.name ?? "").trim();
+    if (!name || decks < min) continue;
+    const nameKey = hotNameKey(name);
+    if (!nameKey || seen.has(nameKey)) continue;
+    seen.add(nameKey);
+    const copyPct = (Number(u?.pct1) || 0) + 2 * (Number(u?.pct2) || 0) + 3 * (Number(u?.pct3) || 0);
+    const copies = Math.max(decks, Math.round((totalDecks * copyPct) / 100));
+    out.push({ nameKey, code: "", name, decks, copies });
+  }
+  return out.sort((a, b) => b.decks - a.decks).slice(0, cap);
 }

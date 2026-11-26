@@ -9,7 +9,7 @@ function metaRow(overrides = {}) {
   return {
     source: 'topdeck', game: 'Magic', format: 'EDH', name: 'Sol Ring', name_key: 'sol ring', code: '',
     decks: 700, total_decks: 1000, copies: 700, events: 40, window_days: 30,
-    updated_at: '2026-11-06T13:40:00.000Z',
+    updated_at: new Date().toISOString(),
     ...overrides,
   };
 }

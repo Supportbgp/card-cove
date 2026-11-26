@@ -1,7 +1,7 @@
 // Hot cards (CLAUDE.md "Hot cards"): tells staff, while quoting, that a
 // card is sought after, and why. Four signals, each matched by game + name:
 //   * meta:  played in a good share of recent tournament decklists
-//            (meta_cards, rebuilt daily from Limitless and TopDeck.gg)
+//            (meta_cards, rebuilt daily by meta-check; sources below)
 //   * sales: we sold several copies recently (sales)
 //   * price: its market price climbed (price_movers, from the daily price check)
 //   * list:  staff put it on the hot list by hand (hot_cards)
@@ -14,11 +14,28 @@ export const SALES_MIN_COPIES = 3;
 export const SALES_WINDOW_DAYS = 30;
 // "Price climbing": up at least this much over the price_movers window.
 export const PRICE_MIN_RISE_PCT = 20;
+// Tournament counts older than this are ignored: the daily check stopped
+// reaching that source, and old numbers shouldn't keep flagging cards.
+export const META_MAX_AGE_DAYS = 4;
+// Below this value (the quote row's price, else its market price), a card
+// being played everywhere (Ultra Ball, Ash Blossom) doesn't change what we'd
+// pay, so the tournament reason is left out. Unknown value: still shown.
+export const META_MIN_CARD_VALUE = 2;
 
+// Every tournament source meta-check reads, for credits and labels.
 export const META_SOURCES = {
   limitless: { label: 'Limitless', url: 'https://play.limitlesstcg.com' },
   topdeck: { label: 'TopDeck.gg', url: 'https://topdeck.gg' },
+  egman: { label: 'Egman Events', url: 'https://deckbuilder.egmanevents.com' },
+  ygometa: { label: 'Yu-Gi-Oh! Meta', url: 'https://www.yugiohmeta.com' },
+  swumeta: { label: 'SWU Meta Stats', url: 'https://swumetastats.com' },
+  mtgo: { label: 'MTGO results (MTGODecklistCache)', url: 'https://github.com/Jiliac/MTGODecklistCache' },
 };
+
+function isFresh(m, now) {
+  if (!m.updatedAt) return true;
+  return now - new Date(m.updatedAt).getTime() <= META_MAX_AGE_DAYS * 86400000;
+}
 
 // The same name normalization meta-check uses for meta_cards.name_key
 // (duplicated there, per this repo's no-shared-code-with-Edge-Functions
@@ -28,9 +45,13 @@ export const META_SOURCES = {
 export function hotNameKey(name) {
   let n = String(name ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '');
   n = n.replace(/[‘’]/g, "'").toLowerCase();
+  // Invisible characters some sources leave in names (a zero-width space in "Airframe Seizure").
+  n = n.replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
   const face = n.indexOf(' // ');
   if (face > 0) n = n.slice(0, face);
   n = n.replace(/\([^)]*\)/g, ' ').replace(/\[[^\]]*\]/g, ' ');
+  // SWU's "Name | Subtitle" (SWU Meta Stats) is "Name - Subtitle" elsewhere.
+  n = n.replace(/\s*\|\s*/g, ' - ');
   n = n.replace(/\s+/g, ' ').trim();
   // A number after a space or dash only, so "Porygon2" stays itself.
   n = n.replace(/(\s+|\s*-\s*)#?\d+(\/\d+)?$/, '').trim();
@@ -143,7 +164,7 @@ export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = []
   // Meta: the best qualifying format per source.
   const bestMeta = new Map();
   for (const m of meta) {
-    if (m.totalDecks < META_MIN_DECKS) continue;
+    if (m.totalDecks < META_MIN_DECKS || !isFresh(m, now)) continue;
     const share = metaSharePct(m);
     if (share < META_MIN_SHARE_PCT) continue;
     const k = metaKey(m.game, m.nameKey, m.code);
@@ -260,11 +281,14 @@ export function hotReasonsForCard(card, index) {
     reasons.push(...e.reasons);
   }
   reasons.push(...exactReasons(card, index));
-  return reasons.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+  const value = Number(card.price) || Number(card.basePrice) || 0;
+  const kept = value > 0 && value < META_MIN_CARD_VALUE ? reasons.filter(r => r.kind !== 'meta') : reasons;
+  return kept.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
 }
 
 // Which outside sources a set of reasons came from, so the notice can
-// credit them (TopDeck.gg's terms require a visible credit and link).
+// credit them (TopDeck.gg's terms require a visible credit and link; the
+// others get one too).
 export function reasonSources(reasons) {
   return [...new Set(reasons.filter(r => r.kind === 'meta').map(r => r.source))]
     .filter(s => META_SOURCES[s]);
@@ -272,10 +296,10 @@ export function reasonSources(reasons) {
 
 // The most-played cards for one game, best share first, for the Hot cards
 // window. One row per card (its best qualifying format/source).
-export function topMetaCards(meta, game, limit = 40) {
+export function topMetaCards(meta, game, limit = 40, now = Date.now()) {
   const best = new Map();
   for (const m of meta) {
-    if (m.game !== game || m.totalDecks < META_MIN_DECKS) continue;
+    if (m.game !== game || m.totalDecks < META_MIN_DECKS || !isFresh(m, now)) continue;
     const share = metaSharePct(m);
     if (share < META_MIN_SHARE_PCT) continue;
     const k = `${m.nameKey}#${m.code}`;

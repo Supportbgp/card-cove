@@ -203,13 +203,17 @@ export default function QuoteSection() {
       <ul>
         <li>
           <strong>Tournament play</strong>: the card is in at least 10% of
-          the last 30 days of tournament decklists (from Limitless and
-          TopDeck.gg, updated daily). Covers Pokemon, Magic, One Piece,
-          Riftbound and Yu-Gi-Oh best; SWU, Gundam and Lorcana have fewer
-          online events, so less shows up. For <strong>One Piece and
-          Gundam</strong>, fill in the card's Set and Number (e.g. OP13 /
-          016): one name covers many different cards there, so the note
-          only appears for the exact card.
+          the last 30 days of tournament decklists, updated daily (Magic
+          Commander: the last 7 days). Sources: Limitless (Pokemon, One
+          Piece), TopDeck.gg (Magic Commander and Legacy, Riftbound), the
+          MTGO results cache (Magic Modern, Standard, Pioneer; it updates
+          weekly), Egman Events (Gundam), Yu-Gi-Oh! Meta (Yu-Gi-Oh) and SWU
+          Meta Stats (Star Wars: Unlimited). Lorcana has no source yet. A
+          card under $2 (going by the row's price) doesn't get this reason:
+          a cheap staple in every deck doesn't change what we'd pay. For{' '}
+          <strong>One Piece and Gundam</strong>, fill in the card's Set and
+          Number (e.g. OP13 / 016): one name covers many different cards
+          there, so the note only appears for the exact card.
         </li>
         <li>
           <strong>Selling fast</strong>: we sold 3 or more of this exact card

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { GAMES } from '../../lib/cardUtils.js';
 import {
-  META_SOURCES, META_MIN_DECKS, META_MIN_SHARE_PCT, SALES_MIN_COPIES, SALES_WINDOW_DAYS, PRICE_MIN_RISE_PCT,
+  META_SOURCES, META_MIN_DECKS, META_MIN_SHARE_PCT, META_MIN_CARD_VALUE, SALES_MIN_COPIES, SALES_WINDOW_DAYS, PRICE_MIN_RISE_PCT,
   topMetaCards, metaUpdatedAt, reasonsOfKind, formatLabel,
 } from '../../lib/hotCards.js';
 
@@ -133,10 +133,14 @@ export default function HotCardsModal({ hot, onClose }) {
             )}
             <p className="hot-credit">
               Updated daily. Data provided by{' '}
-              <a href={META_SOURCES.limitless.url} target="_blank" rel="noopener noreferrer">Limitless</a>
-              {' '}(last update {formatDate(updated.limitless)}) and{' '}
-              <a href={META_SOURCES.topdeck.url} target="_blank" rel="noopener noreferrer">TopDeck.gg</a>
-              {' '}(last update {formatDate(updated.topdeck)}).
+              {Object.keys(META_SOURCES).map((s, i, all) => (
+                <span key={s}>
+                  {i > 0 && (i === all.length - 1 ? ' and ' : ', ')}
+                  <a href={META_SOURCES[s].url} target="_blank" rel="noopener noreferrer">{META_SOURCES[s].label}</a>
+                  {' '}(last update {formatDate(updated[s])})
+                </span>
+              ))}.
+              {' '}Cheap staples (under ${META_MIN_CARD_VALUE}) don't get a tournament notice on a quote row.
             </p>
           </div>
 

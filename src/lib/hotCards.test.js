@@ -27,12 +27,19 @@ describe('hotNameKey', () => {
     expect(hotNameKey('Porygon2')).toBe('porygon2');
   });
 
+  it('treats SWU "Name | Subtitle" like "Name - Subtitle", and drops invisible characters', () => {
+    expect(hotNameKey('Pre Vizsla | Strong-Willed Ruler')).toBe(hotNameKey('Pre Vizsla - Strong-Willed Ruler'));
+    expect(hotNameKey('Airframe\u200b Seizure')).toBe('airframe seizure');
+    expect(hotNameKey('Zaku \u2161')).toBe(hotNameKey('Zaku II'));
+  });
+
   it('matches a double-faced card by its front face', () => {
     expect(hotNameKey('Delver of Secrets // Insectile Aberration')).toBe('delver of secrets');
   });
 
   it('is the same function meta-check uses for meta_cards.name_key', () => {
-    for (const n of ['Pokémon Trader', 'Sol Ring (CMR)', 'Charizard 4/102', 'Virizion-EX', 'A // B', "Boss’s Orders", 'Porygon2', 'Mewtwo - 052']) {
+    for (const n of ['Pokémon Trader', 'Sol Ring (CMR)', 'Charizard 4/102', 'Virizion-EX', 'A // B', "Boss’s Orders", 'Porygon2', 'Mewtwo - 052',
+      'Pre Vizsla | Strong-Willed Ruler', 'Airframe\u200b Seizure', 'Zaku \u2161']) {
       expect(edgeHotNameKey(n)).toBe(hotNameKey(n));
     }
   });
@@ -134,6 +141,19 @@ describe('buildHotIndex / hotReasonsForCard', () => {
     expect(reasons[0].text).toBe('Hot list: Commander staple');
   });
 
+  it('ignores tournament counts older than a few days', () => {
+    const index = buildHotIndex({ meta: [meta({ updated_at: '2026-10-30T13:40:00Z' })], now: NOW });
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic' }, index)).toEqual([]);
+  });
+
+  it("leaves tournament play off a cheap card, but keeps it when the value isn't known", () => {
+    const index = buildHotIndex({ meta: [meta()], hotList: [{ id: 'h', game: 'Magic', name: 'Sol Ring', reason: '' }], now: NOW });
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic', price: 1.5 }, index).map(r => r.kind)).toEqual(['list']);
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic', price: null, basePrice: 1 }, index).map(r => r.kind)).toEqual(['list']);
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic', price: 8 }, index).map(r => r.kind)).toEqual(['list', 'meta']);
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic' }, index).map(r => r.kind)).toEqual(['list', 'meta']);
+  });
+
   it('returns nothing for a blank name or no index', () => {
     const index = buildHotIndex({ meta: [meta()], now: NOW });
     expect(hotReasonsForCard({ name: '  ', game: 'Magic' }, index)).toEqual([]);
@@ -148,8 +168,13 @@ describe('topMetaCards', () => {
       meta({ name: 'Mana Crypt', name_key: 'mana crypt', decks: 800 }),
       meta({ format: 'Legacy', decks: 90, total_decks: 100 }),
       meta({ game: 'Pokemon', name: 'Ultra Ball', name_key: 'ultra ball' }),
-    ], 'Magic');
+    ], 'Magic', 40, NOW);
     expect(rows.map(r => [r.name, r.share, r.format])).toEqual([['Sol Ring', 90, 'Legacy'], ['Mana Crypt', 80, 'EDH']]);
+  });
+
+  it('leaves out counts the daily check stopped refreshing', () => {
+    const stale = meta({ updated_at: '2026-10-30T13:40:00Z' });
+    expect(topMetaCards([stale], 'Magic', 40, NOW)).toEqual([]);
   });
 });
 
