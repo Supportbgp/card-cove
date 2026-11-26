@@ -98,6 +98,11 @@ describe('egmanDeckCards', () => {
     ]);
   });
 
+  it('also reads pairs separated by "|" (a few real links)', () => {
+    const url = 'https://deckbuilder.egmanevents.com/?deck=GD05-068:1|GD04-038:4,ST01-015:2&type=gundam';
+    expect(egmanDeckCards(url, new Map()).map(c => [c.code, c.count])).toEqual([['GD05-68', 1], ['GD04-38', 4], ['ST01-15', 2]]);
+  });
+
   it('returns nothing for a missing or broken link', () => {
     expect(egmanDeckCards(undefined, new Map())).toEqual([]);
     expect(egmanDeckCards('not a url', new Map())).toEqual([]);

@@ -170,7 +170,8 @@ export function egmanDeckCards(url: unknown, nameByCode: Map<string, string>): D
   } catch {
     return out;
   }
-  for (const part of deck.split(",")) {
+  // Pairs are comma-separated; a few real links use "|" instead.
+  for (const part of deck.split(/[,|]/)) {
     const m = part.trim().match(/^([A-Za-z0-9]+-[A-Za-z0-9]+):(\d+)$/);
     if (!m) continue;
     const code = cardCode("", m[1]);

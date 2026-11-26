@@ -247,17 +247,28 @@ async function runMtgo(job: Extract<Job, { source: "mtgo" }>, files: unknown, st
   if (paths.length === 0) throw new Error("No MTGO files sent for this format (the workflow lists them)");
   const tally = newTally();
   let events = 0;
+  let failedFiles = 0;
   let next = 0;
   const worker = async () => {
     while (next < paths.length) {
       if (Date.now() - started > TIME_BUDGET_MS) return;
       const path = paths[next++];
-      const data = await getJson(MTGO_RAW + path, "MTGO cache");
+      let data;
+      try {
+        data = await getJson(MTGO_RAW + path, "MTGO cache");
+      } catch {
+        // A file renamed or removed since the workflow listed it: skip it
+        // rather than lose the whole format.
+        failedFiles++;
+        continue;
+      }
       events++;
       for (const d of Array.isArray(data?.Decks) ? data.Decks : []) addDeck(tally, job.game, mtgoDeckCards(d));
     }
   };
   await Promise.all(Array.from({ length: MTGO_CONCURRENCY }, worker));
+  if (events === 0) throw new Error(`None of the ${paths.length} MTGO files could be read`);
+  if (failedFiles) console.warn(`meta-check ${job.format}: skipped ${failedFiles} unreadable MTGO file(s)`);
   return { tally, events };
 }
 

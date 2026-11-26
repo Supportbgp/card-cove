@@ -146,13 +146,30 @@ export function numberKey(n) {
 }
 
 // Set names differ between sources ("SV03: Obsidian Flames" on TCGplayer,
-// "Obsidian Flames" elsewhere): same once a leading code is dropped, or one
-// contains the other.
+// "Obsidian Flames" elsewhere): the same once a leading code is dropped
+// ('exact'), or one contains the other ('loose', which also lets "Base Set"
+// match "Base Set 2", so callers prefer exact matches).
+function setKey(x) {
+  return exactNameKey(x).replace(/^[a-z0-9.]+:\s*/, '');
+}
+
+export function setMatchKind(a, b) {
+  const x = setKey(a);
+  const y = setKey(b);
+  if (!x || !y) return null;
+  if (x === y) return 'exact';
+  return x.includes(y) || y.includes(x) ? 'loose' : null;
+}
+
 export function looseSetMatch(a, b) {
-  const clean = (x) => exactNameKey(x).replace(/^[a-z0-9.]+:\s*/, '');
-  const x = clean(a);
-  const y = clean(b);
-  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+  return setMatchKind(a, b) !== null;
+}
+
+// The candidates for the row's Set: exact matches if there are any, else
+// loose ones.
+function bySet(list, set) {
+  const exact = list.filter(m => setMatchKind(set, m.set) === 'exact');
+  return exact.length ? exact : list.filter(m => setMatchKind(set, m.set) === 'loose');
 }
 
 export function metaSharePct(m) {
@@ -306,9 +323,17 @@ function marketReasonForCard(card, index) {
   if (!byName) return null;
   const candidates = (byName.get(hotNameKey(card.name)) || []).filter(m => !card.game || m.game === card.game);
   const num = numberKey(card.number);
+  const hasSet = !!String(card.set ?? '').trim();
   let prints;
-  if (num) prints = candidates.filter(m => numberKey(m.number) === num);
-  else if (String(card.set ?? '').trim()) prints = candidates.filter(m => looseSetMatch(card.set, m.set));
+  if (num) {
+    prints = candidates.filter(m => numberKey(m.number) === num);
+    // Several sets can have a card with this number: the row's Set picks
+    // among them when it matches any.
+    if (hasSet && prints.length > 1) {
+      const inSet = bySet(prints, card.set);
+      if (inSet.length) prints = inSet;
+    }
+  } else if (hasSet) prints = bySet(candidates, card.set);
   else return null;
   if (!prints.length) return null;
   const printing = exactNameKey(card.printing === 'Nonfoil' ? 'Normal' : card.printing);

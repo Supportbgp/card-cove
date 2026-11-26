@@ -267,6 +267,15 @@ describe('market climbs (TCGCSV)', () => {
     expect(r.pct).toBe(34);
   });
 
+  it('uses the Set to pick among same-number prints from different sets, exact set first', () => {
+    const two = buildHotIndex({ market: [
+      row({ product_id: 10, sub_type: 'Holofoil', name: 'Charizard', name_key: 'charizard', set_name: 'Base Set 2', number: '4/130', pct_change: 80, old_price: 10, new_price: 18 }),
+      row({ product_id: 11, sub_type: 'Holofoil', name: 'Charizard', name_key: 'charizard', set_name: 'Base Set', number: '4/102', pct_change: 25, old_price: 300, new_price: 375 }),
+    ], now: NOW });
+    const [r] = hotReasonsForCard({ name: 'Charizard', game: 'Pokemon', number: '4', set: 'Base Set' }, two);
+    expect(r.pct).toBe(25);
+  });
+
   it('falls back to the Set when there is no number', () => {
     const [r] = hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon', set: '151' }, index);
     expect(r.pct).toBe(60);
