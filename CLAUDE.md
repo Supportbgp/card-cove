@@ -6733,6 +6733,168 @@ the catalog only changes what that row actually fills in.
   Staff docs: `ImportExportSection.jsx` (the old warning that Merge wipes a
   hand-typed Cost replaced by how Merge works now).
 
+## Hot cards: more tournament sources, and fewer false alarms
+
+Follow-up to "Hot cards" after its first weeks of daily runs. The last run
+before this (2026-11-16) counted, per job, the decklists below; several
+games had nothing:
+
+| Game | Before | Now (source) |
+|---|---|---|
+| Pokemon | 3,057 (Limitless) | unchanged |
+| Magic Commander | 1,711 (TopDeck.gg, 7 days) | unchanged |
+| Riftbound | 1,328 (TopDeck.gg) | unchanged |
+| One Piece | 913 (Limitless) | unchanged |
+| Magic Legacy | 134 (TopDeck.gg) | unchanged |
+| Gundam | 57 (Limitless) | ~870 (Egman Events) |
+| Magic Modern / Standard / Pioneer | 22 / 2 / 0 (TopDeck.gg) | ~2,570 / ~1,460 / ~725 (MTGO cache) |
+| Yu-Gi-Oh | 4 (TopDeck.gg) | ~330 (Yu-Gi-Oh! Meta) |
+| SWU | 0 (Limitless) | ~2,790 (SWU Meta Stats) |
+| Lorcana | 0 | still none |
+
+Sources were researched and tested live first (not guessed). The user
+confirmed **permission to use Egman's tournament data, Yu-Gi-Oh! Meta and
+the MTGO decklist cache**; SWU Meta Stats is a documented public API.
+Every source is credited by name with a link wherever its data shows
+(`META_SOURCES` in `hotCards.js`).
+
+- **New `meta-check` jobs** (`supabase/functions/meta-check/index.ts`,
+  parsers in `decks.ts`):
+  - **Egman** (`deckbuilder.egmanevents.com/api`): `/tournaments/gundam`
+    (top cuts, including the Limitless Gundam events, so the Limitless
+    Gundam job was dropped to avoid counting them twice) plus
+    `/standalone/gundam` (store events and power rankings, mostly Japanese
+    Bandai TCG+ events). A decklist is a link whose `deck` parameter lists
+    `CODE:COUNT` pairs (`egmanDeckCards`); names come from `/cards/gundam`
+    by code. GD06 was checked: it's already played at English events, so
+    no set filter.
+  - **Yu-Gi-Oh! Meta** (`yugiohmeta.com/api/v1/top-decks?created[$gte]=`):
+    one call; `main`/`extra`/`side` with card names. Only decks with
+    `ocg`, `genesys`, `illegal` and `incomplete` all false count
+    (`isYgoAdvancedDeck`): about 330 of 715 in a month. YGOProDeck's
+    tournament decks (passcodes only, no dates) were the alternative.
+  - **SWU Meta Stats** (`swumetastats.com/api`, OpenAPI documented):
+    `/cards?type=all&includeUsage=true&sortBy=usage` already counts usage
+    per card (`appearances`, and `pct1/2/3` = share of decks with 1/2/3
+    copies), so this job makes rows directly (`swuUsageRows`) instead of
+    tallying decklists; the deck total comes from `/decklists?take=1`'s
+    `totalCount`. Premier format.
+  - **MTGODecklistCache** (`github.com/Jiliac/MTGODecklistCache`,
+    `Tournaments/mtgo.com_limited_data/YYYY/MM/DD/<format>-....json`):
+    Modern, Standard, Pioneer (`{ Decks: [{ Mainboard, Sideboard }] }`).
+    Updated weekly, so these lag by up to a week. **The workflow lists the
+    files, not the function**: GitHub's API limits calls without a login
+    per IP address, and Supabase's outgoing IPs are shared with other
+    customers, so the function could run out. `meta-check.yml` lists this
+    month's and last month's files with its own `GITHUB_TOKEN` (read-only,
+    `permissions: contents: read`) and sends only the paths in every job's
+    body (`mtgoFiles`); the token never leaves GitHub. The function accepts
+    only paths of exactly the cache's shape (`mtgoPathsFor`, a strict
+    regex) and builds the `raw.githubusercontent.com` URL itself.
+- **Jobs dropped** (they returned 0 decklists on real runs): Limitless
+  SWU/Gundam/Lorcana/Riftbound and TopDeck.gg Modern/Standard/Pioneer/
+  Yu-Gi-Oh/Lorcana. Their old rows age out by the existing "not refreshed
+  in 3 days" cleanup. 11 jobs now, about 15 minutes a day.
+- **Name matching**: `hotNameKey` (both copies) now also treats SWU's
+  `Name | Subtitle` as `Name - Subtitle` (how other sources and the
+  catalog write it) and drops zero-width characters (Egman's data has a
+  zero-width space in "Airframe Seizure").
+- **Fewer false alarms**:
+  - **Stale counts are ignored** in the app (`META_MAX_AGE_DAYS` = 4):
+    if a source stops working, its old numbers stop flagging cards instead
+    of showing forever (the function only cleans old rows when some job
+    runs).
+  - **Cheap staples** (`META_MIN_CARD_VALUE` = $2): a quote row whose
+    price (else market price) is known and under $2 gets no tournament
+    reason, since Ultra Ball or Ash Blossom being in 90% of decks doesn't
+    change what we'd pay. Hot list, sales and price reasons still show.
+  - **Not done: weighting by placement.** Most new sources are already
+    top-cut or leaderboard lists, and weighting would turn "in 52% of
+    decks" into a score staff can't check against anything.
+- The Hot cards window credits every source with its last update date.
+- Tests: new `decks.test.ts` cases (each parser on real-shaped data, the
+  MTGO path check rejecting `../`, URLs and query strings, SWU rows) and
+  `hotCards.test.js` cases (the new name-key rules match on both sides,
+  stale counts and cheap cards). Each parser was also run against live
+  responses: Gundam 872 decklists (Overflowing Affection 56%), Yu-Gi-Oh
+  330 (Ash Blossom 98%), SWU 2,786 (No Glory, Only Results 35%).
+
+**Requires redeploying `meta-check`** (`supabase functions deploy
+meta-check`, staging first with `--project-ref`); the workflow change
+ships with the merge. No migration, no new secret.
+
+## Hot cards: market price climbs from TCGCSV
+
+The other half of the same follow-up: "Price climbing" only covered cards
+we track (priced $25+, from our own daily price check, so it needed weeks
+of our own history). This adds TCGplayer's market price for any card, with
+30 days of history from day one.
+
+- **Source: TCGCSV** (tcgcsv.com), which republishes TCGplayer's prices for
+  every game daily, plus a daily archive back to 2024-02. Its FAQ:
+  "Permission is implicit"; it asks for a clear User-Agent (ours:
+  `card-cove-market-check`) and a short pause between requests (250ms).
+  Checked live before building: an archive
+  (`/archive/tcgplayer/prices-YYYY-MM-DD.ppmd.7z`, ~4 MB, ~90 MB unpacked)
+  holds `<date>/<categoryId>/<groupId>/prices` files
+  (`{ results: [{ productId, marketPrice, subTypeName, ... }] }`); names,
+  numbers and links come from `/tcgplayer/<cat>/<group>/products`
+  (`extendedData` `Number`; sealed products have none) and set names from
+  `/tcgplayer/<cat>/groups`. Category ids: Magic 1, Yu-Gi-Oh 2, Pokemon 3,
+  One Piece 68, Lorcana 71, SWU 79, Gundam 86, Riftbound 89. Pokemon Japan
+  (85) is left out: its names would match English cards in our catalog.
+- **Where it runs: GitHub Actions, not an Edge Function.** The archives are
+  PPMd 7z files (Deno can't unpack those) and ~90 MB unpacked (past an Edge
+  Function's memory). `.github/workflows/market-check.yml` runs
+  `scripts/market-movers/run.js` daily at 21:17 UTC (TCGCSV updates around
+  20:00 UTC): download the latest day and the day 30 days before, unpack
+  with the runners' `7z`, compare TCGplayer market prices per product and
+  finish, look up only the climbers' sets, then replace each game's rows
+  in `market_movers` through PostgREST with the `SUPABASE_SERVICE_ROLE_KEY`
+  secret (env only, never printed). A game that fails keeps yesterday's
+  rows. `DRY_RUN=1 node scripts/market-movers/run.js` prints what it would
+  save without writing (needs `7z` on the PATH). A full run took ~2.5
+  minutes on real data.
+- **What counts as a climb** (`scripts/market-movers/lib.js`): worth $3+
+  now, $0.50+ before, up 20-400%. Over 400% in a month was almost always
+  one odd sale on a barely traded listing in the real data (a $0.75 card
+  "to" $440, a $280 card "to" $2,998), so it's left out. Each game keeps
+  its 600 biggest **dollar** gains (a $20 -> $30 card matters more on a
+  trade-in than a $3 card doubling), ~2,000 rows in all, so the app's
+  sign-in load stays small. First real run: Magic 1,550 climbers (600
+  kept), Pokemon 1,329 (600), Yu-Gi-Oh 786 (600), One Piece 95, Riftbound
+  53, Lorcana 21, SWU 19, Gundam 8.
+- **`phase23_market_movers.sql`**: the table (product id + finish key,
+  game, name, `name_key` = `hotNameKey(name)`, set, number, old/new price,
+  % change, TCGplayer link, `updated_at`), staff-only per phase18. The
+  script imports `hotNameKey` straight from `src/lib/hotCards.js` (it's in
+  the same repo, not an Edge Function, so no duplicate).
+- **App** (`hotCards.js`): `useHotCards` loads `market_movers` at sign-in
+  (only the columns used). A quote row gets **"TCGplayer market up 34% in
+  30 days ($100.00 -> $134.00)"** only for its exact print: same game and
+  name key, then its **Number** (`numberKey`: the part before "/", leading
+  zeros and Yu-Gi-Oh's "-EN" dropped, so "199/165" = "199" and "LOB-EN001"
+  = "LOB-001"), else its **Set** (`looseSetMatch`: TCGplayer's "SV03:
+  Obsidian Flames" = "Obsidian Flames"). A row with neither gets nothing,
+  so prints that share a name don't lump together (the Snorlax lesson from
+  "Change history and safer saves"). Printing picks the finish when it
+  matches one (Holofoil, Reverse Holofoil, Foil...; Nonfoil = Normal).
+  Rows older than 4 days are ignored, same as tournament counts. Credited
+  as "TCGCSV (TCGplayer prices)" with a link (`CREDIT_SOURCES`).
+- **Hot cards window**: a new "Market climbing" section (per game, the
+  biggest dollar gains, linked to TCGplayer through `safeHttpUrl`); the old
+  "Price climbing" section is now labeled "(cards we track)".
+- Tests: `scripts/market-movers/lib.test.js` (prices parsing, the climb
+  rules incl. the 400% cut, sealed products skipped, non-TCGplayer links
+  dropped, date math, categories), new `hotCards.test.js` cases (number,
+  Set and finish matching; no match without a print; stale rows;
+  `numberKey`/`looseSetMatch`) and a new `e2e/hot-cards.spec.js` case (no
+  notice until the Number is filled in, then the climb with its credit).
+
+**Requires running `phase23_market_movers.sql`** (staging first). The
+workflow starts with the merge; run "Daily market price climbs" once by
+hand to fill the table right away. No Edge Function deploy, no new secret.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
@@ -6793,7 +6955,10 @@ than repeated.
     a real fix means deterministic icon-matching against a reference
     library, a much bigger investment than the field's current yield
     justifies.
-  - Japanese-print price coverage — no verified data source yet. TCGdex
+  - Japanese-print price coverage — TCGCSV has a Pokemon Japan category
+    (85, TCGplayer prices) that `market-check` deliberately leaves out
+    (see "Hot cards: market price climbs from TCGCSV"); it's the most
+    likely source to check first. TCGdex
     (now the Pokemon source) serves other languages under its own
     language-prefixed endpoints (`/v2/ja/...`), but whether those carry
     TCGPlayer pricing is unconfirmed; check a real sample before relying
@@ -6809,10 +6974,11 @@ than repeated.
   - The review rows are tall on a phone (one field per line) — fine for a
     handful of cards, long for a 50-card stack; consider a compact
     collapsed row once real stacks show whether it's a problem.
-- **Hot cards, next steps (see "Hot cards" above)**: flag on Sorting rows
-  and in Catalog too if staff want it; TopDeck.gg game names for One Piece,
-  SWU and Gundam weren't confirmed, so those come from Limitless only;
-  Lorcana tournament data is thin on both sources.
+- **Hot cards, next steps (see "Hot cards" and "Hot cards: more
+  tournament sources")**: flag on Sorting rows and in Catalog too if staff
+  want it; Lorcana has no tournament source (Limitless and TopDeck.gg
+  empty, inkdecks forbids bots, dreamborn blocks its API), so only sales,
+  price and the hot list cover it.
 - **Change history, next steps (see "Change history and safer saves")**:
   `catalog_history` grows forever (one small row per change); add a
   cleanup of rows older than a year or two if it gets big. History covers

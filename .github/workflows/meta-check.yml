@@ -2,15 +2,22 @@ name: Daily tournament meta check
 
 # Hot cards (CLAUDE.md "Hot cards"): calls the meta-check Edge Function once
 # per job (one source + game + format), which counts how often each card
-# shows up in the last 30 days of tournament decklists from Limitless and
-# TopDeck.gg and saves the counts to meta_cards. Uses the same
+# shows up in the last 30 days of tournament decklists (Limitless,
+# TopDeck.gg, Egman, Yu-Gi-Oh! Meta, SWU Meta Stats and the MTGO decklist
+# cache) and saves the counts to meta_cards. Uses the same
 # SUPABASE_SERVICE_ROLE_KEY repository secret as the price check (never
 # log or echo it). The TopDeck.gg key is an Edge Function secret
 # (TOPDECK_API_KEY), not a GitHub one: it never leaves Supabase.
 #
 # Jobs run one at a time with a pause between them, so neither API's rate
 # limit is reached (Limitless: 50 requests / 5 minutes; TopDeck.gg: 5
-# searches / minute). A full run takes about 20 minutes.
+# searches / minute). A full run takes about 15 minutes.
+#
+# The MTGO jobs need the list of result files in Jiliac/MTGODecklistCache.
+# Listing them goes through GitHub's API, which limits calls without a
+# login per IP address, and Supabase's shared IPs could run out; so this
+# workflow lists them with its own token (read-only, this run only) and
+# sends just the file paths. The token itself never leaves GitHub.
 on:
   schedule:
     # 13:37 UTC daily, after the price check (13:07).
@@ -21,7 +28,29 @@ jobs:
   meta-check:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
+      - name: List recent MTGO result files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          REPO="repos/Jiliac/MTGODecklistCache"
+          ROOT="Tournaments/mtgo.com_limited_data"
+          echo '[]' > mtgo-files.json
+          # This month and last month cover the 30-day window.
+          for MONTH in "$(date -u +%Y/%m)" "$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y/%m)"; do
+            YEAR="${MONTH%/*}"; MM="${MONTH#*/}"
+            SHA=$(gh api "$REPO/contents/$ROOT/$YEAR" --jq ".[] | select(.name == \"$MM\") | .sha" 2>/dev/null || true)
+            if [ -z "$SHA" ]; then echo "No MTGO folder for $MONTH"; continue; fi
+            gh api "$REPO/git/trees/$SHA?recursive=1" \
+              --jq "[.tree[] | select(.type == \"blob\") | \"$MONTH/\" + .path | select(test(\"/(modern|standard|pioneer)-[a-z0-9-]+\\\\.json$\"))]" \
+              > month.json || echo '[]' > month.json
+            jq -s 'add' mtgo-files.json month.json > merged.json && mv merged.json mtgo-files.json
+          done
+          echo "MTGO files listed: $(jq length mtgo-files.json)"
+
       - name: Call meta-check Edge Function for each job
         env:
           SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -39,7 +68,7 @@ jobs:
               -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
               -H "apikey: $SERVICE_ROLE_KEY" \
               -H "Content-Type: application/json" \
-              -d "{\"job\": $JOB}"
+              -d "$(jq -c -n --argjson job "$JOB" --slurpfile files mtgo-files.json '{job: $job, mtgoFiles: $files[0]}')"
           }
 
           while [ "$JOB" -lt "$MAX_JOBS" ]; do

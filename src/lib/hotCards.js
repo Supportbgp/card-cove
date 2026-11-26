@@ -1,9 +1,11 @@
 // Hot cards (CLAUDE.md "Hot cards"): tells staff, while quoting, that a
 // card is sought after, and why. Four signals, each matched by game + name:
 //   * meta:  played in a good share of recent tournament decklists
-//            (meta_cards, rebuilt daily from Limitless and TopDeck.gg)
+//            (meta_cards, rebuilt daily by meta-check; sources below)
 //   * sales: we sold several copies recently (sales)
 //   * price: its market price climbed (price_movers, from the daily price check)
+//   * market: TCGplayer's market price for this print climbed (market_movers,
+//            from TCGCSV's daily archives; covers cards we don't stock too)
 //   * list:  staff put it on the hot list by hand (hot_cards)
 
 // A meta claim needs enough decklists behind it, and a real share of them.
@@ -14,11 +16,33 @@ export const SALES_MIN_COPIES = 3;
 export const SALES_WINDOW_DAYS = 30;
 // "Price climbing": up at least this much over the price_movers window.
 export const PRICE_MIN_RISE_PCT = 20;
+// Tournament counts older than this are ignored: the daily check stopped
+// reaching that source, and old numbers shouldn't keep flagging cards.
+export const META_MAX_AGE_DAYS = 4;
+// Below this value (the quote row's price, else its market price), a card
+// being played everywhere (Ultra Ball, Ash Blossom) doesn't change what we'd
+// pay, so the tournament reason is left out. Unknown value: still shown.
+export const META_MIN_CARD_VALUE = 2;
 
+// Every tournament source meta-check reads, for credits and labels.
 export const META_SOURCES = {
   limitless: { label: 'Limitless', url: 'https://play.limitlesstcg.com' },
   topdeck: { label: 'TopDeck.gg', url: 'https://topdeck.gg' },
+  egman: { label: 'Egman Events', url: 'https://deckbuilder.egmanevents.com' },
+  ygometa: { label: 'Yu-Gi-Oh! Meta', url: 'https://www.yugiohmeta.com' },
+  swumeta: { label: 'SWU Meta Stats', url: 'https://swumetastats.com' },
+  mtgo: { label: 'MTGO results (MTGODecklistCache)', url: 'https://github.com/Jiliac/MTGODecklistCache' },
 };
+
+// Market climbs come from TCGplayer prices republished by TCGCSV.
+export const MARKET_SOURCE = { label: 'TCGCSV (TCGplayer prices)', url: 'https://tcgcsv.com' };
+// Everything a notice can credit.
+export const CREDIT_SOURCES = { ...META_SOURCES, tcgcsv: MARKET_SOURCE };
+
+function isFresh(m, now) {
+  if (!m.updatedAt) return true;
+  return now - new Date(m.updatedAt).getTime() <= META_MAX_AGE_DAYS * 86400000;
+}
 
 // The same name normalization meta-check uses for meta_cards.name_key
 // (duplicated there, per this repo's no-shared-code-with-Edge-Functions
@@ -28,9 +52,13 @@ export const META_SOURCES = {
 export function hotNameKey(name) {
   let n = String(name ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '');
   n = n.replace(/[‘’]/g, "'").toLowerCase();
+  // Invisible characters some sources leave in names (a zero-width space in "Airframe Seizure").
+  n = n.replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
   const face = n.indexOf(' // ');
   if (face > 0) n = n.slice(0, face);
   n = n.replace(/\([^)]*\)/g, ' ').replace(/\[[^\]]*\]/g, ' ');
+  // SWU's "Name | Subtitle" (SWU Meta Stats) is "Name - Subtitle" elsewhere.
+  n = n.replace(/\s*\|\s*/g, ' - ');
   n = n.replace(/\s+/g, ' ').trim();
   // A number after a space or dash only, so "Porygon2" stays itself.
   n = n.replace(/(\s+|\s*-\s*)#?\d+(\/\d+)?$/, '').trim();
@@ -98,6 +126,52 @@ export function rowToPriceMover(r) {
   };
 }
 
+export function rowToMarketMover(r) {
+  return {
+    productId: r.product_id, subType: r.sub_type || '', game: r.game || '', name: r.name || '',
+    nameKey: r.name_key || hotNameKey(r.name), set: r.set_name || '', number: r.number || '',
+    oldPrice: Number(r.old_price), newPrice: Number(r.new_price), pct: Number(r.pct_change),
+    url: r.url || '', windowDays: Number(r.window_days) || 30, updatedAt: r.updated_at || null,
+  };
+}
+
+// A printed number in one comparable form: the part before "/", upper
+// case, Yu-Gi-Oh's English region code dropped ("LOB-EN001" = "LOB-001"),
+// leading zeros of every digit run dropped ("199/165" -> "199",
+// "OP01-016" -> "OP1-16"). Both sides go through this, so they compare.
+export function numberKey(n) {
+  return String(n ?? '').trim().toUpperCase().split('/')[0]
+    .replace(/-EN(?=\d)/, '-')
+    .replace(/(^|[^0-9])0+(?=\d)/g, '$1');
+}
+
+// Set names differ between sources ("SV03: Obsidian Flames" on TCGplayer,
+// "Obsidian Flames" elsewhere): the same once a leading code is dropped
+// ('exact'), or one contains the other ('loose', which also lets "Base Set"
+// match "Base Set 2", so callers prefer exact matches).
+function setKey(x) {
+  return exactNameKey(x).replace(/^[a-z0-9.]+:\s*/, '');
+}
+
+export function setMatchKind(a, b) {
+  const x = setKey(a);
+  const y = setKey(b);
+  if (!x || !y) return null;
+  if (x === y) return 'exact';
+  return x.includes(y) || y.includes(x) ? 'loose' : null;
+}
+
+export function looseSetMatch(a, b) {
+  return setMatchKind(a, b) !== null;
+}
+
+// The candidates for the row's Set: exact matches if there are any, else
+// loose ones.
+function bySet(list, set) {
+  const exact = list.filter(m => setMatchKind(set, m.set) === 'exact');
+  return exact.length ? exact : list.filter(m => setMatchKind(set, m.set) === 'loose');
+}
+
 export function metaSharePct(m) {
   return m.totalDecks > 0 ? Math.round((m.decks / m.totalDecks) * 100) : 0;
 }
@@ -133,7 +207,7 @@ function shortDate(ms) {
 // One lookup built from all four signals; quote rows ask it per card.
 // `catalog` gives a sale or a tracked price its print's Set (by sku), since
 // the sales and price history rows don't keep one.
-export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = [], catalog = [], now = Date.now() } = {}) {
+export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = [], market = [], catalog = [], now = Date.now() } = {}) {
   const index = new Map();
   const add = (k, reason) => {
     if (!index.has(k)) index.set(k, []);
@@ -143,7 +217,7 @@ export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = []
   // Meta: the best qualifying format per source.
   const bestMeta = new Map();
   for (const m of meta) {
-    if (m.totalDecks < META_MIN_DECKS) continue;
+    if (m.totalDecks < META_MIN_DECKS || !isFresh(m, now)) continue;
     const share = metaSharePct(m);
     if (share < META_MIN_SHARE_PCT) continue;
     const k = metaKey(m.game, m.nameKey, m.code);
@@ -182,8 +256,16 @@ export function buildHotIndex({ meta = [], hotList = [], sales = [], movers = []
   for (const h of hotList) {
     add(key(h.game, h.name), { kind: 'list', text: h.reason ? `Hot list: ${h.reason}` : 'On the hot list', hotId: h.id });
   }
+  // Market climbs by name key; a quote row then picks its game and print.
+  const marketByName = new Map();
+  for (const m of market) {
+    if (!isFresh(m, now) || !Number.isFinite(m.pct)) continue;
+    if (!marketByName.has(m.nameKey)) marketByName.set(m.nameKey, []);
+    marketByName.get(m.nameKey).push(m);
+  }
   index.salesEntries = salesEntries;
   index.moverEntries = moverEntries;
+  index.marketByName = marketByName;
   return index;
 }
 
@@ -223,7 +305,44 @@ function exactReasons(card, index) {
   return out;
 }
 
-const KIND_ORDER = { list: 0, meta: 1, sales: 2, price: 3 };
+function marketReason(m) {
+  return {
+    kind: 'market', name: m.name, game: m.game, pct: m.pct, url: m.url,
+    text: `TCGplayer market up ${Math.round(m.pct)}% in ${m.windowDays} days ($${m.oldPrice.toFixed(2)} → $${m.newPrice.toFixed(2)})`,
+    details: [[m.name, m.set, m.subType].filter(Boolean).join(' · ')],
+  };
+}
+
+// The market climb for this exact print, if there is one. The row has to
+// say which print it is: its Number (matched first), else its Set. A row
+// with neither gets nothing, so prints that share a name don't lump
+// together (the Snorlax lesson). Printing picks the finish when it matches
+// one ("Holofoil"); otherwise the biggest climb among that print's finishes.
+function marketReasonForCard(card, index) {
+  const byName = index.marketByName;
+  if (!byName) return null;
+  const candidates = (byName.get(hotNameKey(card.name)) || []).filter(m => !card.game || m.game === card.game);
+  const num = numberKey(card.number);
+  const hasSet = !!String(card.set ?? '').trim();
+  let prints;
+  if (num) {
+    prints = candidates.filter(m => numberKey(m.number) === num);
+    // Several sets can have a card with this number: the row's Set picks
+    // among them when it matches any.
+    if (hasSet && prints.length > 1) {
+      const inSet = bySet(prints, card.set);
+      if (inSet.length) prints = inSet;
+    }
+  } else if (hasSet) prints = bySet(candidates, card.set);
+  else return null;
+  if (!prints.length) return null;
+  const printing = exactNameKey(card.printing === 'Nonfoil' ? 'Normal' : card.printing);
+  const finish = printing ? prints.filter(m => exactNameKey(m.subType) === printing) : [];
+  const pool = finish.length ? finish : prints;
+  return marketReason(pool.slice().sort((a, b) => b.pct - a.pct)[0]);
+}
+
+const KIND_ORDER = { list: 0, meta: 1, sales: 2, price: 3, market: 4 };
 
 // Reasons a card is hot, list entries first. A quote row with no game yet
 // still gets a heads-up, from any game with the same card name (except
@@ -260,22 +379,36 @@ export function hotReasonsForCard(card, index) {
     reasons.push(...e.reasons);
   }
   reasons.push(...exactReasons(card, index));
-  return reasons.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+  const climb = marketReasonForCard(card, index);
+  if (climb) reasons.push(climb);
+  const value = Number(card.price) || Number(card.basePrice) || 0;
+  const kept = value > 0 && value < META_MIN_CARD_VALUE ? reasons.filter(r => r.kind !== 'meta') : reasons;
+  return kept.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
 }
 
 // Which outside sources a set of reasons came from, so the notice can
-// credit them (TopDeck.gg's terms require a visible credit and link).
+// credit them (TopDeck.gg's terms require a visible credit and link; the
+// others get one too).
 export function reasonSources(reasons) {
-  return [...new Set(reasons.filter(r => r.kind === 'meta').map(r => r.source))]
-    .filter(s => META_SOURCES[s]);
+  const keys = reasons.map(r => (r.kind === 'meta' ? r.source : r.kind === 'market' ? 'tcgcsv' : null));
+  return [...new Set(keys)].filter(s => s && CREDIT_SOURCES[s]);
+}
+
+// The biggest market climbs for one game (dollar gain, like the daily job
+// picks them), for the Hot cards window.
+export function topMarketMovers(market, game, limit = 40, now = Date.now()) {
+  return market
+    .filter(m => m.game === game && isFresh(m, now) && Number.isFinite(m.pct))
+    .sort((a, b) => (b.newPrice - b.oldPrice) - (a.newPrice - a.oldPrice))
+    .slice(0, limit);
 }
 
 // The most-played cards for one game, best share first, for the Hot cards
 // window. One row per card (its best qualifying format/source).
-export function topMetaCards(meta, game, limit = 40) {
+export function topMetaCards(meta, game, limit = 40, now = Date.now()) {
   const best = new Map();
   for (const m of meta) {
-    if (m.game !== game || m.totalDecks < META_MIN_DECKS) continue;
+    if (m.game !== game || m.totalDecks < META_MIN_DECKS || !isFresh(m, now)) continue;
     const share = metaSharePct(m);
     if (share < META_MIN_SHARE_PCT) continue;
     const k = `${m.nameKey}#${m.code}`;

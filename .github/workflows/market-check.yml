@@ -1,0 +1,32 @@
+name: Daily market price climbs
+
+# Hot cards (CLAUDE.md "Hot cards: market price climbs from TCGCSV"): finds
+# cards whose TCGplayer market price rose 20%+ over 30 days, from TCGCSV's
+# daily price archives, and saves them to market_movers
+# (scripts/market-movers/run.js). Writes with the same
+# SUPABASE_SERVICE_ROLE_KEY repository secret as the price check: it's only
+# passed to the script through env, never logged or echoed.
+#
+# TCGCSV refreshes around 20:00 UTC, so this runs after that. The archives
+# are 7z files (PPMd), unpacked with the 7z already on GitHub's runners.
+on:
+  schedule:
+    - cron: "17 21 * * *"
+  workflow_dispatch:
+
+jobs:
+  market-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Find and save market climbs
+        env:
+          SUPABASE_URL: https://pkyeytypgifgyiartgii.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/market-movers/run.js

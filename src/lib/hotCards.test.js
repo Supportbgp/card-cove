@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   hotNameKey, cardCode, buildHotIndex, hotReasonsForCard, reasonSources, topMetaCards, rowToMetaCard, reasonsOfKind,
+  rowToMarketMover, topMarketMovers, numberKey, looseSetMatch,
 } from './hotCards.js';
 import { hotNameKey as edgeHotNameKey, cardCode as edgeCardCode } from '../../supabase/functions/meta-check/decks.ts';
 
@@ -27,12 +28,19 @@ describe('hotNameKey', () => {
     expect(hotNameKey('Porygon2')).toBe('porygon2');
   });
 
+  it('treats SWU "Name | Subtitle" like "Name - Subtitle", and drops invisible characters', () => {
+    expect(hotNameKey('Pre Vizsla | Strong-Willed Ruler')).toBe(hotNameKey('Pre Vizsla - Strong-Willed Ruler'));
+    expect(hotNameKey('Airframe\u200b Seizure')).toBe('airframe seizure');
+    expect(hotNameKey('Zaku \u2161')).toBe(hotNameKey('Zaku II'));
+  });
+
   it('matches a double-faced card by its front face', () => {
     expect(hotNameKey('Delver of Secrets // Insectile Aberration')).toBe('delver of secrets');
   });
 
   it('is the same function meta-check uses for meta_cards.name_key', () => {
-    for (const n of ['Pokémon Trader', 'Sol Ring (CMR)', 'Charizard 4/102', 'Virizion-EX', 'A // B', "Boss’s Orders", 'Porygon2', 'Mewtwo - 052']) {
+    for (const n of ['Pokémon Trader', 'Sol Ring (CMR)', 'Charizard 4/102', 'Virizion-EX', 'A // B', "Boss’s Orders", 'Porygon2', 'Mewtwo - 052',
+      'Pre Vizsla | Strong-Willed Ruler', 'Airframe\u200b Seizure', 'Zaku \u2161']) {
       expect(edgeHotNameKey(n)).toBe(hotNameKey(n));
     }
   });
@@ -134,6 +142,19 @@ describe('buildHotIndex / hotReasonsForCard', () => {
     expect(reasons[0].text).toBe('Hot list: Commander staple');
   });
 
+  it('ignores tournament counts older than a few days', () => {
+    const index = buildHotIndex({ meta: [meta({ updated_at: '2026-10-30T13:40:00Z' })], now: NOW });
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic' }, index)).toEqual([]);
+  });
+
+  it("leaves tournament play off a cheap card, but keeps it when the value isn't known", () => {
+    const index = buildHotIndex({ meta: [meta()], hotList: [{ id: 'h', game: 'Magic', name: 'Sol Ring', reason: '' }], now: NOW });
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic', price: 1.5 }, index).map(r => r.kind)).toEqual(['list']);
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic', price: null, basePrice: 1 }, index).map(r => r.kind)).toEqual(['list']);
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic', price: 8 }, index).map(r => r.kind)).toEqual(['list', 'meta']);
+    expect(hotReasonsForCard({ name: 'Sol Ring', game: 'Magic' }, index).map(r => r.kind)).toEqual(['list', 'meta']);
+  });
+
   it('returns nothing for a blank name or no index', () => {
     const index = buildHotIndex({ meta: [meta()], now: NOW });
     expect(hotReasonsForCard({ name: '  ', game: 'Magic' }, index)).toEqual([]);
@@ -148,8 +169,13 @@ describe('topMetaCards', () => {
       meta({ name: 'Mana Crypt', name_key: 'mana crypt', decks: 800 }),
       meta({ format: 'Legacy', decks: 90, total_decks: 100 }),
       meta({ game: 'Pokemon', name: 'Ultra Ball', name_key: 'ultra ball' }),
-    ], 'Magic');
+    ], 'Magic', 40, NOW);
     expect(rows.map(r => [r.name, r.share, r.format])).toEqual([['Sol Ring', 90, 'Legacy'], ['Mana Crypt', 80, 'EDH']]);
+  });
+
+  it('leaves out counts the daily check stopped refreshing', () => {
+    const stale = meta({ updated_at: '2026-10-30T13:40:00Z' });
+    expect(topMetaCards([stale], 'Magic', 40, NOW)).toEqual([]);
   });
 });
 
@@ -212,5 +238,78 @@ describe('sales and price changes match the exact print', () => {
     const rows = reasonsOfKind(index, 'sales');
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe('Snorlax 143/165');
+  });
+});
+
+describe('market climbs (TCGCSV)', () => {
+  const row = (o = {}) => rowToMarketMover({
+    product_id: 1, sub_type: 'Holofoil', game: 'Pokemon', name: 'Charizard ex - 199/165', name_key: 'charizard ex',
+    set_name: 'SV: Scarlet & Violet 151', number: '199/165', old_price: 100, new_price: 134, pct_change: 34,
+    url: 'https://www.tcgplayer.com/product/1', window_days: 30, updated_at: '2026-11-05T21:30:00Z', ...o,
+  });
+  const market = [
+    row(),
+    row({ product_id: 2, sub_type: 'Normal', name: 'Charizard ex - 006/165', number: '006/165', old_price: 5, new_price: 8, pct_change: 60 }),
+    row({ product_id: 1, sub_type: 'Reverse Holofoil', old_price: 100, new_price: 150, pct_change: 50 }),
+  ];
+  const index = buildHotIndex({ market, now: NOW });
+
+  it('matches the exact print by its number, and credits TCGCSV', () => {
+    const reasons = hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon', number: '199/165' }, index);
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toMatchObject({ kind: 'market', pct: 50 });
+    expect(reasons[0].text).toBe('TCGplayer market up 50% in 30 days ($100.00 → $150.00)');
+    expect(reasonSources(reasons)).toEqual(['tcgcsv']);
+  });
+
+  it('uses the Printing to pick the finish when it matches one', () => {
+    const [r] = hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon', number: '199', printing: 'Holofoil' }, index);
+    expect(r.pct).toBe(34);
+  });
+
+  it('uses the Set to pick among same-number prints from different sets, exact set first', () => {
+    const two = buildHotIndex({ market: [
+      row({ product_id: 10, sub_type: 'Holofoil', name: 'Charizard', name_key: 'charizard', set_name: 'Base Set 2', number: '4/130', pct_change: 80, old_price: 10, new_price: 18 }),
+      row({ product_id: 11, sub_type: 'Holofoil', name: 'Charizard', name_key: 'charizard', set_name: 'Base Set', number: '4/102', pct_change: 25, old_price: 300, new_price: 375 }),
+    ], now: NOW });
+    const [r] = hotReasonsForCard({ name: 'Charizard', game: 'Pokemon', number: '4', set: 'Base Set' }, two);
+    expect(r.pct).toBe(25);
+  });
+
+  it('falls back to the Set when there is no number', () => {
+    const [r] = hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon', set: '151' }, index);
+    expect(r.pct).toBe(60);
+  });
+
+  it("says nothing when the row doesn't say which print it is, or it's another print or game", () => {
+    expect(hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon' }, index)).toEqual([]);
+    expect(hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon', number: '054/197' }, index)).toEqual([]);
+    expect(hotReasonsForCard({ name: 'Charizard ex', game: 'Magic', number: '199' }, index)).toEqual([]);
+  });
+
+  it('ignores climbs the daily job stopped refreshing', () => {
+    const stale = buildHotIndex({ market: [row({ updated_at: '2026-10-20T21:30:00Z' })], now: NOW });
+    expect(hotReasonsForCard({ name: 'Charizard ex', game: 'Pokemon', number: '199' }, stale)).toEqual([]);
+  });
+
+  it('lists a game’s biggest climbs for the Hot cards window', () => {
+    expect(topMarketMovers(market, 'Pokemon', 2, NOW).map(m => m.pct)).toEqual([50, 34]);
+  });
+});
+
+describe('numberKey / looseSetMatch', () => {
+  it('compares printed numbers loosely', () => {
+    expect(numberKey('199/165')).toBe(numberKey('199'));
+    expect(numberKey('OP01-016')).toBe(numberKey('op01-16'));
+    expect(numberKey('LOB-EN001')).toBe(numberKey('LOB-001'));
+    expect(numberKey('SWSH050')).toBe(numberKey('swsh50'));
+    expect(numberKey('199')).not.toBe(numberKey('19'));
+  });
+
+  it('matches set names across sources', () => {
+    expect(looseSetMatch('SV03: Obsidian Flames', 'Obsidian Flames')).toBe(true);
+    expect(looseSetMatch('Base Set', 'Base Set 2')).toBe(true);
+    expect(looseSetMatch('Base Set', '')).toBe(false);
+    expect(looseSetMatch('Fossil', 'Jungle')).toBe(false);
   });
 });

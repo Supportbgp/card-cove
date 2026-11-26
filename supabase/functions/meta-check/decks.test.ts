@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { limitlessDeckCards, topdeckDeckCards, newTally, addDeck, tallyRows, isBasicCard } from './decks.ts';
+import {
+  limitlessDeckCards, topdeckDeckCards, newTally, addDeck, tallyRows, isBasicCard,
+  egmanDeckCards, ygometaDeckCards, isYgoAdvancedDeck, mtgoDeckCards, mtgoPathsFor, swuUsageRows,
+} from './decks.ts';
 
 // Shapes copied from real responses (Limitless standings, TopDeck.gg
 // POST /v2/tournaments with columns: ["decklist"]).
@@ -79,5 +82,87 @@ describe('tally', () => {
     const t = newTally();
     addDeck(t, 'One Piece', [{ name: 'Nami', count: 4, code: 'OP13-16' }, { name: 'Nami', count: 2, code: 'OP01-16' }]);
     expect(tallyRows(t).map(r => r.code).sort()).toEqual(['OP01-16', 'OP13-16']);
+  });
+});
+
+// Shapes copied from real responses (2026-11-25): Egman's deckbuilder,
+// Yu-Gi-Oh! Meta /top-decks, MTGODecklistCache, SWU Meta Stats /cards.
+describe('egmanDeckCards', () => {
+  it('reads CODE:COUNT pairs from the deck link and names them by code', () => {
+    const names = new Map([['GD05-69', 'Strike Freedom'], ['ST12-13', 'Zaku']]);
+    const url = 'https://deckbuilder.egmanevents.com/?deck=GD05-069:4,ST12-013:1,bad,GD09-001:2&type=gundam';
+    expect(egmanDeckCards(url, names)).toEqual([
+      { name: 'Strike Freedom', count: 4, code: 'GD05-69' },
+      { name: 'Zaku', count: 1, code: 'ST12-13' },
+      { name: 'GD09-001', count: 2, code: 'GD09-1' },
+    ]);
+  });
+
+  it('also reads pairs separated by "|" (a few real links)', () => {
+    const url = 'https://deckbuilder.egmanevents.com/?deck=GD05-068:1|GD04-038:4,ST01-015:2&type=gundam';
+    expect(egmanDeckCards(url, new Map()).map(c => [c.code, c.count])).toEqual([['GD05-68', 1], ['GD04-38', 4], ['ST01-15', 2]]);
+  });
+
+  it('returns nothing for a missing or broken link', () => {
+    expect(egmanDeckCards(undefined, new Map())).toEqual([]);
+    expect(egmanDeckCards('not a url', new Map())).toEqual([]);
+  });
+});
+
+describe('Yu-Gi-Oh! Meta decks', () => {
+  const deck = {
+    main: [{ card: { name: 'Ash Blossom & Joyous Spring', usdPrice: 5 }, amount: 3 }],
+    extra: [{ card: { name: 'S:P Little Knight' }, amount: 1 }],
+    side: [{ card: { name: 'Droll & Lock Bird' }, amount: 2 }],
+    ocg: false, genesys: false, illegal: false, incomplete: false,
+  };
+
+  it('reads main, extra and side', () => {
+    expect(ygometaDeckCards(deck).map(c => [c.name, c.count])).toEqual([
+      ['Ash Blossom & Joyous Spring', 3], ['S:P Little Knight', 1], ['Droll & Lock Bird', 2],
+    ]);
+  });
+
+  it('keeps only TCG Advanced decks', () => {
+    expect(isYgoAdvancedDeck(deck)).toBe(true);
+    expect(isYgoAdvancedDeck({ ...deck, ocg: true })).toBe(false);
+    expect(isYgoAdvancedDeck({ ...deck, genesys: true })).toBe(false);
+    expect(isYgoAdvancedDeck({ ...deck, illegal: true })).toBe(false);
+    expect(isYgoAdvancedDeck({ ...deck, incomplete: true })).toBe(false);
+  });
+});
+
+describe('MTGO results', () => {
+  it('reads the main deck and sideboard', () => {
+    const d = { Mainboard: [{ Count: 4, CardName: 'Amulet of Vigor' }], Sideboard: [{ Count: 2, CardName: 'Ba Sing Se' }] };
+    expect(mtgoDeckCards(d)).toEqual([{ name: 'Amulet of Vigor', count: 4 }, { name: 'Ba Sing Se', count: 2 }]);
+  });
+
+  it("fetches only well-formed paths of the job's format inside the window", () => {
+    const paths = [
+      '2026/11/01/modern-challenge-32-2026-11-0112857398.json',
+      '2026/11/01/legacy-challenge-16-2026-11-0112857400.json',
+      '2026/10/01/modern-league-2026-10-0111161.json',
+      '../../secrets.json',
+      'https://evil.example/2026/11/01/modern-x.json',
+      '2026/11/01/modern-x.json?y=1',
+      42,
+    ];
+    expect(mtgoPathsFor(paths, 'modern', Date.UTC(2026, 9, 27))).toEqual(['2026/11/01/modern-challenge-32-2026-11-0112857398.json']);
+    expect(mtgoPathsFor('not a list', 'modern', 0)).toEqual([]);
+  });
+});
+
+describe('swuUsageRows', () => {
+  it('turns per-card usage into rows, estimating copies, and drops rare cards', () => {
+    const cards = [
+      { name: 'Pre Vizsla | Strong-Willed Ruler', usage: { appearances: 350, pct1: 5, pct2: 10, pct3: 20 } },
+      { name: 'Rare Card', usage: { appearances: 10, pct1: 1, pct2: 0, pct3: 0 } },
+      { name: 'Pre Vizsla | Strong-Willed Ruler', usage: { appearances: 1, pct1: 0, pct2: 0, pct3: 0 } },
+    ];
+    expect(swuUsageRows(cards, 1000)).toEqual([
+      { nameKey: 'pre vizsla - strong-willed ruler', code: '', name: 'Pre Vizsla | Strong-Willed Ruler', decks: 350, copies: 850 },
+    ]);
+    expect(swuUsageRows(cards, 0)).toEqual([]);
   });
 });

@@ -58,12 +58,22 @@ any of these rules.
   not become callable with arbitrary request bodies that widen what it
   reads or writes.
 - `meta-check` is the same: service-role bearer only (its own `auth.ts`),
-  called by GitHub Actions, and it only takes a job number. It stores card
-  counts only, never TopDeck/Limitless player names or details.
+  called by GitHub Actions, and it takes a job number plus `mtgoFiles`,
+  MTGO cache file paths the workflow lists. Those paths go through
+  `mtgoPathsFor`'s strict regex and the function builds the fixed
+  raw.githubusercontent.com URL itself: never fetch a URL or host taken
+  from the request body. The workflow's `GITHUB_TOKEN` stays in GitHub
+  (only paths are sent). It stores card counts only, never player names or
+  details from any source.
+- `market-check.yml` runs `scripts/market-movers/run.js` with the
+  service-role key in env only: the script must never print it, and it
+  only writes `market_movers` (upsert + delete of stale rows per game).
+  TCGplayer links it stores must stay `https://www.tcgplayer.com/` ones,
+  and the app still renders them through `safeHttpUrl`.
 - Don't send secrets, tokens or customer data to third-party card APIs
   (Scryfall, TCGdex, YGOPRODeck, Lorcast, Egman, swu-db, Limitless,
-  TopDeck.gg); they get card
-  names and set/number hints only.
+  TopDeck.gg, Yu-Gi-Oh! Meta, SWU Meta Stats, TCGCSV, GitHub raw); they
+  get card names and set/number hints only.
 
 ## Browser code
 - No `dangerouslySetInnerHTML`, `innerHTML`, `eval` or `new Function` with
