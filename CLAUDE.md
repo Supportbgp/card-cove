@@ -6823,6 +6823,78 @@ Every source is credited by name with a link wherever its data shows
 meta-check`, staging first with `--project-ref`); the workflow change
 ships with the merge. No migration, no new secret.
 
+## Hot cards: market price climbs from TCGCSV
+
+The other half of the same follow-up: "Price climbing" only covered cards
+we track (priced $25+, from our own daily price check, so it needed weeks
+of our own history). This adds TCGplayer's market price for any card, with
+30 days of history from day one.
+
+- **Source: TCGCSV** (tcgcsv.com), which republishes TCGplayer's prices for
+  every game daily, plus a daily archive back to 2024-02. Its FAQ:
+  "Permission is implicit"; it asks for a clear User-Agent (ours:
+  `card-cove-market-check`) and a short pause between requests (250ms).
+  Checked live before building: an archive
+  (`/archive/tcgplayer/prices-YYYY-MM-DD.ppmd.7z`, ~4 MB, ~90 MB unpacked)
+  holds `<date>/<categoryId>/<groupId>/prices` files
+  (`{ results: [{ productId, marketPrice, subTypeName, ... }] }`); names,
+  numbers and links come from `/tcgplayer/<cat>/<group>/products`
+  (`extendedData` `Number`; sealed products have none) and set names from
+  `/tcgplayer/<cat>/groups`. Category ids: Magic 1, Yu-Gi-Oh 2, Pokemon 3,
+  One Piece 68, Lorcana 71, SWU 79, Gundam 86, Riftbound 89. Pokemon Japan
+  (85) is left out: its names would match English cards in our catalog.
+- **Where it runs: GitHub Actions, not an Edge Function.** The archives are
+  PPMd 7z files (Deno can't unpack those) and ~90 MB unpacked (past an Edge
+  Function's memory). `.github/workflows/market-check.yml` runs
+  `scripts/market-movers/run.js` daily at 21:17 UTC (TCGCSV updates around
+  20:00 UTC): download the latest day and the day 30 days before, unpack
+  with the runners' `7z`, compare TCGplayer market prices per product and
+  finish, look up only the climbers' sets, then replace each game's rows
+  in `market_movers` through PostgREST with the `SUPABASE_SERVICE_ROLE_KEY`
+  secret (env only, never printed). A game that fails keeps yesterday's
+  rows. `DRY_RUN=1 node scripts/market-movers/run.js` prints what it would
+  save without writing (needs `7z` on the PATH). A full run took ~2.5
+  minutes on real data.
+- **What counts as a climb** (`scripts/market-movers/lib.js`): worth $3+
+  now, $0.50+ before, up 20-400%. Over 400% in a month was almost always
+  one odd sale on a barely traded listing in the real data (a $0.75 card
+  "to" $440, a $280 card "to" $2,998), so it's left out. Each game keeps
+  its 600 biggest **dollar** gains (a $20 -> $30 card matters more on a
+  trade-in than a $3 card doubling), ~2,000 rows in all, so the app's
+  sign-in load stays small. First real run: Magic 1,550 climbers (600
+  kept), Pokemon 1,329 (600), Yu-Gi-Oh 786 (600), One Piece 95, Riftbound
+  53, Lorcana 21, SWU 19, Gundam 8.
+- **`phase23_market_movers.sql`**: the table (product id + finish key,
+  game, name, `name_key` = `hotNameKey(name)`, set, number, old/new price,
+  % change, TCGplayer link, `updated_at`), staff-only per phase18. The
+  script imports `hotNameKey` straight from `src/lib/hotCards.js` (it's in
+  the same repo, not an Edge Function, so no duplicate).
+- **App** (`hotCards.js`): `useHotCards` loads `market_movers` at sign-in
+  (only the columns used). A quote row gets **"TCGplayer market up 34% in
+  30 days ($100.00 -> $134.00)"** only for its exact print: same game and
+  name key, then its **Number** (`numberKey`: the part before "/", leading
+  zeros and Yu-Gi-Oh's "-EN" dropped, so "199/165" = "199" and "LOB-EN001"
+  = "LOB-001"), else its **Set** (`looseSetMatch`: TCGplayer's "SV03:
+  Obsidian Flames" = "Obsidian Flames"). A row with neither gets nothing,
+  so prints that share a name don't lump together (the Snorlax lesson from
+  "Change history and safer saves"). Printing picks the finish when it
+  matches one (Holofoil, Reverse Holofoil, Foil...; Nonfoil = Normal).
+  Rows older than 4 days are ignored, same as tournament counts. Credited
+  as "TCGCSV (TCGplayer prices)" with a link (`CREDIT_SOURCES`).
+- **Hot cards window**: a new "Market climbing" section (per game, the
+  biggest dollar gains, linked to TCGplayer through `safeHttpUrl`); the old
+  "Price climbing" section is now labeled "(cards we track)".
+- Tests: `scripts/market-movers/lib.test.js` (prices parsing, the climb
+  rules incl. the 400% cut, sealed products skipped, non-TCGplayer links
+  dropped, date math, categories), new `hotCards.test.js` cases (number,
+  Set and finish matching; no match without a print; stale rows;
+  `numberKey`/`looseSetMatch`) and a new `e2e/hot-cards.spec.js` case (no
+  notice until the Number is filled in, then the climb with its credit).
+
+**Requires running `phase23_market_movers.sql`** (staging first). The
+workflow starts with the merge; run "Daily market price climbs" once by
+hand to fill the table right away. No Edge Function deploy, no new secret.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against
@@ -6883,7 +6955,10 @@ than repeated.
     a real fix means deterministic icon-matching against a reference
     library, a much bigger investment than the field's current yield
     justifies.
-  - Japanese-print price coverage — no verified data source yet. TCGdex
+  - Japanese-print price coverage — TCGCSV has a Pokemon Japan category
+    (85, TCGplayer prices) that `market-check` deliberately leaves out
+    (see "Hot cards: market price climbs from TCGCSV"); it's the most
+    likely source to check first. TCGdex
     (now the Pokemon source) serves other languages under its own
     language-prefixed endpoints (`/v2/ja/...`), but whether those carry
     TCGPlayer pricing is unconfirmed; check a real sample before relying

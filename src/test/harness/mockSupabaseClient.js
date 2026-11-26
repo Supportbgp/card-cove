@@ -30,6 +30,7 @@ const PRIMARY_KEY = {
   meta_cards: 'name_key',
   hot_cards: 'id',
   price_movers: 'sku',
+  market_movers: 'product_id',
 };
 
 function defaultSeed() {
@@ -51,6 +52,7 @@ function defaultSeed() {
     meta_cards: [],
     hot_cards: [],
     price_movers: [],
+    market_movers: [],
     catalog_history: [],
   };
 }

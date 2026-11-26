@@ -1,4 +1,4 @@
-import { META_SOURCES, reasonSources } from '../../lib/hotCards.js';
+import { CREDIT_SOURCES, reasonSources } from '../../lib/hotCards.js';
 
 // "Sought after" heads-up on a quote row (CLAUDE.md "Hot cards"): why this
 // card is in demand. Information only; it never changes a price.
@@ -26,7 +26,7 @@ export default function HotNotice({ reasons }) {
           {sources.map((s, i) => (
             <span key={s}>
               {i > 0 && ' and '}
-              <a href={META_SOURCES[s].url} target="_blank" rel="noopener noreferrer">{META_SOURCES[s].label}</a>
+              <a href={CREDIT_SOURCES[s].url} target="_blank" rel="noopener noreferrer">{CREDIT_SOURCES[s].label}</a>
             </span>
           ))}
         </div>

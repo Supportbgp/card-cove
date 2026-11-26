@@ -5,7 +5,7 @@ import { DEFAULT_PRICE_TRACKING } from './priceAlertUtils.js';
 import { rowToWant, wantToRow } from './wantList.js';
 import { runWrite, pendingWriteCount } from './writeQueue.js';
 import { rowToHistory } from './cardHistory.js';
-import { rowToMetaCard, rowToHotCard, hotCardToRow, rowToPriceMover } from './hotCards.js';
+import { rowToMetaCard, rowToHotCard, hotCardToRow, rowToPriceMover, rowToMarketMover } from './hotCards.js';
 
 // Supabase/PostgREST caps a bare `.select()` at the project's configured
 // Max Rows (1000 by default) — past that point a table's real total is
@@ -895,6 +895,15 @@ export async function dbLoadPriceMovers(toast) {
   const { data, error } = await fetchAllRows('price_movers', 'sku');
   if (error) { toast('Failed to load price changes: ' + error.message, true); return []; }
   return (data || []).map(rowToPriceMover);
+}
+
+// TCGplayer market climbs (phase23, rebuilt daily from TCGCSV). Only the
+// columns a notice uses.
+const MARKET_COLUMNS = 'product_id,sub_type,game,name,name_key,set_name,number,old_price,new_price,pct_change,url,window_days,updated_at';
+export async function dbLoadMarketMovers(toast) {
+  const { data, error } = await fetchAllRows('market_movers', 'product_id', { columns: MARKET_COLUMNS });
+  if (error) { toast('Failed to load market price climbs: ' + error.message, true); return []; }
+  return (data || []).map(rowToMarketMover);
 }
 
 // --- Change history (phase22) ----------------------------------------------

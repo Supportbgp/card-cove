@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  dbLoadMetaCards, dbLoadHotList, dbAddHotCard, dbDeleteHotCard, dbLoadPriceMovers, dbLoadSales,
+  dbLoadMetaCards, dbLoadHotList, dbAddHotCard, dbDeleteHotCard, dbLoadPriceMovers, dbLoadMarketMovers, dbLoadSales,
 } from '../lib/db.js';
 import { buildHotIndex, SALES_WINDOW_DAYS } from '../lib/hotCards.js';
 
@@ -12,6 +12,7 @@ export function useHotCards({ enabled, toast, salesRevision = 0, catalog = [] })
   const [meta, setMeta] = useState([]);
   const [hotList, setHotList] = useState([]);
   const [movers, setMovers] = useState([]);
+  const [market, setMarket] = useState([]);
   const [sales, setSales] = useState([]);
 
   // The notices are a nice-to-have: a failed load (say phase21 isn't run
@@ -23,6 +24,7 @@ export function useHotCards({ enabled, toast, salesRevision = 0, catalog = [] })
     dbLoadMetaCards(quiet).then(setMeta);
     dbLoadHotList(quiet).then(setHotList);
     dbLoadPriceMovers(quiet).then(setMovers);
+    dbLoadMarketMovers(quiet).then(setMarket);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
@@ -35,8 +37,8 @@ export function useHotCards({ enabled, toast, salesRevision = 0, catalog = [] })
   }, [enabled, salesRevision]);
 
   const index = useMemo(
-    () => buildHotIndex({ meta, hotList, sales, movers, catalog }),
-    [meta, hotList, sales, movers, catalog]
+    () => buildHotIndex({ meta, hotList, sales, movers, market, catalog }),
+    [meta, hotList, sales, movers, market, catalog]
   );
 
   async function addHotCard(entry) {
@@ -55,5 +57,5 @@ export function useHotCards({ enabled, toast, salesRevision = 0, catalog = [] })
     }
   }
 
-  return { index, meta, hotList, movers, sales, addHotCard, removeHotCard };
+  return { index, meta, hotList, movers, market, sales, addHotCard, removeHotCard };
 }

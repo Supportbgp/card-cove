@@ -45,6 +45,7 @@ export function catalogSeed(rows) {
     meta_cards: [],
     hot_cards: [],
     price_movers: [],
+    market_movers: [],
     catalog_history: [],
   };
 }

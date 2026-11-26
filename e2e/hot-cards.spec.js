@@ -72,6 +72,30 @@ test('One Piece tournament play is matched by card code, not just the name', asy
   await expect(notice.getByRole('link', { name: 'Limitless' })).toBeVisible();
 });
 
+test("a TCGplayer market climb shows once the row's number says which print it is", async ({ page }) => {
+  const row = (o) => ({
+    product_id: 1, sub_type: 'Holofoil', game: 'Pokemon', name: 'Charizard ex - 199/165', name_key: 'charizard ex',
+    set_name: 'SV: Scarlet & Violet 151', number: '199/165', old_price: 100, new_price: 134, pct_change: 34,
+    url: 'https://www.tcgplayer.com/product/1', window_days: 30, updated_at: new Date().toISOString(), ...o,
+  });
+  await seedHarness(page, {
+    seed: {
+      ...catalogSeed([]),
+      market_movers: [row(), row({ product_id: 2, sub_type: 'Normal', name: 'Charizard ex - 006/165', number: '006/165', pct_change: 60, old_price: 5, new_price: 8 })],
+    },
+  });
+  await openNewQuoteRow(page);
+  await page.locator('.scan-row select').first().selectOption('Pokemon');
+  await page.getByPlaceholder('Card name').fill('Charizard ex');
+  // No number or set yet: several prints share the name, so nothing shows.
+  await expect(page.locator('.hot-notice')).toHaveCount(0);
+
+  await page.locator('.scan-row').getByPlaceholder('Number', { exact: true }).fill('199/165');
+  const notice = page.locator('.hot-notice');
+  await expect(notice).toContainText('TCGplayer market up 34% in 30 days ($100.00 → $134.00)');
+  await expect(notice.getByRole('link', { name: 'TCGCSV (TCGplayer prices)' })).toHaveAttribute('href', 'https://tcgcsv.com');
+});
+
 test('our own recent sales and a price climb show up too', async ({ page }) => {
   await seedHarness(page, {
     seed: {
@@ -109,7 +133,7 @@ test('staff add and remove a card on the hot list from the Hot cards window', as
   const modal = page.locator('.hot-cards-modal');
   await modal.getByLabel('Game', { exact: true }).nth(1).selectOption('Magic');
   await expect(page.locator('.hot-meta-table')).toContainText('Sol Ring');
-  await expect(page.locator('.hot-credit')).toContainText('Data provided by Limitless');
+  await expect(page.locator('.hot-credit').first()).toContainText('Data provided by Limitless');
 
   await modal.getByLabel('Game', { exact: true }).first().selectOption('Lorcana');
   await modal.getByLabel('Card name').fill('Circle of Life');

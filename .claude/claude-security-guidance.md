@@ -65,6 +65,11 @@ any of these rules.
   from the request body. The workflow's `GITHUB_TOKEN` stays in GitHub
   (only paths are sent). It stores card counts only, never player names or
   details from any source.
+- `market-check.yml` runs `scripts/market-movers/run.js` with the
+  service-role key in env only: the script must never print it, and it
+  only writes `market_movers` (upsert + delete of stale rows per game).
+  TCGplayer links it stores must stay `https://www.tcgplayer.com/` ones,
+  and the app still renders them through `safeHttpUrl`.
 - Don't send secrets, tokens or customer data to third-party card APIs
   (Scryfall, TCGdex, YGOPRODeck, Lorcast, Egman, swu-db, Limitless,
   TopDeck.gg, Yu-Gi-Oh! Meta, SWU Meta Stats, TCGCSV, GitHub raw); they

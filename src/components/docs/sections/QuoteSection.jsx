@@ -227,6 +227,14 @@ export default function QuoteSection() {
           in market price this month (from the daily price check, so only
           cards priced $25 and up).
         </li>
+        <li>
+          <strong>Market climbing</strong>: TCGplayer's market price for this
+          exact print rose 20% or more in the last 30 days (from TCGCSV,
+          updated daily; covers cards we don't stock too, worth $3 or more).
+          It only shows once the row says which print it is: fill in its
+          Number (or at least its Set). Printing picks the finish (Holofoil,
+          Reverse Holofoil…) when it matches one.
+        </li>
         <li><strong>Hot list</strong>: staff added it by hand.</li>
       </ul>
       <p>

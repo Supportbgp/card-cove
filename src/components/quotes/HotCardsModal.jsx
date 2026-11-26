@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { GAMES } from '../../lib/cardUtils.js';
 import {
   META_SOURCES, META_MIN_DECKS, META_MIN_SHARE_PCT, META_MIN_CARD_VALUE, SALES_MIN_COPIES, SALES_WINDOW_DAYS, PRICE_MIN_RISE_PCT,
-  topMetaCards, metaUpdatedAt, reasonsOfKind, formatLabel,
+  topMetaCards, metaUpdatedAt, reasonsOfKind, formatLabel, topMarketMovers, MARKET_SOURCE,
 } from '../../lib/hotCards.js';
+import { safeHttpUrl } from '../../lib/safeUrl.js';
 
 const META_GAMES = GAMES.filter(g => g !== 'Sports Singles' && g !== 'Other');
 
@@ -15,7 +16,7 @@ function formatDate(iso) {
 // staff keep by hand, plus what the automatic signals currently flag, so
 // staff can see why a quote row says "Sought after".
 export default function HotCardsModal({ hot, onClose }) {
-  const { meta, hotList, index, addHotCard, removeHotCard } = hot;
+  const { meta, hotList, market = [], index, addHotCard, removeHotCard } = hot;
   const [form, setForm] = useState({ game: '', name: '', reason: '', addedBy: '' });
   const [saving, setSaving] = useState(false);
   // Until staff pick one, the first game that has data (which can change
@@ -31,6 +32,8 @@ export default function HotCardsModal({ hot, onClose }) {
   const updated = useMemo(() => metaUpdatedAt(meta), [meta]);
   const selling = useMemo(() => reasonsOfKind(index, 'sales'), [index]);
   const climbing = useMemo(() => reasonsOfKind(index, 'price'), [index]);
+  const [marketGame, setMarketGame] = useState('Pokemon');
+  const marketTop = useMemo(() => topMarketMovers(market, marketGame), [market, marketGame]);
 
   async function handleAdd() {
     if (!form.name.trim() || saving) return;
@@ -48,7 +51,8 @@ export default function HotCardsModal({ hot, onClose }) {
           <div className="meta">
             A quote row shows "Sought after" when a card is on this list, is played in at least {META_MIN_SHARE_PCT}%
             of recent tournament decks, sold {SALES_MIN_COPIES}+ copies in the last {SALES_WINDOW_DAYS} days, or its
-            market price rose {PRICE_MIN_RISE_PCT}%+ this month.
+            market price rose {PRICE_MIN_RISE_PCT}%+ this month (our tracked cards, or TCGplayer's market price for that
+            exact print).
           </div>
         </div>
         <div className="modal-body">
@@ -160,7 +164,7 @@ export default function HotCardsModal({ hot, onClose }) {
             )}
           </div>
 
-          <div className="section-label">Price climbing</div>
+          <div className="section-label">Price climbing (cards we track)</div>
           <div className="form-section">
             {climbing.length === 0 ? (
               <p className="hot-empty">No tracked card rose {PRICE_MIN_RISE_PCT}%+ this month.</p>
@@ -173,6 +177,48 @@ export default function HotCardsModal({ hot, onClose }) {
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="section-label">Market climbing (TCGplayer, last 30 days)</div>
+          <div className="form-section">
+            <div className="field-group hot-meta-game">
+              <label htmlFor="hot_market_game">Game</label>
+              <select id="hot_market_game" value={marketGame} onChange={(e) => setMarketGame(e.target.value)}>
+                {META_GAMES.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            {marketTop.length === 0 ? (
+              <p className="hot-empty">No {marketGame} card worth $3+ rose {PRICE_MIN_RISE_PCT}%+ in the last 30 days.</p>
+            ) : (
+              <div className="table-scroll">
+                <table className="hot-meta-table">
+                  <thead>
+                    <tr><th>Card</th><th>Set</th><th>Price</th><th>Change</th></tr>
+                  </thead>
+                  <tbody>
+                    {marketTop.map(m => {
+                      const link = safeHttpUrl(m.url);
+                      return (
+                        <tr key={`${m.productId}|${m.subType}`}>
+                          <td>
+                            {link ? <a href={link} target="_blank" rel="noopener noreferrer">{m.name}</a> : m.name}
+                            {m.subType && <span className="hot-meta-of"> {m.subType}</span>}
+                          </td>
+                          <td>{m.set}{m.number && <span className="hot-meta-of"> #{m.number}</span>}</td>
+                          <td className="num">${m.oldPrice.toFixed(2)} → ${m.newPrice.toFixed(2)}</td>
+                          <td className="num">+{Math.round(m.pct)}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="hot-credit">
+              Updated daily from{' '}
+              <a href={MARKET_SOURCE.url} target="_blank" rel="noopener noreferrer">{MARKET_SOURCE.label}</a>.
+              {' '}A quote row shows this only when its Number (or Set) says which print it is.
+            </p>
           </div>
         </div>
         <div className="modal-foot">
