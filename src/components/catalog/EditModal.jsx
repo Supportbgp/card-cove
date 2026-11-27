@@ -85,7 +85,7 @@ const QUOTE_STATUS_LABELS = {
   rejected: 'Rejected',
 };
 
-export default function EditModal({ card, template, catalog, locations, multipliers, priceAlert, sourceQuote, onOpenQuote, onReportLoss, onClose, onSave, onDelete }) {
+export default function EditModal({ card, template, catalog, locations, multipliers, priceAlert, sourceQuote, onOpenQuote, sourceOpening, onOpenOpening, onReportLoss, onClose, onSave, onDelete }) {
   const { showConfirm, openLightbox } = useUI();
   // `template` only matters for a new item (card == null): the item being
   // duplicated.
@@ -347,6 +347,7 @@ export default function EditModal({ card, template, catalog, locations, multipli
       // Kept from the item itself; a duplicate (template) is a new copy
       // that wasn't bought in that quote, so it starts without the link.
       sourceQuoteId: card ? card.sourceQuoteId : null,
+      sourceOpeningId: card ? card.sourceOpeningId : null,
       posSynced: card ? card.posSynced : false,
       tcgplayerSynced: card ? card.tcgplayerSynced : false,
       collectrSynced: card ? card.collectrSynced : false,
@@ -616,7 +617,7 @@ export default function EditModal({ card, template, catalog, locations, multipli
               <input type="number" step="0.01" min="0" value={form.cost} onChange={(e) => set('cost', e.target.value)} placeholder="What we paid, if known" />
               <div style={{ fontSize: '11.5px', color: 'var(--ink-faint)', marginTop: '4px' }}>
                 Optional — feeds the Cost/Profit numbers on the Reports tab once this item sells. Left blank unless
-                entered by hand here, or auto-filled when this item came from an accepted Quote trade-in.
+                entered by hand here, or auto-filled when this item came from an accepted Quote trade-in or an Opening.
               </div>
               {sourceQuote && (
                 <div className="quote-source-ref">
@@ -639,6 +640,30 @@ export default function EditModal({ card, template, catalog, locations, multipli
                       </div>
                       <button type="button" className="btn secondary small" onClick={() => onOpenQuote && onOpenQuote(sourceQuote.id)}>
                         View quote
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              {sourceOpening && (
+                <div className="quote-source-ref">
+                  {sourceOpening.missing ? (
+                    <span>Pulled in an opening that has since been deleted.</span>
+                  ) : (
+                    <>
+                      <div>
+                        Pulled in <strong>Opening #{sourceOpening.openingNumber}</strong>
+                        {' '}({sourceOpening.productQty > 1 ? `${sourceOpening.productQty}× ` : ''}{sourceOpening.productName})
+                      </div>
+                      <div className="quote-source-meta">
+                        {[
+                          sourceOpening.openedAt && new Date(sourceOpening.openedAt).toLocaleDateString(),
+                          sourceOpening.employee && `Opened by ${sourceOpening.employee}`,
+                          sourceOpening.sealedValue != null && `Sealed value ${formatMoney(sourceOpening.sealedValue)}`,
+                        ].filter(Boolean).join(' · ')}
+                      </div>
+                      <button type="button" className="btn secondary small" onClick={() => onOpenOpening && onOpenOpening(sourceOpening.id)}>
+                        View opening
                       </button>
                     </>
                   )}

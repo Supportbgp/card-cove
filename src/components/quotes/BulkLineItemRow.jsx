@@ -21,7 +21,7 @@ import { flatItemAmount } from '../../lib/quoteUtils.js';
 // same mechanic and reasoning as AddOnLineItemRow's own: enter the lot's
 // full assessed value, check the box, and let the app work out "60% of
 // this" instead of doing it by hand.
-export default function BulkLineItemRow({ item, onChange, onRemove, flagMissingGame = false }) {
+export default function BulkLineItemRow({ item, onChange, onRemove, flagMissingGame = false, forOpening = false }) {
   function patch(p) {
     onChange({ ...item, ...p });
   }
@@ -66,9 +66,9 @@ export default function BulkLineItemRow({ item, onChange, onRemove, flagMissingG
             />
           </div>
           <div className="scan-field sf">
-            <label className="scan-field-label">Price</label>
+            <label className="scan-field-label">{forOpening ? 'Value' : 'Price'}</label>
             <input
-              type="number" placeholder="Price" step="0.01" value={item.price ?? ''}
+              type="number" placeholder={forOpening ? 'Value' : 'Price'} step="0.01" value={item.price ?? ''}
               onChange={(e) => patch({ price: e.target.value === '' ? null : Number(e.target.value) })}
             />
           </div>
@@ -76,6 +76,7 @@ export default function BulkLineItemRow({ item, onChange, onRemove, flagMissingG
             <button className="icon-btn" title="Remove" onClick={onRemove}>✕</button>
           </div>
         </div>
+        {!forOpening && (
         <div className="scan-row-line" style={{ alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div className="checkbox-row" style={{ margin: 0 }}>
             <input
@@ -98,8 +99,9 @@ export default function BulkLineItemRow({ item, onChange, onRemove, flagMissingG
             </>
           )}
         </div>
+        )}
         <div style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>
-          Flat lot price — Qty is a record only (never multiplies the price). Excluded from the tier % offers below, same as a misc. item; only affects Payout amount if you click "Add to payout." Still goes to Sorting on accept — place it into Bulk there. Check "Apply a %?" to offer only part of the entered value.
+          {forOpening ? 'Flat value for the whole lot. Qty is how many cards, a record only (never multiplies the value). Goes to Sorting when the opening is marked Done; place it into Bulk there.' : <>Flat lot price — Qty is a record only (never multiplies the price). Excluded from the tier % offers below, same as a misc. item; only affects Payout amount if you click "Add to payout." Still goes to Sorting on accept — place it into Bulk there. Check "Apply a %?" to offer only part of the entered value.</>}
         </div>
       </div>
     </div>

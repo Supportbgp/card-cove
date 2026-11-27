@@ -10,6 +10,10 @@ export default function SortingSection() {
         process" queue, so each physical card can be placed on its own
         rather than the whole quote being forced into one binder at once.
       </p>
+      <p>
+        Pulls from a finished <a href="#openings">opening</a> land here the
+        same way, marked "From Opening #N".
+      </p>
 
       <h3>Sorting a card</h3>
       <p>

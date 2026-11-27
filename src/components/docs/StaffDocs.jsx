@@ -8,6 +8,7 @@ import SyncQueueSection from './sections/SyncQueueSection.jsx';
 import ImportExportSection from './sections/ImportExportSection.jsx';
 import ScannerSection from './sections/ScannerSection.jsx';
 import QuoteSection from './sections/QuoteSection.jsx';
+import OpeningsSection from './sections/OpeningsSection.jsx';
 import SortingSection from './sections/SortingSection.jsx';
 import WantListSection from './sections/WantListSection.jsx';
 import HotCardsSection from './sections/HotCardsSection.jsx';
@@ -27,6 +28,7 @@ const SECTIONS = [
   { id: 'import-export', label: 'Import / Export', Component: ImportExportSection },
   { id: 'scan-binder', label: 'Scan Binder', Component: ScannerSection },
   { id: 'quote', label: 'Quote', Component: QuoteSection },
+  { id: 'openings', label: 'Openings', Component: OpeningsSection },
   { id: 'sorting', label: 'Sorting', Component: SortingSection },
   { id: 'want-list', label: 'Want list', Component: WantListSection },
   { id: 'hot-cards', label: 'Hot cards', Component: HotCardsSection },

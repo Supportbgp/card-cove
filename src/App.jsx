@@ -16,7 +16,7 @@ import {
   dbLoadSortingQueue, dbInsertSortingItems, dbDeleteSortingItem,
 } from './lib/db.js';
 import {
-  needsPlatformStatusReset, isTicketComplete, canonicalizeCondition, marketValueForCondition,
+  needsPlatformStatusReset, isTicketComplete,
   DEFAULT_CONDITION_MULTIPLIERS, findBulkRow, buildBulkCatalogItem,
 } from './lib/cardUtils.js';
 import { buildCatalogItemsFromQuoteItems, buildSortingItemsFromQuoteItems, computeQuoteItemCosts, DEFAULT_QUOTE_TIER_PCTS } from './lib/quoteUtils.js';
@@ -39,6 +39,9 @@ import ReportsTab from './components/reports/ReportsTab.jsx';
 import WantListTab from './components/wantlist/WantListTab.jsx';
 import HotCardsTab from './components/hot/HotCardsTab.jsx';
 import AppFooter from './components/AppFooter.jsx';
+import OpeningsTab from './components/openings/OpeningsTab.jsx';
+import { useOpenings } from './hooks/useOpenings.js';
+import { priceOrderingWarning, priceVsMarketValueWarning } from './lib/priceWarnings.js';
 
 const TABS = [
   { key: 'catalog', label: 'Catalog' },
@@ -46,55 +49,12 @@ const TABS = [
   { key: 'import', label: 'Import / Export' },
   { key: 'scanner', label: 'Scan Binder' },
   { key: 'quote', label: 'Quote' },
+  { key: 'openings', label: 'Openings' },
   { key: 'sorting', label: 'Sorting' },
   { key: 'reports', label: 'Reports' },
   { key: 'wants', label: 'Want list' },
   { key: 'hot', label: 'Hot cards' },
 ];
-
-const CONDITION_RANK = { NM: 0, LP: 1, MP: 2, HP: 3, DMG: 4 };
-
-// Soft nudge, not a hard rule — a worse-condition copy of the same card in
-// the same case shouldn't be priced above a better-condition copy. Flags it
-// so staff can double-check, doesn't block the save either way.
-function priceOrderingWarning(catalog, record) {
-  const tier = canonicalizeCondition(record.condition);
-  if (!tier || record.price == null) return null;
-  const siblings = catalog.filter(c =>
-    c.sku !== record.sku && c.name === record.name && c.game === record.game &&
-    c.location === record.location && c.price != null && !c.sold
-  );
-  for (const s of siblings) {
-    const sTier = canonicalizeCondition(s.condition);
-    if (!sTier) continue;
-    if (CONDITION_RANK[tier] < CONDITION_RANK[sTier] && record.price < s.price) {
-      return `${record.name} (${tier}) is priced below the ${sTier} copy in this case — worth double-checking.`;
-    }
-    if (CONDITION_RANK[tier] > CONDITION_RANK[sTier] && record.price > s.price) {
-      return `${record.name} (${tier}) is priced above the ${sTier} copy in this case — worth double-checking.`;
-    }
-  }
-  return null;
-}
-
-// A different kind of soft nudge than priceOrderingWarning above: this one
-// compares Our Price against THIS card's own computed Market Value, not
-// against another physical copy. The flat condition multiplier can be
-// materially wrong for a specific card (a real example landed ~18% off —
-// see CLAUDE.md), so a meaningful gap is worth a second look — but it's
-// still just a nudge; deliberate pricing decisions (the whole reason Our
-// Price is separate from Market Value) are expected and not an error.
-const MARKET_VALUE_DEVIATION_THRESHOLD = 0.15;
-
-function priceVsMarketValueWarning(record, multipliers) {
-  if (record.basePrice == null || record.price == null || !multipliers) return null;
-  const mv = marketValueForCondition(record.basePrice, record.condition, multipliers);
-  if (mv == null || mv <= 0) return null;
-  const diff = Math.abs(record.price - mv) / mv;
-  if (diff < MARKET_VALUE_DEVIATION_THRESHOLD) return null;
-  const dir = record.price < mv ? 'below' : 'above';
-  return `${record.name}'s price ($${record.price.toFixed(2)}) is ${dir} its estimated market value ($${mv.toFixed(2)}).`;
-}
 
 export default function App() {
   const { toast } = useUI();
@@ -214,6 +174,7 @@ export default function App() {
     setQuoteOpenRequest({ id });
   }
 
+  const openingsState = useOpenings({ enabled: signedIn && isStaff, toast, setSorting });
   // Saves that couldn't get through are retried; a woken tab reloads first
   // (CLAUDE.md "Change history and safer saves").
   const writes = useWriteQueue({
@@ -223,6 +184,7 @@ export default function App() {
       setCatalog(c); setQueue(q);
       dbLoadQuotes(toast).then(setQuotes);
       dbLoadSortingQueue(toast).then(setSorting);
+      openingsState.reload();
     },
   });
   useRealtimeSync({ enabled: signedIn && isStaff, setCatalog, setQueue, setQuotes, setSorting, onResync: writes.resync });
@@ -881,6 +843,7 @@ export default function App() {
             {t.key === 'catalog' && <span className="count">{catalog.length}</span>}
             {t.key === 'queue' && <span className="count">{pendingCount}</span>}
             {t.key === 'quote' && <span className="count">{quotes.filter(q => !q.offerStatus).length}</span>}
+            {t.key === 'openings' && <span className="count">{openingsState.openings.filter(o => o.status !== 'done').length}</span>}
             {t.key === 'sorting' && <span className="count">{sorting.length}</span>}
             {t.key === 'wants' && <span className="count">{wantRequests.filter(w => w.status === 'open').length}</span>}
           </div>
@@ -901,6 +864,8 @@ export default function App() {
           editRequest={editRequest}
           quotes={quotes}
           onOpenQuote={handleOpenQuote}
+          openings={openingsState.openings}
+          onOpenOpening={(id) => { setTab('openings'); openingsState.setOpenRequest({ id }); }}
           onReportLoss={handleReportLoss}
           onLoadSalesForSku={handleLoadSalesForSku}
           onEditRequestHandled={() => setEditRequest(null)}
@@ -945,6 +910,12 @@ export default function App() {
           onOpenRequestHandled={() => setQuoteOpenRequest(null)}
           onSaveTierSettings={handleSaveTierSettings}
         />
+      </div>
+
+      <div className={`panel${tab === 'openings' ? ' active' : ''}`}>
+        <OpeningsTab openings={openingsState.openings} catalog={catalog} wantRequests={wantRequests} hotIndex={hot?.index}
+          locations={locations} multipliers={multipliers} onSave={openingsState.save} onDelete={openingsState.remove}
+          openRequest={openingsState.openRequest} onOpenRequestHandled={() => openingsState.setOpenRequest(null)} />
       </div>
 
       <div className={`panel${tab === 'sorting' ? ' active' : ''}`}>

@@ -12,6 +12,7 @@ export default function CatalogPanel({
   catalog, onSaveCard, onDeleteCard, onBatchDelete, onBatchSell, onSellPartial, onTogglePlatformStatus, multipliers,
   priceAlertsBySku = new Map(), editRequest = null, onEditRequestHandled = () => {},
   quotes = [], onOpenQuote = () => {},
+  openings = [], onOpenOpening = () => {},
   onReportLoss = async () => {}, onLoadSalesForSku = async () => [],
 }) {
   const { showConfirm } = useUI();
@@ -215,6 +216,10 @@ export default function CatalogPanel({
             ? (quotes.find(q => q.id === editingCard.sourceQuoteId) || { missing: true })
             : null}
           onOpenQuote={(id) => { closeEdit(); onOpenQuote(id); }}
+          sourceOpening={editingCard && editingCard.sourceOpeningId
+            ? (openings.find(o => o.id === editingCard.sourceOpeningId) || { missing: true })
+            : null}
+          onOpenOpening={(id) => { closeEdit(); onOpenOpening(id); }}
           onReportLoss={(c) => { closeEdit(); setLossSku(c.sku); }}
           catalog={catalog}
           locations={locations}

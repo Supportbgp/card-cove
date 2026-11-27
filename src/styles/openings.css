@@ -1,0 +1,48 @@
+/* Openings tab (CLAUDE.md "Openings"). */
+
+.openings-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  margin-bottom: 8px;
+}
+.openings-filters {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;
+}
+.openings-filters .search-input { max-width: 280px; min-height: 40px; }
+.openings-filters select { min-height: 40px; }
+.openings-status-filter { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.openings-table tbody tr { cursor: pointer; }
+.opening-row-open td { background: var(--amber-soft); }
+.opening-row-done td { background: var(--green-soft); }
+.opening-num { font-family: 'IBM Plex Mono', monospace; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.opening-sub { font-size: 11.5px; color: var(--ink-faint); }
+.openings-table .mono { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.opening-hint { font-size: 11.5px; color: var(--ink-faint); margin-top: 4px; text-wrap: pretty; }
+.opening-items { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.opening-add { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.opening-stats {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 8px;
+}
+.opening-stat {
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface);
+}
+.opening-stat-label {
+  font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.03em;
+}
+.opening-stat-value {
+  font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-variant-numeric: tabular-nums;
+}
+.opening-diff.up, .opening-diff.up .opening-stat-value { color: var(--green); }
+.opening-diff.down, .opening-diff.down .opening-stat-value { color: var(--rust); }
+
+@media (max-width: 640px) {
+  .openings-head .btn { min-height: 44px; }
+  .openings-filters .search-input { max-width: none; flex: 1 1 100%; min-height: 44px; }
+  .openings-filters select { flex: 1 1 100%; min-height: 44px; }
+  .openings-status-filter .btn { min-height: 44px; }
+  .opening-add .btn { flex: 1 1 100%; min-height: 44px; }
+  .opening-stats { grid-template-columns: 1fr 1fr; }
+}
