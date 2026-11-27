@@ -328,6 +328,8 @@ export function buildCatalogItemsFromQuoteItems(items, destination) {
     // A sorting_queue row carries the quote it came from (quoteId); the
     // catalog row keeps it so its edit screen can link back to the quote.
     sourceQuoteId: item.quoteId || item.sourceQuoteId || null,
+    // Same for a card pulled in an opening (openingUtils.js).
+    sourceOpeningId: item.openingId || item.sourceOpeningId || null,
     location: dest.location || '',
     posChannel: dest.posChannel,
     tcgplayerChannel: dest.tcgplayerChannel,

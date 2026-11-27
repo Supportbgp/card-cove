@@ -35,7 +35,7 @@ function resolveImgSrc(url, data) {
 // the same live external search (Scryfall/TCGdex/etc.) EditModal/
 // Scanner already use, scoped locally to this one row (self-contained
 // search state, same pattern as EditModal's own candidates/candidateMode).
-export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers, wantRequests, hotIndex, flagMissingGame = false }) {
+export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, multipliers, wantRequests, hotIndex, flagMissingGame = false, forOpening = false }) {
   const { openLightbox } = useUI();
   // Customers on the want list who asked for this card (CLAUDE.md "Want list").
   const wanted = wantsForCard(item, wantRequests);
@@ -357,9 +357,10 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
           <div className="want-notice" role="note">
             <span>
               <strong>On the want list:</strong> {wanted.length === 1 ? 'wanted' : `wanted by ${wanted.length} customers`}
-              {wanted.length === 1 ? ' by ' : ': '}{wantedByLine(wanted)}. It's worth paying more for this card.
+              {wanted.length === 1 ? ' by ' : ': '}{wantedByLine(wanted)}.
+              {forOpening ? ' Let them know before listing it.' : " It's worth paying more for this card."}
             </span>
-            {wantBumpApplied ? (
+            {forOpening ? null : wantBumpApplied ? (
               <span className="want-notice-applied">Paying {item.pctDelta > 0 ? '+' : ''}{item.pctDelta}% on this card.</span>
             ) : (
               <button
@@ -380,6 +381,8 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
             an absolute override — see computeOfferTiers in quoteUtils.js,
             which already folds this into all three tier amounts shown in
             Total & offer. */}
+        {/* An opening's pulls aren't bought from anyone, so no payout %. */}
+        {!forOpening && (
         <div className="scan-row-line" style={{ alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div className="checkbox-row" style={{ margin: 0 }}>
             <input
@@ -401,6 +404,7 @@ export default function QuoteLineItemRow({ item, onChange, onRemove, catalog, mu
             </>
           )}
         </div>
+        )}
         {/* Source link — same role as a catalog row's own "Source / product
             URL" field in EditModal. Given a visible label of its own
             (unlike every other field here, whose label stays hidden on

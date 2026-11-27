@@ -47,5 +47,6 @@ export function catalogSeed(rows) {
     price_movers: [],
     market_movers: [],
     catalog_history: [],
+    openings: [],
   };
 }

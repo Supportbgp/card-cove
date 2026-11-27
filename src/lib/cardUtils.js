@@ -447,6 +447,9 @@ export function normalizeCard(c) {
     // and Sorting (phase16_catalog_source_quote.sql). Null for everything
     // else. Shown as "Bought in Quote #N" next to Cost in the edit screen.
     sourceQuoteId: c.sourceQuoteId || null,
+    // The opening this card was pulled in (phase24_openings.sql), when it
+    // came through the Openings tab and Sorting.
+    sourceOpeningId: c.sourceOpeningId || null,
     // Dual-image model (Sprint 6): imageUrl/imageData above are the "stock"
     // reference (card search/manual paste); photoUrl/photoData are a real
     // photo (scanner crop or manual upload). activeImage records which one

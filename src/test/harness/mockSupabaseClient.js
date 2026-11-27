@@ -31,6 +31,7 @@ const PRIMARY_KEY = {
   hot_cards: 'id',
   price_movers: 'sku',
   market_movers: 'product_id',
+  openings: 'id',
 };
 
 function defaultSeed() {
@@ -54,6 +55,7 @@ function defaultSeed() {
     price_movers: [],
     market_movers: [],
     catalog_history: [],
+    openings: [],
   };
 }
 
@@ -152,6 +154,9 @@ function execute(table, op, filters, single, order, range) {
       if (idx === -1) {
         if (table === 'quotes' && row.quote_number == null) {
           row = { ...row, quote_number: ++harnessQuoteNumberCounter };
+        }
+        if (table === 'openings' && row.opening_number == null) {
+          row = { ...row, opening_number: (db.openings || []).length + 1 };
         }
         rows.push(row);
       } else {

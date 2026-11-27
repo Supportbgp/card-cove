@@ -24,7 +24,7 @@ import { rowToMetaCard, rowToHotCard, hotCardToRow, rowToPriceMover, rowToMarket
 // ideally-unique column) until a page comes back short of a full page.
 const FETCH_PAGE_SIZE = 1000;
 
-async function fetchAllRows(table, orderColumn, { ascending = true, filter, columns = '*' } = {}) {
+export async function fetchAllRows(table, orderColumn, { ascending = true, filter, columns = '*' } = {}) {
   const rows = [];
   let from = 0;
   for (;;) {
@@ -53,6 +53,7 @@ export function rowToCard(r) {
     basePrice: r.base_price,
     cost: r.cost,
     sourceQuoteId: r.source_quote_id || null,
+    sourceOpeningId: r.source_opening_id || null,
     photoUrl: r.photo_data ? "local" : (r.photo_url || ""),
     photoData: r.photo_data || "",
     activeImage: r.active_image,
@@ -81,6 +82,8 @@ function cardToRow(c) {
   // clears its link, and saving any other item keeps working even before
   // the migration has been run.
   if (c.sourceQuoteId) row.source_quote_id = c.sourceQuoteId;
+  // Same for the opening a card was pulled in (phase24_openings.sql).
+  if (c.sourceOpeningId) row.source_opening_id = c.sourceOpeningId;
   return row;
 }
 
@@ -632,6 +635,10 @@ export function rowToSortingItem(r) {
     id: r.id,
     quoteId: r.quote_id,
     quoteCollectionName: r.quote_collection_name || '',
+    // Set instead of quoteId when the card was pulled in an opening
+    // (phase24_openings.sql); quoteCollectionName then holds the opening's
+    // label ("Opening #3: Surging Sparks Booster Box").
+    openingId: r.opening_id || null,
     name: r.name || '',
     game: r.game || '',
     set: r.set || '',
@@ -655,7 +662,7 @@ export function rowToSortingItem(r) {
 }
 
 function sortingItemToRow(s) {
-  return {
+  const row = {
     quote_id: s.quoteId || null,
     quote_collection_name: s.quoteCollectionName || '',
     name: s.name,
@@ -677,6 +684,10 @@ function sortingItemToRow(s) {
     active_image: s.activeImage === 'stock' ? 'stock' : 'photo',
     source_url: s.sourceUrl || '',
   };
+  // Only sent when set, so accepting a quote keeps working even before
+  // phase24_openings.sql has been run.
+  if (s.openingId) row.opening_id = s.openingId;
+  return row;
 }
 
 export async function dbLoadSortingQueue(toast) {

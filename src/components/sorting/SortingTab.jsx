@@ -56,7 +56,7 @@ export default function SortingTab({ sorting, catalog, locations, wantRequests, 
     <div>
       <div className="toolbar">
         <div style={{ fontSize: '13px', color: 'var(--ink-soft)', maxWidth: '560px' }}>
-          Cards from accepted quotes land here first — sort each one to a real binder/case, or add it to Bulk, before it becomes a Catalog item.
+          Cards from accepted quotes and finished openings land here first — sort each one to a real binder/case, or add it to Bulk, before it becomes a Catalog item.
         </div>
       </div>
       {sorting.length ? (
@@ -113,7 +113,7 @@ export default function SortingTab({ sorting, catalog, locations, wantRequests, 
                       {[item.game, item.set, item.rarity, item.condition].filter(Boolean).join(' · ')}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>
-                      From {item.quoteCollectionName || 'a quote'}{item.price != null ? ` · $${Number(item.price).toFixed(2)}` : ''}
+                      From {item.quoteCollectionName || (item.openingId ? 'an opening' : 'a quote')}{item.price != null ? ` · $${Number(item.price).toFixed(2)}` : ''}
                     </div>
                   </div>
                   <button className="btn small" onClick={() => setSortingItems([item])}>Sort</button>
@@ -123,7 +123,7 @@ export default function SortingTab({ sorting, catalog, locations, wantRequests, 
           </div>
         </>
       ) : (
-        <div className="empty"><span className="mark">Nothing waiting</span>Cards from accepted quotes will show up here to be sorted.</div>
+        <div className="empty"><span className="mark">Nothing waiting</span>Cards from accepted quotes and finished openings will show up here to be sorted.</div>
       )}
       {sortingItems && (
         <SortItemModal

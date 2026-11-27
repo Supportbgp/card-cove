@@ -331,6 +331,8 @@ Everything else found:
   tab).
 - `src/components/scanner/` — the binder-page scanner review queue
   (`ScannerPanel.jsx`, also embeddable in the Quote tab).
+- `src/components/openings/` — the Openings tab (sealed product the
+  store opens; see "Openings").
 - `src/components/quotes/` — the Quote tab: `QuotesTab.jsx` (landing list +
   new-quote entry point), `QuoteDetail.jsx` (one quote's detail view),
   `QuoteLineItemRow.jsx`, `CatalogItemPicker.jsx` (the local-catalog
@@ -6941,6 +6943,71 @@ footer, next to Staff docs.
   screenshots.
 
 No migration, no Edge Function deploy.
+
+## Openings: sealed product the store opens itself
+
+Staff ask: "When I open a booster box for the store for bulk/online sales,
+there should be a place where it can be recorded, list what was pulled,
+then added to the system", with date and time, product (and quantity),
+game, employee, reason, value of the sealed product, expected value,
+actual value of the singles, value of the bulk, and an auto-calculated
+difference with a reason box, plus notes, "similar to how the quotes
+work". Decided with the user (all the recommended options): pulls go
+**through Sorting**, bulk too (placed with Add to Bulk); **Expected value
+is typed in**; each pull's **Cost is the sealed value split by value**;
+**one product name + quantity** per opening.
+
+- **`phase24_openings.sql`**: `openings` (`opening_number` bigserial,
+  `opened_at`, product name/qty, game, employee, reason, `sealed_value`
+  (for the whole quantity), `expected_value`, `difference_reason`, notes,
+  `items` jsonb in the quote line-item shape, `status` open|done,
+  `moved_to_sorting`), staff-only per phase18 with explicit grants (incl.
+  the sequence) and nothing for anon. Also `sorting_queue.opening_id` and
+  `catalog.source_opening_id` (both `on delete set null`). Re-runnable.
+  `sortingItemToRow`/`cardToRow` only send the new columns when set, so
+  quotes and every other save keep working before the migration runs.
+- **Value math (`src/lib/openingUtils.js`, unit tested)**: singles are
+  price × qty, a bulk lot is its flat value (Qty is a record, never a
+  multiplier, same as a quote's bulk lot), unpriced rows are left out and
+  counted. Difference = (singles + bulk) − Expected, null until Expected is
+  filled in, with a %. Never stored: computed from `items` on every view.
+  `computeOpeningItemCosts` splits the sealed value across the pulls in
+  proportion to their value, per card (a bulk lot's share over its card
+  count), so the shares add up to the sealed value. Unlike quotes there's
+  no tier to guess and no add-ons, so this is exact.
+- **Done**: `useOpenings` (`src/hooks/`) saves like `handleSaveQuote`: a
+  brand-new opening is saved first (sorting_queue's FK needs its id), every
+  pull without a Game takes the opening's Game (`fillGameFromOpening`), and
+  rows go to Sorting with `opening_id`, Cost and the label "Opening #N: 2×
+  Product" in `quote_collection_name` (shown as "From ..." in Sorting).
+  Guarded by `moved_to_sorting`; a failed insert saves it back as in
+  progress so saving again retries. A pull still missing a Game blocks
+  Done (it would land in Catalog as "Other"), same rule as quotes. Sorting
+  a pull carries `sourceOpeningId` onto the catalog row, and its Edit
+  screen shows "Pulled in Opening #N" with **View opening**.
+- **UI** (`src/components/openings/`, styles in `src/styles/openings.css`):
+  a list (search product/employee/reason, game and In progress/Done
+  filters, sortable columns, tinted rows, tab count = in progress) and a
+  detail modal. Pulls reuse `QuoteLineItemRow`/`BulkLineItemRow` with a new
+  `forOpening` prop that hides the payout % controls (Alter %, Apply a %,
+  the want list's "Pay +10%"; the want list and Sought after notices still
+  show). Scan and Import into an opening reuse `ScannerPanel`/`ImportPanel`
+  (stack scanner key `stack:opening`). Not on the realtime channel (loaded
+  at sign-in, reloaded when a tab wakes).
+- **App.jsx size**: the two price-warning helpers moved to
+  `src/lib/priceWarnings.js` and opening state lives in the hook, so
+  App.jsx went from 998 to ~970 lines. Opening DB code is in
+  `src/lib/openingsDb.js` (db.js is near 1,000; `fetchAllRows` is now
+  exported for it).
+- Tests: `openingUtils.test.js` (totals, difference, cost split, sorting
+  rows, row mapping) and `e2e/openings.spec.js` (Desktop + Mobile): values
+  and difference, Done → Sorting with Cost and `opening_id`, sorting a pull
+  into Catalog with the link and View opening, save in progress → filters →
+  Done blocked until a Game is set. Staff docs: `OpeningsSection.jsx`, and
+  a line in `SortingSection.jsx`.
+
+**Requires running `phase24_openings.sql`** (staging first). No Edge
+Function deploy.
 
 ## Dev skills and review rules
 
