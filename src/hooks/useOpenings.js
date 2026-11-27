@@ -35,7 +35,11 @@ export function useOpenings({ enabled, toast, setSorting }) {
   // movedToSorting), with each pull's Cost split from the sealed value.
   // Same order as accepting a quote: sorting_queue.opening_id references
   // openings(id), so a brand-new opening is saved first to get its id.
-  async function save(draft) {
+  // `onProgress(patch)` updates the open draft as steps land (its new id,
+  // that the pulls were moved), so a retry after a later failure updates
+  // the same opening instead of making a second one or moving the pulls
+  // to Sorting twice.
+  async function save(draft, onProgress = () => {}) {
     let toSave = { ...draft };
     let movedCount = 0;
     if (toSave.status === 'done' && !toSave.movedToSorting) {
@@ -44,6 +48,7 @@ export function useOpenings({ enabled, toast, setSorting }) {
         if (!first) return null;
         upsertLocal(first);
         toSave = { ...toSave, id: first.id, openingNumber: first.openingNumber };
+        onProgress({ id: first.id, openingNumber: first.openingNumber });
       }
       toSave.items = fillGameFromOpening(toSave.items, toSave.game);
       const rows = buildSortingItemsFromOpening(toSave);
@@ -53,10 +58,12 @@ export function useOpenings({ enabled, toast, setSorting }) {
           setSorting(prev => [...prev, ...inserted]);
           movedCount = inserted.length;
           toSave.movedToSorting = true;
+          onProgress({ movedToSorting: true, items: toSave.items });
         } else {
           // The insert failed (a toast said why): keep it in progress, so
           // saving again retries the move.
           toSave.status = 'open';
+          onProgress({ status: 'open' });
         }
       } else {
         toSave.movedToSorting = true;

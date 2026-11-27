@@ -29,7 +29,7 @@ export function openingToRow(o) {
   const row = {
     opened_at: o.openedAt || new Date().toISOString(),
     product_name: o.productName || '',
-    product_qty: Number(o.productQty) || 1,
+    product_qty: Math.max(1, Math.floor(Number(o.productQty)) || 1),
     game: o.game || '',
     employee: o.employee || '',
     reason: o.reason || '',

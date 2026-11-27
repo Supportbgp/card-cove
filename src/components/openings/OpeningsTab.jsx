@@ -146,7 +146,7 @@ export default function OpeningsTab({
                           <td>{o.game || '—'}</td>
                           <td className="mono">{money(o.sealedValue)}</td>
                           <td className="mono">{money(t.actualTotal)}</td>
-                          <td className={`mono opening-diff${t.difference == null ? '' : t.difference >= 0 ? ' up' : ' down'}`}>{formatSigned(t.difference)}</td>
+                          <td className={`mono opening-diff${!t.difference ? '' : t.difference > 0 ? ' up' : ' down'}`}>{formatSigned(t.difference)}</td>
                           <td>{o.status === 'done' ? 'Done' : 'In progress'}</td>
                         </tr>
                       );

@@ -83,7 +83,7 @@ describe('buildSortingItemsFromOpening', () => {
     });
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ openingId: 'op-1', quoteId: null, quoteCollectionName: 'Opening #3: 2× Surging Sparks Booster Box', cost: 20, game: 'Pokemon' });
-    expect(rows[1]).toMatchObject({ openingId: 'op-1', cost: 0.2, qty: 50 });
+    expect(rows[1]).toMatchObject({ openingId: 'op-1', cost: 0.2, qty: 50, price: 0.2 });
   });
 });
 

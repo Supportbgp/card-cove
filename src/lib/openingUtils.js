@@ -102,8 +102,16 @@ export function openingLabel(opening) {
 // Done-time move: every pull becomes a sorting_queue row (singles and bulk
 // lots alike, same as an accepted quote), with its Cost filled in and the
 // opening it came from.
+//
+// A bulk lot's value is for the whole lot, but a sorting row's price is per
+// card (placing it individually would otherwise make a row worth qty × the
+// lot value), so a lot goes to Sorting at its value per card.
 export function buildSortingItemsFromOpening(opening) {
-  const withCost = computeOpeningItemCosts(opening.items, opening.sealedValue);
+  const withCost = computeOpeningItemCosts(opening.items, opening.sealedValue).map(item => {
+    if (!item.isBulk) return item;
+    const value = parseMoney(item.price);
+    return { ...item, price: value == null ? null : round2(value / (Number(item.qty) || 1)) };
+  });
   return buildSortingItemsFromQuoteItems(withCost, null, openingLabel(opening))
     .map(row => ({ ...row, openingId: opening.id }));
 }

@@ -71,7 +71,7 @@ export default function OpeningDetail({ opening, catalog, wantRequests, hotIndex
   async function handleSave() {
     if (missingGameBlocks || saving) return;
     setSaving(true);
-    const saved = await onSave(draft);
+    const saved = await onSave(draft, (patch) => setDraft(d => ({ ...d, ...patch })));
     setSaving(false);
     if (saved) onClose();
   }
@@ -81,13 +81,13 @@ export default function OpeningDetail({ opening, catalog, wantRequests, hotIndex
     if (await onDelete(opening.id)) onClose();
   }
 
-  const diffClass = totals.difference == null ? '' : totals.difference >= 0 ? ' up' : ' down';
+  const diffClass = !totals.difference ? '' : totals.difference > 0 ? ' up' : ' down';
 
   return (
     <div className="overlay show">
       <div className="modal xwide">
         <div className="modal-head">
-          <div className="name">{opening.id ? openingLabel(draft) : `New opening${draft.productName ? `: ${draft.productName}` : ''}`}</div>
+          <div className="name">{draft.id ? openingLabel(draft) : `New opening${draft.productName ? `: ${draft.productName}` : ''}`}</div>
           <div className="meta">
             {!opening.id ? 'Not saved yet. Nothing is kept until you hit Save'
               : draft.movedToSorting ? 'Done. Pulls were sent to Sorting' : 'In progress. Save any time, come back later'}
@@ -104,7 +104,7 @@ export default function OpeningDetail({ opening, catalog, wantRequests, hotIndex
               <div className="field-row2">
                 <div className="field-group">
                   <label htmlFor="op-qty">Quantity</label>
-                  <input id="op-qty" type="number" min="1" value={draft.productQty} onChange={(e) => set('productQty', Math.max(1, Number(e.target.value) || 1))} />
+                  <input id="op-qty" type="number" min="1" value={draft.productQty} onChange={(e) => set('productQty', e.target.value)} />
                 </div>
                 <div className="field-group">
                   <label htmlFor="op-game">Game</label>
