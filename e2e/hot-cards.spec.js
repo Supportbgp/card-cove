@@ -123,30 +123,86 @@ test('our own recent sales and a price climb show up too', async ({ page }) => {
   await expect(notice).toHaveCount(0);
 });
 
-test('staff add and remove a card on the hot list from the Hot cards window', async ({ page }) => {
+test('the Hot cards tab shows tournament play by game and format, with the sources credited', async ({ page }) => {
+  await seedHarness(page, {
+    seed: {
+      ...catalogSeed([]),
+      meta_cards: [
+        metaRow(),
+        metaRow({ source: 'mtgo', format: 'Modern', name: 'Orcish Bowmasters', name_key: 'orcish bowmasters', decks: 500, total_decks: 2000 }),
+        metaRow({ source: 'limitless', game: 'Pokemon', format: 'STANDARD', name: 'Ultra Ball', name_key: 'ultra ball', decks: 840, total_decks: 1000 }),
+      ],
+    },
+  });
+  await page.goto('./');
+  await page.locator('.tab', { hasText: 'Hot cards' }).click();
+  const chart = page.locator('.panel.active .bar-list');
+
+  // Magic has the most data, so it opens first, with both formats.
+  await page.locator('.hot-chip', { hasText: 'Magic' }).click();
+  await expect(page.locator('.panel.active .hot-stat')).toHaveCount(2);
+  await expect(chart.locator('.bar-row')).toHaveCount(2);
+  await expect(chart.locator('.bar-row').first()).toContainText('Sol Ring');
+  await expect(chart.locator('.bar-row').first()).toContainText('70%');
+
+  await page.getByRole('group', { name: 'Format' }).getByRole('button', { name: 'Modern' }).click();
+  await expect(chart.locator('.bar-row')).toHaveCount(1);
+  await expect(chart).toContainText('Orcish Bowmasters');
+  await expect(chart).toContainText('25%');
+
+  await page.locator('.hot-chip', { hasText: 'Pokemon' }).click();
+  await expect(chart).toContainText('Ultra Ball');
+  await expect(page.locator('.panel.active .hot-credit')).toContainText('Data provided by Limitless');
+  await expect(page.locator('.panel.active .hot-credit').getByRole('link', { name: 'TopDeck.gg' })).toHaveAttribute('href', 'https://topdeck.gg');
+});
+
+test('the Hot cards tab charts market climbs, sortable by $ gain or % rise', async ({ page }) => {
+  const row = (o) => ({
+    product_id: 1, sub_type: 'Holofoil', game: 'Pokemon', name: 'Umbreon ex', name_key: 'umbreon ex',
+    set_name: 'Prismatic Evolutions', number: '161/131', old_price: 900, new_price: 1210, pct_change: 34.4,
+    url: 'https://www.tcgplayer.com/product/1', window_days: 30, updated_at: new Date().toISOString(), ...o,
+  });
+  await seedHarness(page, {
+    seed: {
+      ...catalogSeed([]),
+      market_movers: [row(), row({ product_id: 2, name: 'Mew ex', name_key: 'mew ex', old_price: 12, new_price: 30, pct_change: 150 })],
+    },
+  });
+  await page.goto('./');
+  await page.locator('.tab', { hasText: 'Hot cards' }).click();
+  await page.getByRole('tab', { name: /^Market climbing/ }).click();
+  const rows = page.locator('.panel.active .bar-row');
+  await expect(rows.first()).toContainText('Umbreon ex');
+  await expect(rows.first()).toContainText('+$310.00');
+  await expect(rows.first()).toContainText('$900.00 → $1,210.00');
+  await expect(rows.first().getByRole('link', { name: 'Umbreon ex' })).toHaveAttribute('href', 'https://www.tcgplayer.com/product/1');
+
+  await page.getByRole('button', { name: 'Biggest % rise' }).click();
+  await expect(rows.first()).toContainText('Mew ex');
+  await expect(rows.first()).toContainText('+150%');
+  await expect(page.locator('.panel.active .hot-credit').getByRole('link', { name: 'TCGCSV (TCGplayer prices)' })).toBeVisible();
+});
+
+test('staff add and remove a card on the hot list from the Hot cards tab', async ({ page }) => {
   await seedHarness(page, { seed: { ...catalogSeed([]), meta_cards: [metaRow()] } });
   await page.goto('./');
-  await page.locator('.tab', { hasText: 'Quote' }).click();
-  await page.getByRole('button', { name: 'Hot cards…' }).click();
+  await page.locator('.tab', { hasText: 'Hot cards' }).click();
+  await page.getByRole('tab', { name: /^Hot list/ }).click();
 
-  // What the tournament data says, credited.
-  const modal = page.locator('.hot-cards-modal');
-  await modal.getByLabel('Game', { exact: true }).nth(1).selectOption('Magic');
-  await expect(page.locator('.hot-meta-table')).toContainText('Sol Ring');
-  await expect(page.locator('.hot-credit').first()).toContainText('Data provided by Limitless');
-
-  await modal.getByLabel('Game', { exact: true }).first().selectOption('Lorcana');
-  await modal.getByLabel('Card name').fill('Circle of Life');
-  await modal.getByLabel('Why').fill('Everyone asks for it');
-  await modal.getByLabel('Added by').fill('Shawn');
+  const panel = page.locator('.panel.active');
+  await panel.getByLabel('Game', { exact: true }).selectOption('Lorcana');
+  await panel.getByLabel('Card name').fill('Circle of Life');
+  await panel.getByLabel('Why').fill('Everyone asks for it');
+  await panel.getByLabel('Added by').fill('Shawn');
   await page.getByRole('button', { name: 'Add to hot list' }).click();
   await expect(page.locator('.hot-list li')).toContainText('Circle of Life');
   const saved = await page.evaluate(() => window.__HARNESS_DB__.hot_cards);
   expect(saved).toHaveLength(1);
   expect(saved[0]).toMatchObject({ game: 'Lorcana', name: 'Circle of Life', reason: 'Everyone asks for it', added_by: 'Shawn' });
-  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('tab', { name: /^Hot list/ })).toContainText('1');
 
   // A quote row picks it up.
+  await page.locator('.tab', { hasText: 'Quote' }).click();
   await page.getByRole('button', { name: '+ New Quote' }).click();
   await page.getByPlaceholder('e.g. Jake binder proposal').fill('Walk-in');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -154,8 +210,10 @@ test('staff add and remove a card on the hot list from the Hot cards window', as
   await page.getByPlaceholder('Card name').fill('circle of life');
   await expect(page.locator('.hot-notice')).toContainText('Hot list: Everyone asks for it');
   await page.getByRole('button', { name: 'Cancel' }).click();
+  // The old window's button is gone from the Quote tab.
+  await expect(page.getByRole('button', { name: 'Hot cards…' })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Hot cards…' }).click();
+  await page.locator('.tab', { hasText: 'Hot cards' }).click();
   await page.locator('.hot-list li', { hasText: 'Circle of Life' }).getByRole('button', { name: 'Remove' }).click();
   await expect(page.locator('.hot-list li', { hasText: 'Circle of Life' })).toHaveCount(0);
   expect(await page.evaluate(() => window.__HARNESS_DB__.hot_cards)).toHaveLength(0);

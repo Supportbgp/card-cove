@@ -1,5 +1,5 @@
 /* Hot cards (CLAUDE.md "Hot cards"): the "Sought after" notice on a quote
-   row (HotNotice) and the Quote tab's Hot cards window (HotCardsModal). */
+   row (HotNotice) and the Hot cards tab (src/components/hot/). */
 
 /* Amber: "pay attention", like pending sync. Sits next to the want-list
    notice (blue), so the two read as different things. */
@@ -39,7 +39,7 @@
   color: var(--blue);
 }
 
-/* Hot cards window */
+/* Hot cards tab: hot list form */
 .hot-add-row {
   display: grid;
   grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 1.4fr) 10rem;
@@ -101,16 +101,6 @@
   color: var(--ink-faint);
 }
 
-.hot-meta-game {
-  max-width: 14rem;
-  margin-bottom: 10px;
-}
-
-.hot-meta-table .num {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .hot-meta-of {
   color: var(--ink-faint);
   font-size: 12px;
@@ -129,10 +119,6 @@
   .hot-list li .btn {
     min-height: 44px;
   }
-
-  .hot-meta-game {
-    max-width: none;
-  }
 }
 
 /* The sales (or tracked copy) a reason counted, so it can be checked. */
@@ -142,4 +128,285 @@
   font-size: 12px;
   color: var(--ink-soft);
   list-style: circle;
+}
+
+/* --- Hot cards tab --- */
+
+.hot-intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+  max-width: 70ch;
+}
+
+/* Section tabs: underlined like the app's own tabs, scrolls sideways on a
+   phone instead of wrapping into a second row. */
+.hot-subtabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+/* On a phone, a soft fade on the right hints there's more to scroll to. */
+@media (max-width: 640px) {
+  .hot-subtabs {
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+}
+
+.hot-subtab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.hot-subtab:hover {
+  color: var(--ink);
+}
+
+.hot-subtab[aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--teal);
+}
+
+.hot-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hot-panel .hot-empty {
+  margin: 0;
+}
+
+/* Pick-one chips (game, format, sort). */
+.hot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.hot-chip:hover {
+  border-color: var(--teal);
+}
+
+.hot-chip[aria-pressed="true"] {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+}
+
+.hot-chip-count {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--ink-soft);
+}
+
+.hot-chip[aria-pressed="true"] .hot-chip-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+/* Headline numbers. */
+.hot-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 8px;
+}
+
+.hot-stat {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  min-width: 0;
+}
+
+.hot-stat-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.hot-stat-value {
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.hot-stat-note {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.hot-chart-title {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Ranked bar list (BarList.jsx): one hue, thin bars, square at the
+   baseline and rounded at the data end, the value written out next to it. */
+.bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(10rem, 2fr) minmax(6rem, 3fr) 5.5rem;
+  align-items: center;
+  column-gap: 12px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.bar-row:hover {
+  background: var(--surface-alt);
+}
+
+.bar-rank {
+  color: var(--ink-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.bar-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bar-title {
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.bar-title a {
+  color: inherit;
+}
+
+.bar-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.bar-track {
+  height: 10px;
+  background: var(--surface-alt);
+  border-radius: 0 4px 4px 0;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--teal);
+  border-radius: 0 4px 4px 0;
+}
+
+.bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.bar-detail {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.bar-detail-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  list-style: circle;
+}
+
+@media (max-width: 640px) {
+  .hot-subtab {
+    min-height: 44px;
+  }
+
+  .hot-chip {
+    min-height: 40px;
+  }
+
+  .hot-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Name on its own line, then the bar and its value. */
+  .bar-row {
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    row-gap: 6px;
+  }
+
+  .bar-label {
+    grid-column: 2 / -1;
+  }
+
+  .bar-track {
+    grid-column: 2;
+  }
+
+  .bar-value {
+    grid-column: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hot-subtab,
+  .hot-chip {
+    transition: none;
+  }
 }

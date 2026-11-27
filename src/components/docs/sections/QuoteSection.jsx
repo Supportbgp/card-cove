@@ -238,9 +238,8 @@ export default function QuoteSection() {
         <li><strong>Hot list</strong>: staff added it by hand.</li>
       </ul>
       <p>
-        <strong>Hot cards…</strong> (top of the Quote tab) shows the hot list
-        (add a card with a reason, or remove one), the most-played cards per
-        game, and what's selling fast or climbing.
+        The data behind these notes, and the hot list itself, live in the{' '}
+        <a href="#hot-cards">Hot cards</a> tab.
       </p>
     </DocsSection>
   );

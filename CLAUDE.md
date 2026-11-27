@@ -6895,6 +6895,53 @@ of our own history). This adds TCGplayer's market price for any card, with
 workflow starts with the merge; run "Daily market price climbs" once by
 hand to fill the table right away. No Edge Function deploy, no new secret.
 
+## Hot cards tab, and Change history in the footer
+
+Staff feedback on the Quote tab's "Hot cards…" window: the notices on
+quote rows are clear, but the window held too much for a modal. It became
+its own top-level tab, one section per signal, with charts. Asked for in
+the same message: Change history moved out of Import / Export into the
+footer, next to Staff docs.
+
+- **`src/components/hot/`**: `HotCardsTab.jsx` (the tab; sections as
+  `role="tab"` buttons, scrolling sideways with a right-edge fade on a
+  phone), `TournamentsPanel.jsx`, `MarketPanel.jsx`, `OwnSignalsPanel.jsx`
+  (Selling fast and Our price climbs, the two signals from our own data),
+  `HotListPanel.jsx` (the add/remove form, unchanged from the window),
+  `BarList.jsx` (the chart) and `Chips.jsx` (pick-one chips + `StatTiles`).
+  `HotCardsModal.jsx` and the Quote tab's button are gone; quote rows still
+  get `hot.index` (now passed as `hotIndex`).
+- **Sections**: Tournaments (game chips with counts, a tile per format
+  showing decklists counted, source, window and last update, then format
+  chips when a game has more than one; bars scaled to 100% of decks),
+  Market climbing (game chips; tiles for cards climbing, biggest $ gain,
+  biggest % rise; sort by $ gain or % rise; names link to TCGplayer through
+  `safeHttpUrl`), Selling fast and Our price climbs (tiles, a game filter
+  when more than one game, the sales counted listed under each Selling
+  fast row), Hot list. Each section keeps its source credits.
+- **Charts, per the dataviz skill**: one series in one hue (`--teal`), so
+  no legend, the heading names the measure. Ranked horizontal bars, 10px
+  thick, square at the baseline and rounded 4px at the end, on a recessive
+  track. Every value is written next to its bar in text tokens, so the
+  list reads without the bars (screen readers, print, colorblind); a row's
+  `title` gives the full detail on hover. On a phone the name sits on its
+  own line above the bar and value.
+- **`hotCards.js`**: `topMetaCards` takes an optional
+  `{ source, format }` to narrow to one format, and `metaFormatsForGame`
+  lists a game's usable formats (enough decklists, fresh) biggest first.
+- **`AppFooter.jsx`**: the footer moved out of `App.jsx` (which was at 998
+  lines) with a new **Change history** link opening the same
+  `ChangeHistoryModal`.
+- Tests: new `hotCards.test.js` cases (format narrowing,
+  `metaFormatsForGame`), `e2e/hot-cards.spec.js` rewritten for the tab
+  (formats, market sort, hot list add/remove, and the Quote button gone),
+  `e2e/safe-saves.spec.js` opens history from the footer, and the
+  staff-docs stepper includes the new **Hot cards** section
+  (`HotCardsSection.jsx`). Checked at 390px and 1440px via throwaway
+  screenshots.
+
+No migration, no Edge Function deploy.
+
 ## Dev skills and review rules
 
 Tools added for design and security work (2026-11-03), checked against

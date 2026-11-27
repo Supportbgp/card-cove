@@ -3,7 +3,6 @@ import { useUI } from '../../context/UIContext.jsx';
 import ExportModal from './ExportModal.jsx';
 import BinderQrModal from './BinderQrModal.jsx';
 import PublicBindersModal from './PublicBindersModal.jsx';
-import ChangeHistoryModal from '../history/ChangeHistoryModal.jsx';
 
 // Export / Binder QR / Reset-all-data — split out of the original
 // ImportExportPanel alongside ImportPanel so the Import half can be
@@ -16,7 +15,6 @@ export default function ExportPanel({ catalog, queue, locations, publicBinders =
   const [showExportModal, setShowExportModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [showPublicModal, setShowPublicModal] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
 
   async function handleClearAll() {
     if (!(await showConfirm("This clears the shared catalog and sync queue for everyone using Card Cove. Continue?", "Reset all data", { requirePassword: true }))) return;
@@ -30,7 +28,6 @@ export default function ExportPanel({ catalog, queue, locations, publicBinders =
         <button className="btn secondary" onClick={() => setShowExportModal(true)}>Export…</button>
         <button className="btn secondary" disabled={!locations.length} onClick={() => setShowQrModal(true)}>Binder QR code…</button>
         <button className="btn secondary" onClick={() => setShowPublicModal(true)}>Public binders…</button>
-        <button className="btn secondary" onClick={() => setShowHistory(true)}>Change history…</button>
         <button className="btn ghost export-reset" onClick={handleClearAll}>Reset all data</button>
       </div>
       {showExportModal && (
@@ -48,7 +45,6 @@ export default function ExportPanel({ catalog, queue, locations, publicBinders =
           onClose={() => setShowQrModal(false)}
         />
       )}
-      {showHistory && <ChangeHistoryModal onClose={() => setShowHistory(false)} />}
       {showPublicModal && (
         <PublicBindersModal
           catalog={catalog}
