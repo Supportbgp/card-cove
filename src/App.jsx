@@ -37,6 +37,8 @@ import QuotesTab from './components/quotes/QuotesTab.jsx';
 import SortingTab from './components/sorting/SortingTab.jsx';
 import ReportsTab from './components/reports/ReportsTab.jsx';
 import WantListTab from './components/wantlist/WantListTab.jsx';
+import HotCardsTab from './components/hot/HotCardsTab.jsx';
+import AppFooter from './components/AppFooter.jsx';
 
 const TABS = [
   { key: 'catalog', label: 'Catalog' },
@@ -47,6 +49,7 @@ const TABS = [
   { key: 'sorting', label: 'Sorting' },
   { key: 'reports', label: 'Reports' },
   { key: 'wants', label: 'Want list' },
+  { key: 'hot', label: 'Hot cards' },
 ];
 
 const CONDITION_RANK = { NM: 0, LP: 1, MP: 2, HP: 3, DMG: 4 };
@@ -932,7 +935,7 @@ export default function App() {
           quotes={quotes}
           catalog={catalog}
           wantRequests={wantRequests}
-          hot={hot}
+          hotIndex={hot?.index}
           locations={locations}
           multipliers={multipliers}
           tierSettings={tierSettings}
@@ -968,14 +971,11 @@ export default function App() {
         />
       </div>
 
-      <div className="footnote">
-        Card Cove by Board Game Paradise · shared store data, live in Supabase · not connected to POS, TCG Player, or Collectr APIs ·{' '}
-        <a href="?help=1" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--ink-faint)' }}>Staff docs</a>
-        {' · '}
-        <a href="#" onClick={(e) => { e.preventDefault(); setShowSettings(true); }} style={{ color: 'var(--ink-faint)' }}>Pricing settings</a>
-        {' · '}
-        <a href="#" onClick={(e) => { e.preventDefault(); handleLogout(); }} style={{ color: 'var(--ink-faint)' }}>Sign out</a>
+      <div className={`panel${tab === 'hot' ? ' active' : ''}`}>
+        <HotCardsTab hot={hot} />
       </div>
+
+      <AppFooter onOpenSettings={() => setShowSettings(true)} onLogout={handleLogout} />
       {showSettings && (
         <SettingsModal
           multipliers={multipliers}

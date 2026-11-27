@@ -117,9 +117,14 @@ export default function EditingItemSection() {
         <strong>Show change history</strong> (under Notes &amp; status) lists
         every change to this card: when it was added, moved, edited, sold or
         had its quantity change, with the old and new value and the time. To
-        look across the whole catalog, including deleted cards, use{' '}
-        <strong>Import / Export → Change history…</strong> and search by card
-        name, SKU or binder (e.g. "Power Packs").
+        look across the whole catalog, use <strong>Change history</strong> in
+        the footer at the bottom of every page (next to Staff docs). It lists
+        the latest changes to catalog cards, newest first: added, moved,
+        edited, sold or deleted, with the old and new value and the time.
+        Search by card name, SKU or binder (e.g. "Power Packs") to answer
+        "where did this card go?". Deleted cards show up there too, with what
+        they were. The history starts from when it was turned on; older moves
+        weren't recorded.
       </p>
 
       <h3>"Changes waiting to save"</h3>

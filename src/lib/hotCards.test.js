@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   hotNameKey, cardCode, buildHotIndex, hotReasonsForCard, reasonSources, topMetaCards, rowToMetaCard, reasonsOfKind,
-  rowToMarketMover, topMarketMovers, numberKey, looseSetMatch,
+  rowToMarketMover, topMarketMovers, numberKey, looseSetMatch, metaFormatsForGame,
 } from './hotCards.js';
 import { hotNameKey as edgeHotNameKey, cardCode as edgeCardCode } from '../../supabase/functions/meta-check/decks.ts';
 
@@ -176,6 +176,30 @@ describe('topMetaCards', () => {
   it('leaves out counts the daily check stopped refreshing', () => {
     const stale = meta({ updated_at: '2026-10-30T13:40:00Z' });
     expect(topMetaCards([stale], 'Magic', 40, NOW)).toEqual([]);
+  });
+
+  it("narrows to one source's format when asked", () => {
+    const rows = [meta(), meta({ format: 'Legacy', decks: 90, total_decks: 100 }), meta({ source: 'mtgo', format: 'Modern', name: 'Thoughtseize', name_key: 'thoughtseize', decks: 300 })];
+    const edh = topMetaCards(rows, 'Magic', 40, NOW, { source: 'topdeck', format: 'EDH' });
+    expect(edh.map(r => [r.name, r.share])).toEqual([['Sol Ring', 70]]);
+    expect(topMetaCards(rows, 'Magic', 40, NOW, { source: 'mtgo', format: 'Modern' }).map(r => r.name)).toEqual(['Thoughtseize']);
+  });
+});
+
+describe('metaFormatsForGame', () => {
+  it('lists the formats with usable data, biggest first, leaving out thin and stale ones', () => {
+    const formats = metaFormatsForGame([
+      meta(),
+      meta({ name: 'Mana Crypt', name_key: 'mana crypt' }),
+      meta({ source: 'mtgo', format: 'Modern', total_decks: 2228, updated_at: '2026-11-05T22:00:00Z' }),
+      meta({ format: 'Pioneer', total_decks: 5 }),
+      meta({ format: 'Legacy', updated_at: '2026-10-20T13:40:00Z' }),
+      meta({ game: 'Pokemon', format: 'STANDARD' }),
+    ], 'Magic', NOW);
+    expect(formats.map(f => [f.key, f.label, f.totalDecks])).toEqual([
+      ['mtgo|Modern', 'Modern', 2228],
+      ['topdeck|EDH', 'Commander', 1000],
+    ]);
   });
 });
 

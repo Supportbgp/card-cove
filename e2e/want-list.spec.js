@@ -24,7 +24,7 @@ test('staff add a request; it shows on the public Wanted page without the custom
   await page.locator('.tab', { hasText: 'Want list' }).click();
   await page.getByRole('button', { name: '+ Add request' }).click();
 
-  await page.getByLabel('Game').selectOption('Lorcana');
+  await page.locator('.panel.active').getByLabel('Game', { exact: true }).selectOption('Lorcana');
   await page.getByLabel('Card name').fill('Circle of Life');
   await page.getByLabel("They'd pay up to ($, optional)").fill('30');
   await page.getByLabel('Name', { exact: true }).fill('Ana Smith');

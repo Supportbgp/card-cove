@@ -102,8 +102,8 @@ test('the change history shows moves and deletes, searchable by binder', async (
     },
   });
   await page.goto('./');
-  await page.locator('.tab', { hasText: 'Import / Export' }).click();
-  await page.getByRole('button', { name: 'Change history…' }).click();
+  // Change history lives in the footer, on every tab.
+  await page.locator('.footnote').getByRole('link', { name: 'Change history' }).click();
   const list = page.locator('.history-modal .history-entry');
   await expect(list).toHaveCount(4);
   await expect(list.first()).toContainText('Pikachu');

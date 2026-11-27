@@ -405,10 +405,13 @@ export function topMarketMovers(market, game, limit = 40, now = Date.now()) {
 
 // The most-played cards for one game, best share first, for the Hot cards
 // window. One row per card (its best qualifying format/source).
-export function topMetaCards(meta, game, limit = 40, now = Date.now()) {
+// `only` ({ source, format }) narrows it to one source's format, for the
+// Hot cards tab's format picker.
+export function topMetaCards(meta, game, limit = 40, now = Date.now(), only = null) {
   const best = new Map();
   for (const m of meta) {
     if (m.game !== game || m.totalDecks < META_MIN_DECKS || !isFresh(m, now)) continue;
+    if (only && (m.source !== only.source || (m.format || '') !== (only.format || ''))) continue;
     const share = metaSharePct(m);
     if (share < META_MIN_SHARE_PCT) continue;
     const k = `${m.nameKey}#${m.code}`;
@@ -439,6 +442,27 @@ export function reasonsOfKind(index, kind) {
   }
   const size = r => (kind === 'sales' ? r.copies : r.pct);
   return out.sort((a, b) => size(b) - size(a));
+}
+
+// The tournament formats one game has usable data for (enough decklists,
+// still fresh), biggest first: what the Hot cards tab's format picker and
+// its "decklists counted" tiles show.
+export function metaFormatsForGame(meta, game, now = Date.now()) {
+  const byKey = new Map();
+  for (const m of meta) {
+    if (m.game !== game || m.totalDecks < META_MIN_DECKS || !isFresh(m, now)) continue;
+    const k = `${m.source}|${m.format || ''}`;
+    const prev = byKey.get(k);
+    if (!prev) {
+      byKey.set(k, {
+        key: k, source: m.source, format: m.format || '', label: formatLabel(m.format),
+        totalDecks: m.totalDecks, windowDays: m.windowDays, updatedAt: m.updatedAt || null,
+      });
+    } else if (m.updatedAt && (!prev.updatedAt || m.updatedAt > prev.updatedAt)) {
+      prev.updatedAt = m.updatedAt;
+    }
+  }
+  return [...byKey.values()].sort((a, b) => b.totalDecks - a.totalDecks);
 }
 
 // Latest meta-check run per source, for "updated ..." in the window.
